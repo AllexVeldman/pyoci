@@ -1,0 +1,20 @@
+[tool.poetry]
+name = "pyoci"
+version = "0.1.0"
+description = "Publish and download python packages using OCI compliant registries"
+authors = ["Allex Veldman <a.veldman@chain-stock.com>"]
+license = "MIT"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.11"
+requests = "^2.31.0"
+
+
+[tool.poetry.group.dev.dependencies]
+isort = "^5.12.0"
+black = "^23.9.1"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
