@@ -6,3 +6,27 @@ services:
     ports:
       - 5000:5000
     restart: always
+    volumes:
+      - ./config/config.yaml:/etc/docker/registry/config.yml
+
+  registry-ui:
+    image: joxit/docker-registry-ui:latest
+    restart: always
+    depends_on:
+      - registry
+    ports:
+      - 8080:80
+    environment:
+      - SINGLE_REGISTRY=true
+      - REGISTRY_TITLE=Docker Registry UI
+      - DELETE_IMAGES=true
+      - SHOW_CONTENT_DIGEST=true
+#      - REGISTRY_URL=http://localhost:5000
+      - NGINX_PROXY_PASS_URL=http://registry:5000
+      - NGINX_PROXY_HEADER_Authorization=Token Foobar
+      - SHOW_CATALOG_NB_TAGS=true
+      - CATALOG_MIN_BRANCHES=1
+      - CATALOG_MAX_BRANCHES=1
+      - TAGLIST_PAGE_SIZE=100
+      - REGISTRY_SECURED=false
+      - CATALOG_ELEMENTS_LIMIT=1000
