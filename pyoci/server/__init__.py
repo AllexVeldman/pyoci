@@ -1,9 +1,9 @@
 import base64
 import logging
 from pathlib import Path
-from typing import Annotated
+from typing import Annotated, Literal
 
-from fastapi import FastAPI, Header, Request, Response
+from fastapi import FastAPI, File, Form, Header, Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from httpx import HTTPStatusError
@@ -13,13 +13,53 @@ from pyoci.oci.client import AuthenticationError
 
 app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
-
 logger = logging.getLogger(__name__)
 
 
-@app.get("/")
-def read_root():
-    return {"Hello": "World"}
+@app.post("/{repository}/{namespace}/", name="publish")
+async def publish_package(
+    repository: str,
+    namespace: str,
+    action: Annotated[Literal["file_upload"], Form(alias=":action")],
+    content: Annotated[UploadFile, File()],
+    response: Response,
+    authorization: Annotated[str | None, Header()] = None,
+):
+    username = password = None
+    if authorization is not None:
+        username, password = base64.b64decode(
+            authorization.removeprefix("Basic ").encode("utf-8")
+        ).split(b":")
+    with pyoci.oci.Client(
+        registry_url=f"https://{repository}", username=username, password=password
+    ) as client:
+        package = pyoci.oci.PackageInfo.from_string(
+            content.filename, namespace=namespace
+        )
+
+        logger.info("Publishing '%s' to '%s'", package, repository)
+
+        index = pyoci.oci.Index.pull(
+            name=package.name,
+            reference=package.version,
+            artifact_type=pyoci.oci.ARTIFACT_TYPE,
+            client=client,
+        )
+        manifest = pyoci.oci.Manifest(
+            artifactType=pyoci.oci.ARTIFACT_TYPE,
+            config=pyoci.oci.EmptyConfig(),
+        )
+        manifest.layers.append(
+            pyoci.oci.Layer.from_file(
+                file=content.file,
+                artifact_type=pyoci.oci.ARTIFACT_TYPE,
+            )
+        )
+        index.add_manifest(
+            manifest,
+            platform=package.platform(),
+        )
+        index.push(client=client)
 
 
 @app.get(

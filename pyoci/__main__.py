@@ -88,11 +88,52 @@ def pull(ctx, package: str, namespace: str = "", output: str = "out"):
         print(f"Done downloading: {destination}")
 
 
+LOGGING_CONFIG = {
+    "version": 1,
+    "disable_existing_loggers": False,
+    "formatters": {
+        "default": {
+            "()": "uvicorn.logging.DefaultFormatter",
+            "fmt": "%(levelprefix)s %(message)s",
+            "use_colors": None,
+        },
+        "access": {
+            "()": "uvicorn.logging.AccessFormatter",
+            "fmt": '%(levelprefix)s %(client_addr)s - "%(request_line)s" %(status_code)s',  # noqa: E501
+        },
+    },
+    "handlers": {
+        "default": {
+            "formatter": "default",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stderr",
+        },
+        "access": {
+            "formatter": "access",
+            "class": "logging.StreamHandler",
+            "stream": "ext://sys.stdout",
+        },
+    },
+    "loggers": {
+        "uvicorn": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "uvicorn.error": {"level": "INFO"},
+        "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
+        "pyoci": {"handlers": ["default"], "level": "INFO", "propagate": False},
+    },
+}
+
+
 @cli.command()
 @click.option("--reload", help="Watch for changes", is_flag=True)
 @click.option("-p", "--port", type=int, default=8080)
 def server(reload: bool = False, port: int = 8080):
-    uvicorn.run("pyoci.server:app", port=port, log_level="info", reload=reload)
+    uvicorn.run(
+        "pyoci.server:app",
+        port=port,
+        log_level="info",
+        log_config=LOGGING_CONFIG,
+        reload=reload,
+    )
 
 
 if __name__ == "__main__":
