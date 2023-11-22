@@ -119,6 +119,7 @@ LOGGING_CONFIG = {
         "uvicorn.error": {"level": "INFO"},
         "uvicorn.access": {"handlers": ["access"], "level": "INFO", "propagate": False},
         "pyoci": {"handlers": ["default"], "level": "INFO", "propagate": False},
+        "httpx": {"handlers": ["default"], "level": "INFO", "propagate": False},
     },
 }
 

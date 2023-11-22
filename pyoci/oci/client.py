@@ -96,7 +96,7 @@ class Client:
             self._session = None
 
     def try_authentication(self):
-        result = self.get("/v2/_catalog")
+        result = self.get("/v2/")
         if result.status_code == 401:
             www_authenticate = _parse_www_auth(result.headers["WWW-Authenticate"])
             logger.debug(www_authenticate)

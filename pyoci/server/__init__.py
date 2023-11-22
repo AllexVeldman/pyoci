@@ -22,7 +22,6 @@ async def publish_package(
     namespace: str,
     action: Annotated[Literal["file_upload"], Form(alias=":action")],
     content: Annotated[UploadFile, File()],
-    response: Response,
     authorization: Annotated[str | None, Header()] = None,
 ):
     username = password = None
@@ -107,7 +106,7 @@ def list_package(
     "/{repository}/{namespace}/{package}/{filename}",
     name="file",
 )
-def list_package(
+def download_package(
     repository: str,
     namespace: str,
     package: str,
