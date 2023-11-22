@@ -16,6 +16,14 @@ templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
 logger = logging.getLogger(__name__)
 
 
+def parse_auth_header(authorization: str) -> tuple[bytes, bytes]:
+    """Parse the Authorization header into username and password."""
+    username, password = base64.b64decode(
+        authorization.removeprefix("Basic ").encode("utf-8")
+    ).split(b":")
+    return username, password
+
+
 @app.post("/{repository}/{namespace}/", name="publish")
 async def publish_package(
     repository: str,
@@ -26,9 +34,7 @@ async def publish_package(
 ):
     username = password = None
     if authorization is not None:
-        username, password = base64.b64decode(
-            authorization.removeprefix("Basic ").encode("utf-8")
-        ).split(b":")
+        username, password = parse_auth_header(authorization)
     with pyoci.oci.Client(
         registry_url=f"https://{repository}", username=username, password=password
     ) as client:
@@ -74,9 +80,7 @@ def list_package(
 ):
     username = password = None
     if authorization is not None:
-        username, password = base64.b64decode(
-            authorization.removeprefix("Basic ").encode("utf-8")
-        ).split(b":")
+        username, password = parse_auth_header(authorization)
     with pyoci.oci.Client(
         registry_url=f"https://{repository}", username=username, password=password
     ) as client:
@@ -117,9 +121,7 @@ def download_package(
     assert filename.startswith(package), "filename must start with package name"
     username = password = None
     if authorization is not None:
-        username, password = base64.b64decode(
-            authorization.removeprefix("Basic ").encode("utf-8")
-        ).split(b":")
+        username, password = parse_auth_header(authorization)
     with pyoci.oci.Client(
         registry_url=f"https://{repository}", username=username, password=password
     ) as client:
