@@ -3,13 +3,17 @@ import logging
 from pathlib import Path
 from typing import Annotated, Literal
 
-from fastapi import FastAPI, File, Form, Header, Request, Response, UploadFile
+from fastapi import FastAPI, File, Form, Header
+from fastapi import Path as PydanticPath
+from fastapi import Request, Response, UploadFile
 from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from httpx import HTTPStatusError
 
 import pyoci
+from pyoci.oci import PackageInfo
 from pyoci.oci.client import AuthenticationError
+from pyoci.oci.package import FILE_PATTERN
 
 app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")
@@ -31,12 +35,14 @@ async def publish_package(
     action: Annotated[Literal["file_upload"], Form(alias=":action")],
     content: Annotated[UploadFile, File()],
     authorization: Annotated[str | None, Header()] = None,
+    pyoci_insecure: Annotated[bool, Header(alias="X-PyOCI-Insecure")] = False,
 ):
+    scheme = "https" if not pyoci_insecure else "http"
     username = password = None
     if authorization is not None:
         username, password = parse_auth_header(authorization)
     with pyoci.oci.Client(
-        registry_url=f"https://{repository}", username=username, password=password
+        registry_url=f"{scheme}://{repository}", username=username, password=password
     ) as client:
         package = pyoci.oci.PackageInfo.from_string(
             content.filename, namespace=namespace
@@ -68,26 +74,29 @@ async def publish_package(
 
 
 @app.get(
-    "/{repository}/{namespace}/{package}/", response_class=HTMLResponse, name="list"
+    "/{repository}/{namespace}/{package_name}/",
+    response_class=HTMLResponse,
+    name="list",
 )
 def list_package(
     repository: str,
     namespace: str,
-    package: str,
+    package_name: str,
     request: Request,
     response: Response,
     authorization: Annotated[str | None, Header()] = None,
+    pyoci_insecure: Annotated[bool, Header(alias="X-PyOCI-Insecure")] = False,
 ):
+    package = PackageInfo(package_name, namespace=namespace)
     username = password = None
     if authorization is not None:
         username, password = parse_auth_header(authorization)
+    scheme = "https" if not pyoci_insecure else "http"
     with pyoci.oci.Client(
-        registry_url=f"https://{repository}", username=username, password=password
+        registry_url=f"{scheme}://{repository}", username=username, password=password
     ) as client:
         try:
-            files = pyoci.oci.list_package(
-                name=package, client=client, namespace=namespace
-            )
+            files = pyoci.oci.list_package(package=package, client=client)
         except HTTPStatusError as e:
             response.status_code = e.response.status_code
             return
@@ -100,35 +109,32 @@ def list_package(
                 "request": request,
                 "repository": repository,
                 "namespace": namespace,
-                "package": package,
+                "package": package.distribution,
                 "files": files,
             },
         )
 
 
-@app.get(
-    "/{repository}/{namespace}/{package}/{filename}",
-    name="file",
-)
+@app.get("/{repository}/{namespace}/{package_name}/{filename}", name="download")
 def download_package(
     repository: str,
     namespace: str,
-    package: str,
-    filename: str,
+    package_name: str,
+    filename: Annotated[str, PydanticPath(pattern=FILE_PATTERN)],
     response: Response,
     authorization: Annotated[str | None, Header()] = None,
+    pyoci_insecure: Annotated[bool, Header(alias="X-PyOCI-Insecure")] = False,
 ):
-    assert filename.startswith(package), "filename must start with package name"
+    package = PackageInfo.from_string(filename, namespace=namespace)
     username = password = None
     if authorization is not None:
         username, password = parse_auth_header(authorization)
+    scheme = "https" if not pyoci_insecure else "http"
     with pyoci.oci.Client(
-        registry_url=f"https://{repository}", username=username, password=password
+        registry_url=f"{scheme}://{repository}", username=username, password=password
     ) as client:
         try:
-            data = pyoci.oci.pull_package(
-                package=filename, client=client, namespace=namespace
-            )
+            data = pyoci.oci.pull_package(package=package, client=client)
         except HTTPStatusError as e:
             response.status_code = e.response.status_code
             return

@@ -3,16 +3,14 @@
 This module provides a Python API for a subset of the OCI registry API.
 """
 import logging
-from contextlib import suppress
-from dataclasses import asdict
+from copy import copy
 from pathlib import Path
-
-from httpx import HTTPError
+from typing import Generator
 
 from pyoci.oci.client import Client
 from pyoci.oci.config import EmptyConfig
 from pyoci.oci.index import Index
-from pyoci.oci.layer import Layer, create_file_layer
+from pyoci.oci.layer import Layer
 from pyoci.oci.manifest import Manifest
 from pyoci.oci.package import PackageInfo
 
@@ -58,7 +56,9 @@ def publish_package(path: Path, client: Client, namespace: str = ""):
     index.push(client=client)
 
 
-def list_package_version(package: PackageInfo, client: Client):
+def list_package_version(
+    package: PackageInfo, client: Client
+) -> Generator[PackageInfo, None, None]:
     """List the available versions of a package"""
     index = Index.pull(
         name=package.name,
@@ -66,29 +66,27 @@ def list_package_version(package: PackageInfo, client: Client):
         artifact_type=ARTIFACT_TYPE,
         client=client,
     )
-    return [
-        PackageInfo(
-            **(asdict(package) | {"architecture": manifest.platform.architecture})
-        )
-        for manifest in index.manifests
-    ]
+    for manifest in index.manifests:
+        package_alt = copy(package)
+        package_alt.architecture = manifest.platform.architecture
+        yield package_alt
 
 
-def list_package(name: str, client: Client, namespace: str = ""):
+def list_package(package: PackageInfo, client: Client):
     """List all available files for a package"""
-    result = client.list(name=PackageInfo(name, namespace=namespace).name)
+    result = client.list(name=package.name)
     return [
         str(file)
         for tag in result["tags"]
         for file in list_package_version(
-            package=PackageInfo(name, tag, namespace=namespace), client=client
+            package=PackageInfo(package.distribution, tag, namespace=package.namespace),
+            client=client,
         )
     ]
 
 
-def pull_package(package: str, client: Client, namespace: str = ""):
+def pull_package(package: PackageInfo, client: Client):
     """Pull a specific package from an OCI registry"""
-    package = PackageInfo.from_string(package, namespace=namespace)
     index = Index.pull(
         name=package.name,
         reference=package.version,

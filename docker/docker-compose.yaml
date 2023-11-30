@@ -8,6 +8,7 @@ services:
     restart: always
     volumes:
       - ./config/config.yaml:/etc/docker/registry/config.yml
+      - ./config/tls:/etc/docker/registry/certs
 
   registry-ui:
     image: joxit/docker-registry-ui:latest

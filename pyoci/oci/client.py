@@ -74,7 +74,10 @@ class Client:
     @property
     def session(self):
         if self._session is None:
-            self._session = httpx.Client(follow_redirects=True, max_redirects=2)
+            self._session = httpx.Client(
+                follow_redirects=True,
+                max_redirects=2,
+            )
             self.try_authentication()
         return self._session
 
@@ -103,7 +106,7 @@ class Client:
             self.authenticate(
                 token_url=www_authenticate["realm"],
                 service=www_authenticate["service"],
-                scope=www_authenticate["scope"],
+                scope=www_authenticate.get("scope"),
             )
         else:
             result.raise_for_status()

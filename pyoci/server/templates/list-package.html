@@ -6,7 +6,7 @@
 </head>
 <body>
 {%- for file in files %}
-    <a href="{{ url_for('file', repository=repository, namespace=namespace, package=package, filename=file) }}">{{ file }}</a>
+    <a href="{{ url_for('download', repository=repository, namespace=namespace, package_name=package, filename=file) }}">{{ file }}</a>
 {%- endfor %}
 </body>
 </html>

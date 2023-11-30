@@ -5,6 +5,7 @@ import click
 import uvicorn
 
 import pyoci
+from pyoci.oci import PackageInfo
 
 
 @click.group()
@@ -57,7 +58,8 @@ def list(ctx, name: str, namespace: str):
     """List all versions of a package in the registry."""
     obj: OCI = ctx.ensure_object(OCI)
     with obj.client as client:
-        for p in pyoci.oci.list_package(name=name, client=client, namespace=namespace):
+        package = PackageInfo(name, namespace=namespace)
+        for p in pyoci.oci.list_package(package=package, client=client):
             print(p)
 
 
@@ -79,9 +81,11 @@ def list(ctx, name: str, namespace: str):
 def pull(ctx, package: str, namespace: str = "", output: str = "out"):
     """Download a package from the registry."""
     obj: OCI = ctx.ensure_object(OCI)
+
     with obj.client as client:
         data = pyoci.oci.pull_package(
-            package=package, client=client, namespace=namespace
+            package=PackageInfo.from_string(package, namespace=namespace),
+            client=client,
         )
         destination = Path(output) / package
         destination.write_bytes(data)
@@ -128,6 +132,7 @@ LOGGING_CONFIG = {
 @click.option("--reload", help="Watch for changes", is_flag=True)
 @click.option("-p", "--port", type=int, default=8080)
 def server(reload: bool = False, port: int = 8080):
+    """Start the PyOCI server."""
     uvicorn.run(
         "pyoci.server:app",
         port=port,
