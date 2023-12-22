@@ -7,12 +7,12 @@ from copy import copy
 from pathlib import Path
 from typing import Generator
 
-from pyoci.oci.client import Client
-from pyoci.oci.config import EmptyConfig
-from pyoci.oci.index import Index
-from pyoci.oci.layer import Layer
-from pyoci.oci.manifest import Manifest
-from pyoci.oci.package import PackageInfo
+from .client import Client
+from .config import EmptyConfig
+from .index import Index
+from .layer import Layer
+from .manifest import Manifest
+from .package import PackageInfo
 
 logger = logging.getLogger(__name__)
 

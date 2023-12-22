@@ -10,10 +10,10 @@ from fastapi.responses import HTMLResponse, StreamingResponse
 from fastapi.templating import Jinja2Templates
 from httpx import HTTPStatusError
 
-import pyoci
-from pyoci.oci import PackageInfo
-from pyoci.oci.client import AuthenticationError
-from pyoci.oci.package import FILE_PATTERN
+from ... import pyoci
+from ...pyoci.oci import PackageInfo
+from ...pyoci.oci.client import AuthenticationError
+from ...pyoci.oci.package import FILE_PATTERN
 
 app = FastAPI()
 templates = Jinja2Templates(directory=Path(__file__).parent / "templates")

@@ -1,3 +1,8 @@
 dist/
 out/
 __pycache__/
+.ropeproject/
+
+# Added by cargo
+
+/target
