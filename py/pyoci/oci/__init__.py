@@ -59,7 +59,7 @@ def publish_package(path: Path, client: Client, namespace: str = ""):
 def list_package_version(
     package: PackageInfo, client: Client
 ) -> Generator[PackageInfo, None, None]:
-    """List the available versions of a package"""
+    """List the available files of a package version"""
     index = Index.pull(
         name=package.name,
         reference=package.version,

@@ -1,6 +1,7 @@
 use core::fmt;
 use std::error;
 
+use oci_spec::{distribution::{TagList, ErrorResponse}, image::ImageIndex};
 use regex::Regex;
 use reqwest::{
     blocking::{self, RequestBuilder},
@@ -10,14 +11,16 @@ use reqwest::{
 use serde::Deserialize;
 use url::{ParseError, Url};
 
+
 #[derive(Debug)]
 pub enum Error {
     InvalidUrl(ParseError),
     InvalidResponseCode(u16),
     MissingHeader,
     AuthenticationRequired,
-    Request(String),
-    Response(String),
+    MissingVersion,
+    Request(reqwest::Error),
+    OciError(ErrorResponse),
     Other(String),
 }
 
@@ -38,6 +41,18 @@ impl From<&str> for Error {
 impl From<ParseError> for Error {
     fn from(value: ParseError) -> Self {
         Error::InvalidUrl(value)
+    }
+}
+
+impl From<reqwest::Error> for Error {
+    fn from(value: reqwest::Error) -> Self {
+        Error::Request(value)
+    }
+}
+
+impl From<ErrorResponse> for Error {
+    fn from(value: ErrorResponse) -> Self {
+        Error::OciError(value)
     }
 }
 
@@ -84,10 +99,7 @@ impl Client {
     /// If the registry does require authentication, a new [Client] is returned, consuming self.
     pub fn authenticate(self, username: Option<&str>, password: Option<&str>) -> Result<Self, Error> {
         // Try the /v2/ endpoint without authentication to see if we need it.
-        let response = match self.send(self.client.get(self.build_url("/v2/"))) {
-            Err(err) => return Err(Error::Request(err.to_string())),
-            Ok(value) => value,
-        };
+        let response = self.send(self.client.get(self.build_url("/v2/")))?;
         let status = response.status();
         if status.is_success() {
             // Request was 2xx, not authentication needed
@@ -99,9 +111,8 @@ impl Client {
         };
 
         // We need authentication, from this point username and password are mandatory
-        let (username, password) = match (username, password) {
-            (Some(username), Some(password)) => {(username, password)},
-            _ => { return Err(Error::AuthenticationRequired) }
+        let (Some(username), Some(password)) = (username, password) else {
+            return Err(Error::AuthenticationRequired)
         };
 
         // Authenticate with the WWW-Authenticate header location
@@ -120,20 +131,7 @@ impl Client {
             ])
             .basic_auth(username, Some(password));
 
-        let response = match self.send(request) {
-            Err(err) => return Err(Error::Request(err.to_string())),
-            Ok(value) => value,
-        };
-
-        let status = response.status();
-        if !status.is_success() {
-            return Err(Error::InvalidResponseCode(status.into()));
-        }
-
-        let response: AuthResponse = match response.json() {
-            Err(err) => return Err(Error::Response(err.to_string())),
-            Ok(value) => value,
-        };
+        let response = self.send(request)?.error_for_status()?.json::<AuthResponse>()?;
 
         let mut headers = header::HeaderMap::new();
         let mut token_header =
@@ -145,11 +143,43 @@ impl Client {
         let builder = blocking::Client::builder()
             .https_only(true)
             .default_headers(headers);
-        println!("Authenticated to {}", self.registry);
         Ok(Client {
             client: builder.build().expect("build client"),
             ..self
         })
+    }
+
+    pub fn list_package_files(&self, package: &crate::package::Info) -> Result<Vec<String>, Error> {
+        let tags = self.list_tags(&package.oci_name())?;
+        for tag in tags.tags() {
+            let manifest = self.pull_manifest(tags.name(), tag)?;
+            println!("{manifest:?}");
+        };
+        Ok(tags.tags().clone())
+    }
+
+    fn pull_manifest(&self, name: &str, reference: &str) -> Result<ImageIndex, Error> {
+        let url = self.build_url(&format!("/v2/{}/manifests/{}", name, reference));
+        let response = self.send(
+            self.client.get(url)
+                .header(
+                    header::ACCEPT,
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json"
+                )
+        )?;
+        let status = response.status();
+        if status.is_success() { 
+            Ok(response.json::<ImageIndex>()?) 
+        } else { 
+            Err(Error::OciError(response.json::<ErrorResponse>()?)) 
+        }
+    }
+
+    fn list_tags(&self, name: &str) -> Result<TagList, Error>{
+        let url = self.build_url(&format!("/v2/{name}/tags/list"));
+        let response = self.send(self.client.get(url))?.error_for_status()?;
+        let tags = response.json::<TagList>()?;
+        Ok(tags)
     }
 
     /// Return the Url for the given URI

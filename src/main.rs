@@ -12,9 +12,7 @@ fn list(url: &str, username: Option<&str>, password: Option<&str>) -> Result<Vec
     let package = package::Info::from_str(url)?;
     let client = client::Client::new(&package.registry)?;
     let client = client.authenticate(username, password)?;
-    println!("{package:?}");
-    println!("{:?}", package.oci_name());
-
+    let files = client.list_package_files(&package)?;
     Ok(vec![])
 }
 
@@ -72,7 +70,7 @@ mod cli {
         let cli = Cli::parse();
         match cli.command {
             Some(Commands::List { url }) => {
-                let result = list(&url, cli.username.as_deref(), cli.password.as_deref())?;
+                let _result = list(&url, cli.username.as_deref(), cli.password.as_deref())?;
                 Ok(())
             }
             Some(Commands::Publish { .. }) => {

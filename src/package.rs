@@ -23,10 +23,10 @@ impl fmt::Display for ParseError {
 }
 impl error::Error for ParseError {}
 
-#[derive(Debug, PartialEq, Eq, Default)]
+#[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct File {
-    name: String,
-    version: Option<String>,
+    pub name: String,
+    pub version: Option<String>,
     extension: Option<String>,
     build_tag: Option<String>,
     python_tag: Option<String>,
@@ -93,14 +93,14 @@ impl FromStr for File {
     }
 }
 
-#[derive(Debug, PartialEq, Eq)]
+#[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Info {
     /// The OCI registry url
     pub registry: String,
     /// The package namespace in the OCI registry
     pub namespace: String,
     /// Python package file attributes
-    file: File,
+    pub file: File,
 }
 
 impl FromStr for Info {
@@ -157,6 +157,10 @@ impl Info {
     /// Name of the package as used for the OCI registry
     pub fn oci_name(&self) -> String {
         format!("{}/{}", self.namespace, self.file.name).to_lowercase()
+    }
+
+    pub fn set_version(&mut self, version: &str){
+        self.file = File{version: Some(version.to_string()), ..self.file.clone()};
     }
 }
 
