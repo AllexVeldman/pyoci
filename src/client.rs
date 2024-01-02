@@ -1,7 +1,7 @@
 use core::fmt;
 use std::error;
 
-use oci_spec::{distribution::{TagList, ErrorResponse}, image::ImageIndex};
+use oci_spec::{distribution::{TagList, ErrorResponse}, image::{ImageIndex, ImageManifest, MediaType}};
 use regex::Regex;
 use reqwest::{
     blocking::{self, RequestBuilder},
@@ -16,9 +16,10 @@ use url::{ParseError, Url};
 pub enum Error {
     InvalidUrl(ParseError),
     InvalidResponseCode(u16),
-    MissingHeader,
+    MissingHeader(String),
+    UnknownContentType,
+    UnknownArtifactType(String),
     AuthenticationRequired,
-    MissingVersion,
     Request(reqwest::Error),
     OciError(ErrorResponse),
     Other(String),
@@ -60,6 +61,16 @@ impl From<ErrorResponse> for Error {
 struct AuthResponse {
     token: String,
 }
+
+
+/// Return type for pull_manifest
+/// as the same endpoint can return both a manifest and a manifest index
+#[derive(Debug)]
+enum Manifest {
+    Index(Box<ImageIndex>),
+    Manifest(Box<ImageManifest>),
+}
+
 
 /// Client to communicate with the OCI v2 registry
 pub struct Client {
@@ -117,7 +128,7 @@ impl Client {
 
         // Authenticate with the WWW-Authenticate header location
         let www_auth = match response.headers().get(header::WWW_AUTHENTICATE) {
-            None => return Err(Error::MissingHeader),
+            None => return Err(Error::MissingHeader(header::WWW_AUTHENTICATE.to_string())),
             Some(value) => WwwAuth::parse(value)?,
         };
 
@@ -149,17 +160,42 @@ impl Client {
         })
     }
 
+    /// List all files for the given package
+    ///
+    /// Includes all versions and files of each version.
+    /// Can take a long time for packages with a lot of versions and files.
     pub fn list_package_files(&self, package: &crate::package::Info) -> Result<Vec<String>, Error> {
         let tags = self.list_tags(&package.oci_name())?;
+        let mut files: Vec<String> = Vec::new();
+        // TODO: Listing tags can be done in parallel
         for tag in tags.tags() {
             let manifest = self.pull_manifest(tags.name(), tag)?;
-            println!("{manifest:?}");
+            match manifest {
+                Manifest::Manifest(_) => { return Err(Error::Other("Manifest without Index not supported".to_string())) },
+                Manifest::Index(index) => {
+                    let artifact_type = index.artifact_type(); 
+                    match artifact_type {
+                        Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => { },
+                        Some(value) => { return Err(Error::UnknownArtifactType(value.to_string())) },
+                        None => { return Err(Error::UnknownArtifactType(String::new())) }
+                    };
+                    for manifest in index.manifests() {
+                        match manifest.platform().as_ref().unwrap().architecture(){
+                            oci_spec::image::Arch::Other(arch) => { 
+                                let file = package.file.clone().with_version(tag).with_architecture(arch).unwrap(); 
+                                files.push(format!("{file}"));
+                            },
+                            _ => { return Err(Error::Other("unknown architectur".to_string())) }
+                        };
+                    };
+                },
+            };
         };
-        Ok(tags.tags().clone())
+        Ok(files)
     }
 
-    fn pull_manifest(&self, name: &str, reference: &str) -> Result<ImageIndex, Error> {
-        let url = self.build_url(&format!("/v2/{}/manifests/{}", name, reference));
+    fn pull_manifest(&self, name: &str, reference: &str) -> Result<Manifest, Error> {
+        let url = self.build_url(&format!("/v2/{name}/manifests/{reference}"));
         let response = self.send(
             self.client.get(url)
                 .header(
@@ -168,10 +204,18 @@ impl Client {
                 )
         )?;
         let status = response.status();
-        if status.is_success() { 
-            Ok(response.json::<ImageIndex>()?) 
-        } else { 
-            Err(Error::OciError(response.json::<ErrorResponse>()?)) 
+        if !status.is_success() { 
+            return Err(Error::OciError(response.json::<ErrorResponse>()?)); 
+        };
+        match response.headers().get(header::CONTENT_TYPE) {
+            Some(value) if value == "application/vnd.oci.image.index.v1+json" => {
+                Ok(Manifest::Index(Box::new(response.json::<ImageIndex>()?)))
+            },
+            Some(value) if value =="application/vnd.oci.image.manifest.v1+json" => {
+                Ok(Manifest::Manifest(Box::new(response.json::<ImageManifest>()?)))
+            },
+            Some(_) => { Err(Error::UnknownContentType) },
+            None => { Err(Error::MissingHeader(header::CONTENT_TYPE.to_string())) }
         }
     }
 
@@ -196,7 +240,7 @@ impl Client {
         let url = request.url().to_string();
         let response = self.client.execute(request)?;
         let status = response.status();
-        println!("HTTP: [{method}] {status} {url}");
+        eprintln!("HTTP: [{method}] {status} {url}");
         Ok(response)
     }
 }
@@ -206,7 +250,7 @@ impl Client {
 struct WwwAuth {
     realm: String,
     service: String,
-    scope: String,
+    // scope: String,
 }
 
 impl WwwAuth {
@@ -241,21 +285,21 @@ impl WwwAuth {
                 .to_string(),
             None => return Err("service missing".into()),
         };
-        let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
-            .expect("valid regex")
-            .captures(value)
-        {
-            Some(value) => value
-                .name("scope")
-                .expect("scope to be part of match")
-                .as_str()
-                .to_string(),
-            None => return Err("scope missing".into()),
-        };
+        // let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
+        //     .expect("valid regex")
+        //     .captures(value)
+        // {
+        //     Some(value) => value
+        //         .name("scope")
+        //         .expect("scope to be part of match")
+        //         .as_str()
+        //         .to_string(),
+        //     None => return Err("scope missing".into()),
+        // };
         Ok(WwwAuth {
             realm,
             service,
-            scope,
+            // scope,
         })
     }
 }

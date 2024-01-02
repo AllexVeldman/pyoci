@@ -7,7 +7,7 @@ pub enum ParseError {
     EmptyString,
     NotAFile,
     /// Package name does not comply to the python packaging naming conventions
-    InvalidPackageName,
+    InvalidPackageName(String),
     /// Filename has an unsupported extension
     UnknownFileType(String),
     /// Name of the package in the URL does not match the package name in the filename
@@ -23,15 +23,75 @@ impl fmt::Display for ParseError {
 }
 impl error::Error for ParseError {}
 
+#[derive(Debug, PartialEq, Eq, Clone)]
+enum Ext {
+    Sdist,
+    Wheel,
+    Unknown(String),
+}
+
+impl Default for Ext {
+    fn default() -> Self {
+        Ext::Unknown(String::new())
+    }
+}
+
+impl From<&str> for Ext {
+
+    fn from(s: &str) -> Self {
+        match s {
+            ".whl" => Ext::Wheel,
+            ".tar.gz" => Ext::Sdist,
+            unknown => Ext::Unknown(unknown.to_string()),
+        }
+    }
+}
+
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
 pub struct File {
     pub name: String,
-    pub version: Option<String>,
-    extension: Option<String>,
+    pub version: String,
+    extension: Ext,
     build_tag: Option<String>,
     python_tag: Option<String>,
     abi_tag: Option<String>,
     platform_tag: Option<String>,
+}
+
+impl File {
+    pub fn with_version(self, version: &str) -> Self {
+        File{version: version.to_string(), ..self}
+    }
+    pub fn with_architecture(self, architecture: &str) -> Result<Self, ParseError> {
+        match Ext::from(architecture) {
+            Ext::Sdist => {
+                Ok(File{name: self.name, version: self.version, extension: Ext::Sdist, ..File::default()})
+            }
+            _ => {
+                File::from_str(&format!("{}-{}-{}",  &self.name, &self.version, architecture))
+            },
+        }
+    }
+    fn architecture(&self) -> String {
+        match &self.build_tag{
+            Some(build_tag) => { format!("{}-{}-{}-{}", build_tag, self.python_tag.as_ref().unwrap(), self.abi_tag.as_ref().unwrap(), self.platform_tag.as_ref().unwrap()) },
+            None => { format!("{}-{}-{}", self.python_tag.as_ref().unwrap(), self.abi_tag.as_ref().unwrap(), self.platform_tag.as_ref().unwrap()) },
+        }
+    }
+}
+
+impl fmt::Display for File {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self.extension {
+            Ext::Sdist => {
+                write!(f, "{}-{}.tar.gz", self.name, self.version)
+            },
+            Ext::Wheel => {
+                write!(f, "{}-{}-{}.whl", self.name, self.version, self.architecture())
+            },
+            _ => { Err(fmt::Error) }
+        }
+    }
 }
 
 impl FromStr for File {
@@ -63,8 +123,8 @@ impl FromStr for File {
                 match re.captures(value) {
                     Some(capture) => Ok(File {
                         name: capture.name("distribution").unwrap().as_str().to_string(),
-                        version: Some(capture.name("version").unwrap().as_str().to_string()),
-                        extension: Some(capture.name("extension").unwrap().as_str().to_string()),
+                        version: capture.name("version").unwrap().as_str().to_string(),
+                        extension: capture.name("extension").unwrap().as_str().into(),
                         build_tag: capture
                             .name("build")
                             .map(|build| build.as_str().to_string()),
@@ -72,7 +132,7 @@ impl FromStr for File {
                         abi_tag: Some(capture.name("abi").unwrap().as_str().to_string()),
                         platform_tag: Some(capture.name("platform").unwrap().as_str().to_string()),
                     }),
-                    None => Err(ParseError::InvalidPackageName),
+                    None => Err(ParseError::InvalidPackageName(value.to_string())),
                 }
             }
             Some("gz") => {
@@ -80,11 +140,11 @@ impl FromStr for File {
                 match re.captures(value) {
                     Some(capture) => Ok(File {
                         name: capture.name("distribution").unwrap().as_str().to_string(),
-                        version: Some(capture.name("version").unwrap().as_str().to_string()),
-                        extension: Some(capture.name("extension").unwrap().as_str().to_string()),
+                        version: capture.name("version").unwrap().as_str().to_string(),
+                        extension: capture.name("extension").unwrap().as_str().into(),
                         ..File::default()
                     }),
-                    None => Err(ParseError::InvalidPackageName),
+                    None => Err(ParseError::InvalidPackageName(value.to_string())),
                 }
             }
             None => Err(ParseError::NotAFile),
@@ -158,10 +218,6 @@ impl Info {
     pub fn oci_name(&self) -> String {
         format!("{}/{}", self.namespace, self.file.name).to_lowercase()
     }
-
-    pub fn set_version(&mut self, version: &str){
-        self.file = File{version: Some(version.to_string()), ..self.file.clone()};
-    }
 }
 
 #[cfg(test)]
@@ -186,8 +242,8 @@ mod tests {
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
-                version: Some("1".to_string()),
-                extension: Some(".whl".to_string()),
+                version: "1".to_string(),
+                extension: ".whl".into(),
                 build_tag: None,
                 python_tag: Some("cp311".to_string()),
                 abi_tag: Some("cp311".to_string()),
@@ -200,8 +256,8 @@ mod tests {
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
-                version: Some("2.5.1.dev4+g1664eb2.d20231017".to_string()),
-                extension: Some(".whl".to_string()),
+                version: "2.5.1.dev4+g1664eb2.d20231017".to_string(),
+                extension: ".whl".into(),
                 build_tag: Some("1234".to_string()),
                 python_tag: Some("cp311".to_string()),
                 abi_tag: Some("cp311".to_string()),
@@ -214,8 +270,8 @@ mod tests {
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
-                version: Some("1".to_string()),
-                extension: Some(".tar.gz".to_string()),
+                version: "1".to_string(),
+                extension: ".tar.gz".into(),
                 ..File::default()}}
     ; "with sdist")]
     /// Test if we can parse a sting into a package::Info object

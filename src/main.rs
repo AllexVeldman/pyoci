@@ -10,10 +10,9 @@ mod package;
 
 fn list(url: &str, username: Option<&str>, password: Option<&str>) -> Result<Vec<String>, Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
-    let client = client::Client::new(&package.registry)?;
-    let client = client.authenticate(username, password)?;
+    let client = client::Client::new(&package.registry)?.authenticate(username, password)?;
     let files = client.list_package_files(&package)?;
-    Ok(vec![])
+    Ok(files)
 }
 
 mod cli {
@@ -70,7 +69,10 @@ mod cli {
         let cli = Cli::parse();
         match cli.command {
             Some(Commands::List { url }) => {
-                let _result = list(&url, cli.username.as_deref(), cli.password.as_deref())?;
+                let result = list(&url, cli.username.as_deref(), cli.password.as_deref())?;
+                for file in result {
+                    println!("{file}");
+                }
                 Ok(())
             }
             Some(Commands::Publish { .. }) => {
