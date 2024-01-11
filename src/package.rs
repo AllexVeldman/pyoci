@@ -67,7 +67,9 @@ impl File {
         File{version: version.to_string(), ..self}
     }
 
-    // TODO: This architecture does not match the use on the OCI side
+    /// Add/replace the architecture and dist_type
+    /// returns a new File instance, consuming self.
+    /// accepts the remainder of a python package filename after the version part
     pub fn with_architecture(self, architecture: &str) -> Result<Self, ParseError> {
         match DistType::from(architecture) {
             DistType::Sdist => {
@@ -77,6 +79,20 @@ impl File {
                 File::from_str(&format!("{}-{}-{}",  &self.name, &self.version, architecture))
             },
         }
+    }
+    
+    /// Return the architecture string as used on the OCI side
+    pub fn architecture(&self) -> String {
+        match &self.dist_type {
+            DistType::Sdist => { ".tar.gz".to_string() },
+            DistType::Wheel => { format!("{}.whl",  &self.architecture.as_ref().unwrap())},
+            DistType::Unknown(unknown) => { unknown.to_string() }
+        }
+    }
+
+    /// Return True if this File can be used as an OCI reference
+    pub fn is_valid(&self) -> bool {
+        !self.name.is_empty() && !self.version.is_empty()
     }
 }
 

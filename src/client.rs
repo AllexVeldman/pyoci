@@ -1,6 +1,7 @@
 use core::fmt;
 use std::error;
 
+use bytes::Bytes;
 use oci_spec::{distribution::{TagList, ErrorResponse}, image::{ImageIndex, ImageManifest, MediaType}};
 use regex::Regex;
 use reqwest::{
@@ -19,9 +20,11 @@ pub enum Error {
     MissingHeader(String),
     UnknownContentType,
     UnknownArtifactType(String),
+    UnknownArchitecture(String),
     AuthenticationRequired,
     Request(reqwest::Error),
     OciError(ErrorResponse),
+    NotAFile(String),
     Other(String),
 }
 
@@ -63,7 +66,7 @@ struct AuthResponse {
 }
 
 
-/// Return type for pull_manifest
+/// Return type for ``pull_manifest``
 /// as the same endpoint can return both a manifest and a manifest index
 #[derive(Debug)]
 enum Manifest {
@@ -100,6 +103,24 @@ impl Client {
             client: builder.build().expect("build client"),
             registry: url,
         })
+    }
+
+    /// Return the Url for the given URI
+    fn build_url(&self, uri: &str) -> Url {
+        let mut new_url = self.registry.clone();
+        new_url.set_path(uri);
+        new_url
+    }
+
+    /// Send and log a request
+    fn send(&self, request: RequestBuilder) -> reqwest::Result<blocking::Response>{  
+        let request = request.build()?;
+        let method = request.method().to_string();
+        let url = request.url().to_string();
+        let response = self.client.execute(request)?;
+        let status = response.status();
+        eprintln!("HTTP: [{method}] {status} {url}");
+        Ok(response)
     }
 
     /// Create and authenticate a new Client with the OCI registry
@@ -142,7 +163,7 @@ impl Client {
             ])
             .basic_auth(username, Some(password));
 
-        let response = self.send(request)?.error_for_status()?.json::<AuthResponse>()?;
+        let response: AuthResponse = self.send(request)?.error_for_status()?.json()?;
 
         let mut headers = header::HeaderMap::new();
         let mut token_header =
@@ -175,8 +196,11 @@ impl Client {
                 Manifest::Index(index) => {
                     let artifact_type = index.artifact_type(); 
                     match artifact_type {
+                        // Artifact type is as expected, do nothing
                         Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => { },
+                        // Artifact type has unexpected value, err
                         Some(value) => { return Err(Error::UnknownArtifactType(value.to_string())) },
+                        // Artifact type is not set, err
                         None => { return Err(Error::UnknownArtifactType(String::new())) }
                     };
                     for manifest in index.manifests() {
@@ -185,7 +209,7 @@ impl Client {
                                 let file = package.file.clone().with_version(tag).with_architecture(arch).unwrap(); 
                                 files.push(format!("{file}"));
                             },
-                            _ => { return Err(Error::Other("unknown architectur".to_string())) }
+                            arch => { return Err(Error::UnknownArchitecture(arch.to_string())) }
                         };
                     };
                 },
@@ -194,6 +218,8 @@ impl Client {
         Ok(files)
     }
 
+    /// Pull an OCI manifest by name and reference
+    /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests
     fn pull_manifest(&self, name: &str, reference: &str) -> Result<Manifest, Error> {
         let url = self.build_url(&format!("/v2/{name}/manifests/{reference}"));
         let response = self.send(
@@ -219,6 +245,15 @@ impl Client {
         }
     }
 
+    /// Pull a blob
+    fn pull_blob(&self, name: &str, digest: &str) -> Result<Bytes, Error> {
+        let url = self.build_url(&format!("/v2/{name}/blobs/{digest}"));
+        let response = self.send(self.client.get(url))?.error_for_status()?;
+        Ok(response.bytes()?)
+    }
+
+    /// List all tags by name
+    /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
     fn list_tags(&self, name: &str) -> Result<TagList, Error>{
         let url = self.build_url(&format!("/v2/{name}/tags/list"));
         let response = self.send(self.client.get(url))?.error_for_status()?;
@@ -226,22 +261,48 @@ impl Client {
         Ok(tags)
     }
 
-    /// Return the Url for the given URI
-    fn build_url(&self, uri: &str) -> Url {
-        let mut new_url = self.registry.clone();
-        new_url.set_path(uri);
-        new_url
-    }
-
-    /// Send and log a request
-    fn send(&self, request: RequestBuilder) -> reqwest::Result<blocking::Response>{  
-        let request = request.build()?;
-        let method = request.method().to_string();
-        let url = request.url().to_string();
-        let response = self.client.execute(request)?;
-        let status = response.status();
-        eprintln!("HTTP: [{method}] {status} {url}");
-        Ok(response)
+    pub fn download_package_file(&self, package: &crate::package::Info) -> Result<Bytes, Error>{
+        if !package.file.is_valid() {
+            return Err(Error::NotAFile(package.file.to_string()))
+        };
+        // Pull index
+        let index = match self.pull_manifest(&package.oci_name(), &package.file.version)? {
+            Manifest::Index(index) => {index},
+            Manifest::Manifest(_) => { return Err(Error::Other("Expected Index, got Manifest".to_string()))},
+        };
+        // Check artifact type
+        match index.artifact_type() {
+            // Artifact type is as expected, do nothing
+            Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => { },
+            // Artifact type has unexpected value, err
+            Some(value) => { return Err(Error::UnknownArtifactType(value.to_string())) },
+            // Artifact type is not set, err
+            None => { return Err(Error::UnknownArtifactType(String::new())) }
+        };
+        // Find manifest descriptor for platform
+        let mut platform_manifest: Option<&oci_spec::image::Descriptor> = None;
+        for manifest in index.manifests() {
+            if let Some(platform) = manifest.platform() {
+                match platform.architecture() {
+                    oci_spec::image::Arch::Other(arch) if *arch == package.file.architecture() => {
+                        platform_manifest = Some(manifest);
+                        break;
+                    },
+                    _ => { }
+                }
+            }
+        };
+        let manifest_descriptor = platform_manifest.ok_or(Error::Other("Requested architecture not available".to_string()))?;
+        // pull manifest
+        let manifest = match self.pull_manifest(&package.oci_name(), manifest_descriptor.digest())? {
+            Manifest::Index(_) => { return Err(Error::Other("Expected Manifest, got Index".to_string())) },
+            Manifest::Manifest(manifest) => { manifest },
+        };
+        // pull blob in first layer of manifest
+        let [blob_descriptor] = &manifest.layers()[..] else {
+            return Err(Error::Other("Unsupported number of layers".to_string()))
+        };
+        self.pull_blob(&package.oci_name(), blob_descriptor.digest())
     }
 }
 

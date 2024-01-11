@@ -773,6 +773,7 @@ dependencies = [
 name = "pyoci"
 version = "0.1.0"
 dependencies = [
+ "bytes",
  "clap",
  "exitcode",
  "oci-spec",
