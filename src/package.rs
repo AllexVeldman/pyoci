@@ -1,6 +1,5 @@
 use std::{error, fmt, str::FromStr};
 
-
 #[derive(Debug)]
 pub enum ParseError {
     EmptyString,
@@ -35,7 +34,6 @@ impl Default for DistType {
 }
 
 impl From<&str> for DistType {
-
     fn from(s: &str) -> Self {
         match s {
             ".whl" => DistType::Wheel,
@@ -61,10 +59,12 @@ pub struct File {
 }
 
 impl File {
-
     /// Replace the version, consumes self
     pub fn with_version(self, version: &str) -> Self {
-        File{version: version.to_string(), ..self}
+        File {
+            version: version.to_string(),
+            ..self
+        }
     }
 
     /// Add/replace the architecture and dist_type
@@ -72,21 +72,27 @@ impl File {
     /// accepts the remainder of a python package filename after the version part
     pub fn with_architecture(self, architecture: &str) -> Result<Self, ParseError> {
         match DistType::from(architecture) {
-            DistType::Sdist => {
-                Ok(File{name: self.name, version: self.version, dist_type: DistType::Sdist, ..File::default()})
-            }
-            _ => {
-                File::from_str(&format!("{}-{}-{}",  &self.name, &self.version, architecture))
-            },
+            DistType::Sdist => Ok(File {
+                name: self.name,
+                version: self.version,
+                dist_type: DistType::Sdist,
+                ..File::default()
+            }),
+            _ => File::from_str(&format!(
+                "{}-{}-{}",
+                &self.name, &self.version, architecture
+            )),
         }
     }
-    
+
     /// Return the architecture string as used on the OCI side
     pub fn architecture(&self) -> String {
         match &self.dist_type {
-            DistType::Sdist => { ".tar.gz".to_string() },
-            DistType::Wheel => { format!("{}.whl",  &self.architecture.as_ref().unwrap())},
-            DistType::Unknown(unknown) => { unknown.to_string() }
+            DistType::Sdist => ".tar.gz".to_string(),
+            DistType::Wheel => {
+                format!("{}.whl", &self.architecture.as_ref().unwrap())
+            }
+            DistType::Unknown(unknown) => unknown.to_string(),
         }
     }
 
@@ -106,33 +112,27 @@ impl FromStr for File {
         };
         if let Some(value) = value.strip_suffix(".whl") {
             // Select the str without the extention and split on "-" 3 times
-            match value.splitn(3,'-').collect::<Vec<&str>>()[..] {
-                [name, version, architecture] => {
-                    Ok(File{
-                        name: name.to_string(),
-                        version: version.to_string(),
-                        architecture: Some(architecture.to_string()),
-                        dist_type: DistType::Wheel,
-                    })
-                },
-                _ => {Err(ParseError::InvalidPackageName(value.to_string()))}
+            match value.splitn(3, '-').collect::<Vec<&str>>()[..] {
+                [name, version, architecture] => Ok(File {
+                    name: name.to_string(),
+                    version: version.to_string(),
+                    architecture: Some(architecture.to_string()),
+                    dist_type: DistType::Wheel,
+                }),
+                _ => Err(ParseError::InvalidPackageName(value.to_string())),
             }
-        }
-        else if let Some(value) = value.strip_suffix(".tar.gz") {
+        } else if let Some(value) = value.strip_suffix(".tar.gz") {
             // Select the str without the extention and split on "-" 2 times
-            match value.splitn(2,'-').collect::<Vec<&str>>()[..] {
-                [name, version] => {
-                    Ok(File{
-                        name: name.to_string(),
-                        version: version.to_string(),
-                        architecture: None,
-                        dist_type: DistType::Sdist,
-                    })
-                },
-                _ => {Err(ParseError::InvalidPackageName(value.to_string()))}
+            match value.splitn(2, '-').collect::<Vec<&str>>()[..] {
+                [name, version] => Ok(File {
+                    name: name.to_string(),
+                    version: version.to_string(),
+                    architecture: None,
+                    dist_type: DistType::Sdist,
+                }),
+                _ => Err(ParseError::InvalidPackageName(value.to_string())),
             }
-        }
-        else {
+        } else {
             Err(ParseError::UnknownFileType(value.to_string()))
         }
     }
@@ -143,11 +143,17 @@ impl fmt::Display for File {
         match self.dist_type {
             DistType::Sdist => {
                 write!(f, "{}-{}.tar.gz", self.name, self.version)
-            },
+            }
             DistType::Wheel => {
-                write!(f, "{}-{}-{}.whl", self.name, self.version, self.architecture.as_ref().unwrap())
-            },
-            DistType::Unknown(_) => { Err(fmt::Error) }
+                write!(
+                    f,
+                    "{}-{}-{}.whl",
+                    self.name,
+                    self.version,
+                    self.architecture.as_ref().unwrap()
+                )
+            }
+            DistType::Unknown(_) => Err(fmt::Error),
         }
     }
 }

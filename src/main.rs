@@ -3,20 +3,28 @@
 
 //! ``PyOCI``
 
-use std::{error::Error, str::FromStr};
 use bytes::Bytes;
+use std::{error::Error, str::FromStr};
 
 mod client;
 mod package;
 
-fn list(url: &str, username: Option<&str>, password: Option<&str>) -> Result<Vec<String>, Box<dyn Error>> {
+fn list(
+    url: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<Vec<String>, Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
     let client = client::Client::new(&package.registry)?.authenticate(username, password)?;
     let files = client.list_package_files(&package)?;
     Ok(files)
 }
 
-fn download(url: &str, username: Option<&str>, password: Option<&str>) -> Result<(package::Info, Bytes), Box<dyn Error>> {
+fn download(
+    url: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<(package::Info, Bytes), Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
     let client = client::Client::new(&package.registry)?.authenticate(username, password)?;
     let data = client.download_package_file(&package)?;
@@ -29,7 +37,7 @@ mod cli {
 
     use clap::{Parser, Subcommand};
 
-    use crate::{list, download};
+    use crate::{download, list};
 
     #[derive(Parser)]
     #[command(author, version, about, long_about = None, help_expected = true, arg_required_else_help = true, disable_help_subcommand = true)]
@@ -87,7 +95,8 @@ mod cli {
                 todo!()
             }
             Some(Commands::Download { url, out_dir }) => {
-                let (package, data) = download(&url, cli.username.as_deref(), cli.password.as_deref())?;
+                let (package, data) =
+                    download(&url, cli.username.as_deref(), cli.password.as_deref())?;
                 fs::write(out_dir.join(package.file.to_string()), data)?;
                 Ok(())
             }
