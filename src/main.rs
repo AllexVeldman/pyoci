@@ -3,37 +3,56 @@
 
 //! ``PyOCI``
 
-use bytes::Bytes;
-use std::{error::Error, str::FromStr};
+use std::{error::Error, io::Read, str::FromStr};
+use tracing::Level;
 
 mod client;
 mod package;
 
+#[tracing::instrument(skip(username, password))]
 fn list(
     url: &str,
     username: Option<&str>,
     password: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
-    let client = client::Client::new(&package.registry)?.authenticate(username, password)?;
+    let client = client::Client::new(&package.registry, username, password)?;
     let files = client.list_package_files(&package)?;
     Ok(files)
 }
 
+#[tracing::instrument(skip(username, password))]
 fn download(
     url: &str,
     username: Option<&str>,
     password: Option<&str>,
-) -> Result<(package::Info, Bytes), Box<dyn Error>> {
+) -> Result<(package::Info, impl Read), Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
-    let client = client::Client::new(&package.registry)?.authenticate(username, password)?;
+    let client = client::Client::new(&package.registry, username, password)?;
     let data = client.download_package_file(&package)?;
     Ok((package, data))
 }
 
+fn publish(
+    url: &str,
+    file: &str,
+    username: Option<&str>,
+    password: Option<&str>,
+) -> Result<(), Box<dyn Error>> {
+    let package = package::Info::from_str(url)?;
+    let client = client::Client::new(&package.registry, username, password)?;
+    client.publish_package_file(&package, file)?;
+    Ok(())
+}
+
 mod cli {
 
-    use std::{error::Error, fs, path::PathBuf};
+    use std::{
+        error::Error,
+        fs,
+        io::{self, BufReader, BufWriter},
+        path::PathBuf,
+    };
 
     use clap::{Parser, Subcommand};
 
@@ -97,7 +116,10 @@ mod cli {
             Some(Commands::Download { url, out_dir }) => {
                 let (package, data) =
                     download(&url, cli.username.as_deref(), cli.password.as_deref())?;
-                fs::write(out_dir.join(package.file.to_string()), data)?;
+                let mut file = fs::File::create(out_dir.join(package.file.to_string()))?;
+                let mut reader = BufReader::new(data);
+                let mut writer = BufWriter::new(&mut file);
+                io::copy(&mut reader, &mut writer)?;
                 Ok(())
             }
             None => Ok(()),
@@ -106,5 +128,11 @@ mod cli {
 }
 
 fn main() -> Result<(), Box<dyn Error>> {
+    tracing_subscriber::fmt()
+        // all spans/events with a level higher than TRACE (e.g, info, warn, etc.)
+        // will be written to stdout.
+        .with_max_level(Level::INFO)
+        // sets this to be the default, global collector for this application.
+        .init();
     cli::run()
 }

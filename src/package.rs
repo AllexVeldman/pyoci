@@ -67,7 +67,7 @@ impl File {
         }
     }
 
-    /// Add/replace the architecture and dist_type
+    /// Add/replace the `architecture` and `dist_type`
     /// returns a new File instance, consuming self.
     /// accepts the remainder of a python package filename after the version part
     pub fn with_architecture(self, architecture: &str) -> Result<Self, ParseError> {
