@@ -1,0 +1,34 @@
+[package]
+name = "pyoci_worker"
+version = "0.1.0"
+edition = "2021"
+
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
+[lib]
+crate-type = ["cdylib"]
+
+[dependencies]
+pyoci = { path = "../" }
+wasm-bindgen = "0.2.92"
+worker = {version = "0.2.0"}
+oci-spec = { version = "0.6.4", default-features = false, features = ["image", "distribution"] }
+url = "2.5.0"
+base64 = "0.22.1"
+console_error_panic_hook = "0.1.7"
+serde = { version = "1.0.202", features = ["derive"] }
+serde_json = "1.0.117"
+askama = "0.12.1"
+tracing-web = "0.1.3"
+tracing-subscriber = { version = "0.3.18", features = ["time"] }
+tracing = "0.1.40"
+time = { version = "0.3.36", features = ["wasm-bindgen"] }
+
+[dependencies.web-sys]
+version = "0.3.63"
+features = [
+  'Headers',
+  'Request',
+  'RequestInit',
+  'Response',
+  'WorkerGlobalScope',
+]

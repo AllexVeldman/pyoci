@@ -1,0 +1,12 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>PyOCI</title>
+</head>
+<body>
+{%- for file in files %}
+    <a href="{{ file.url(host) }}">{{ file.file }}</a>
+{%- endfor %}
+</body>
+</html>

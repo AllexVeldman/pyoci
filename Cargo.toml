@@ -5,10 +5,10 @@ edition = "2021"
 authors = ["Allex Veldman"]
 description = "Let any OCI compliant registry act as a PyPi index"
 
-# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
-# [lib]
-# crate-type = ["cdylib"]
+[workspace]
+members = ["pyoci_cli", "pyoci_worker"]
 
+# See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [profile.release]
 opt-level = "s"
@@ -17,17 +17,14 @@ strip = true
 codegen-units = 1
 
 [dependencies]
-base64 = "0.22.0"
 bytes = "1.5.0"
-clap = { version = "4.4.11", features = ["derive"] }
 exitcode = "1.1.2"
 oci-spec = { version = "0.6.4", default-features = false, features = ["image", "distribution"] }
-regex = "1.10.2"
 serde = { version = "1.0.193", features = ["derive"] }
-tracing = "0.1.40"
-tracing-subscriber = "0.3.18"
-ureq = { version = "2.9.4", features = ["json"] }
 url = "2.3.1"
+regex = "1.10.2"
+tracing = "0.1.40"
+
 
 [dev-dependencies]
 test-case = "3.3.1"

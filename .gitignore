@@ -2,7 +2,7 @@ dist/
 out/
 __pycache__/
 .ropeproject/
-
-# Added by cargo
-
+.wrangler/
+build/
 /target
+node_modules/

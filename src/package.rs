@@ -1,4 +1,5 @@
-use std::{error, fmt, str::FromStr};
+use std::{error, fmt, fmt::Display, str::FromStr};
+use tracing;
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -107,6 +108,7 @@ impl FromStr for File {
 
     /// Parse
     fn from_str(value: &str) -> Result<Self, Self::Err> {
+        tracing::debug!("Parsing: {}", value);
         if value.is_empty() {
             return Err(ParseError::EmptyString);
         };
@@ -161,7 +163,7 @@ impl fmt::Display for File {
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Info {
     /// The OCI registry url
-    pub registry: String,
+    pub registry: url::Url,
     /// The package namespace in the OCI registry
     pub namespace: String,
     /// Python package file attributes
@@ -186,7 +188,7 @@ impl FromStr for Info {
     /// - `<registry>/<namespace>/<distribution>`
     /// - `<registry>/<namespace>/<distribution>/<filename>`
     fn from_str(value: &str) -> Result<Self, ParseError> {
-        let value = value.trim();
+        let value = value.trim().strip_prefix('/').unwrap_or(value);
 
         let parts: Vec<&str> = value.split('/').collect();
         match parts[..] {
@@ -196,7 +198,7 @@ impl FromStr for Info {
                     ..File::default()
                 };
                 Ok(Info {
-                    registry: registry.to_string(),
+                    registry: registry_url(registry)?,
                     namespace: namespace.to_string(),
                     file,
                 })
@@ -207,7 +209,7 @@ impl FromStr for Info {
                     return Err(ParseError::NameMismatch);
                 };
                 Ok(Info {
-                    registry: registry.to_string(),
+                    registry: registry_url(registry)?,
                     namespace: namespace.to_string(),
                     file,
                 })
@@ -217,10 +219,54 @@ impl FromStr for Info {
     }
 }
 
+fn registry_url(registry: &str) -> Result<url::Url, ParseError> {
+    match url::Url::parse(registry) {
+        Ok(value) => Ok(value),
+        Err(err) => match err {
+            url::ParseError::RelativeUrlWithoutBase => {
+                match url::Url::parse(&format!("https://{registry}")) {
+                    Ok(value) => Ok(value),
+                    Err(_) => Err(ParseError::UrlError),
+                }
+            }
+            _ => Err(ParseError::UrlError),
+        },
+    }
+}
+
 impl Info {
     /// Name of the package as used for the OCI registry
     pub fn oci_name(&self) -> String {
         format!("{}/{}", self.namespace, self.file.name).to_lowercase()
+    }
+
+    /// Relative uri for this package
+    pub fn uri(&self) -> String {
+        if self.file.is_valid() {
+            let path = format!(
+                "{}{}/{}/{}",
+                self.registry, self.namespace, self.file.name, self.file
+            );
+            match path.strip_prefix("https://") {
+                Some(value) => value.to_string(),
+                None => path,
+            }
+        } else {
+            self.registry.as_str().to_string()
+        }
+    }
+
+    /// Return the full URL for this package
+    pub fn url(&self, host: &url::Url) -> url::Url {
+        let mut url = host.clone();
+        url.set_path(&self.uri());
+        url
+    }
+}
+
+impl Display for Info {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{}/{}/{}", self.registry, self.namespace, self.file)
     }
 }
 
@@ -232,9 +278,9 @@ mod tests {
 
     use super::*;
 
-    #[test_case("foo.io/bar/baz",
+    #[test_case("/foo.io/bar/baz",
         &Info{
-            registry: "foo.io".to_string(),
+            registry: url::Url::parse("foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name:"baz".to_string(),
@@ -242,7 +288,7 @@ mod tests {
         ; "with package")]
     #[test_case("foo.io/bar/baz/baz-1-cp311-cp311-macosx_13_0_x86_64.whl",
         &Info{
-            registry: "foo.io".to_string(),
+            registry: url::Url::parse("foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
@@ -253,7 +299,7 @@ mod tests {
     ; "with wheel, minimal")]
     #[test_case("foo.io/bar/baz/baz-2.5.1.dev4+g1664eb2.d20231017-1234-cp311-cp311-macosx_13_0_x86_64.whl",
         &Info{
-            registry: "foo.io".to_string(),
+            registry: url::Url::parse("foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
@@ -264,7 +310,7 @@ mod tests {
         ; "with wheel, full")]
     #[test_case("foo.io/bar/baz/baz-1.tar.gz",
         &Info{
-            registry: "foo.io".to_string(),
+            registry: url::Url::parse("foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
@@ -291,7 +337,7 @@ mod tests {
     /// Test if we can get the package OCI name (namespace/name)
     fn info_oci_name() {
         let into = Info {
-            registry: "foo.example".to_string(),
+            registry: url::Url::parse("foo.example").unwrap(),
             namespace: "bar".to_string(),
             file: File {
                 name: "baz".to_string(),

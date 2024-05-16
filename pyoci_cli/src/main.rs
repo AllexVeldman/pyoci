@@ -3,11 +3,11 @@
 
 //! ``PyOCI``
 
-use std::{error::Error, io::Read, str::FromStr};
+use pyoci::{client, client::OciTransport, package};
+use std::{error::Error, fs, io, path::PathBuf, str::FromStr};
 use tracing::Level;
 
-mod client;
-mod package;
+mod sync_transport;
 
 #[tracing::instrument(skip(username, password))]
 fn list(
@@ -16,7 +16,9 @@ fn list(
     password: Option<&str>,
 ) -> Result<Vec<String>, Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
-    let client = client::Client::new(&package.registry, username, password)?;
+    let transport =
+        sync_transport::SyncTransport::new(&package.registry)?.with_auth(username, password);
+    let client = client::Client::new(transport);
     let files = client.list_package_files(&package)?;
     Ok(files)
 }
@@ -24,13 +26,22 @@ fn list(
 #[tracing::instrument(skip(username, password))]
 fn download(
     url: &str,
+    out_dir: PathBuf,
     username: Option<&str>,
     password: Option<&str>,
-) -> Result<(package::Info, impl Read), Box<dyn Error>> {
+) -> Result<(), Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
-    let client = client::Client::new(&package.registry, username, password)?;
+    let transport =
+        sync_transport::SyncTransport::new(&package.registry)?.with_auth(username, password);
+    let client = client::Client::new(transport);
+
     let data = client.download_package_file(&package)?;
-    Ok((package, data))
+
+    let mut file = fs::File::create(out_dir.join(package.file.to_string()))?;
+    let mut reader = io::BufReader::new(data);
+    let mut writer = io::BufWriter::new(&mut file);
+    io::copy(&mut reader, &mut writer)?;
+    Ok(())
 }
 
 fn publish(
@@ -40,19 +51,16 @@ fn publish(
     password: Option<&str>,
 ) -> Result<(), Box<dyn Error>> {
     let package = package::Info::from_str(url)?;
-    let client = client::Client::new(&package.registry, username, password)?;
+    let transport =
+        sync_transport::SyncTransport::new(&package.registry)?.with_auth(username, password);
+    let client = client::Client::new(transport);
     client.publish_package_file(&package, file)?;
     Ok(())
 }
 
 mod cli {
 
-    use std::{
-        error::Error,
-        fs,
-        io::{self, BufReader, BufWriter},
-        path::PathBuf,
-    };
+    use std::{error::Error, path::PathBuf};
 
     use clap::{Parser, Subcommand};
 
@@ -113,15 +121,12 @@ mod cli {
             Some(Commands::Publish { .. }) => {
                 todo!()
             }
-            Some(Commands::Download { url, out_dir }) => {
-                let (package, data) =
-                    download(&url, cli.username.as_deref(), cli.password.as_deref())?;
-                let mut file = fs::File::create(out_dir.join(package.file.to_string()))?;
-                let mut reader = BufReader::new(data);
-                let mut writer = BufWriter::new(&mut file);
-                io::copy(&mut reader, &mut writer)?;
-                Ok(())
-            }
+            Some(Commands::Download { url, out_dir }) => download(
+                &url,
+                out_dir,
+                cli.username.as_deref(),
+                cli.password.as_deref(),
+            ),
             None => Ok(()),
         }
     }
