@@ -2,6 +2,10 @@ name = "pyoci"
 main = "pyoci_worker/build/worker/shim.mjs"
 compatibility_date = "2023-12-01"
 
+# disable *.workers.dev
+workers_dev = false
+route = { pattern = "pyoci.allexveldman.nl", custom_domain = true }
+
 # what worker-build does:
 # - install wasm-pack
 # - `wasm-pack build --no-typescript --target bundler --out-dir "build" --out-name "index" {args}`
