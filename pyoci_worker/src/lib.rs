@@ -35,9 +35,7 @@ async fn main(req: Request, env: Env, _ctx: Context) -> Result<Response> {
 }
 
 fn router<'a>() -> Router<'a, ()> {
-    Router::new()
-        .get_async("/:registry/:namespace/:package", list_package)
-        .get_async("/api/:id", api)
+    Router::new().get_async("/:registry/:namespace/:package", list_package)
 }
 
 #[tracing::instrument(skip(req, _ctx))]
@@ -60,12 +58,6 @@ async fn list_package(req: Request, _ctx: RouteContext<()>) -> Result<Response> 
     host.set_path("");
     let template = templates::ListPackageTemplate { host, files };
     Response::ok(template.render().expect("valid template"))
-}
-
-async fn api(_req: Request, _ctx: RouteContext<()>) -> Result<Response> {
-    console_log!("ID: {:?}", _ctx.param("id"));
-    let sum = add(1, 2);
-    Response::ok(format!("Hello, World: {}", sum))
 }
 
 fn parse_auth(value: &str) -> (Option<String>, Option<String>) {
