@@ -1,5 +1,5 @@
+use crate::package::Info;
 use askama::Template;
-use pyoci::package::Info;
 
 #[derive(Template)]
 #[template(path = "list-package.html")]

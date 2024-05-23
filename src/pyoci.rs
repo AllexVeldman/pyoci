@@ -1,5 +1,8 @@
 use core::fmt;
-use std::{error, io::Read};
+use reqwest::Response;
+use std::error;
+use std::io::{Cursor, Read};
+use url::{ParseError, Url};
 
 use oci_spec::{
     distribution::{ErrorResponse, TagList},
@@ -8,12 +11,12 @@ use oci_spec::{
 use regex::Regex;
 use serde::Deserialize;
 
-use url::ParseError;
-
 use crate::package;
+use crate::transport::HttpTransport;
 
 #[derive(Debug)]
 pub enum Error {
+    Package(package::ParseError),
     InvalidUrl(ParseError),
     InvalidResponseCode(u16),
     MissingHeader(String),
@@ -42,6 +45,12 @@ impl From<&str> for Error {
 impl From<ParseError> for Error {
     fn from(value: ParseError) -> Self {
         Error::InvalidUrl(value)
+    }
+}
+
+impl From<package::ParseError> for Error {
+    fn from(value: package::ParseError) -> Self {
+        Error::Package(value)
     }
 }
 
@@ -119,29 +128,25 @@ impl WwwAuth {
     }
 }
 
-/// Generic trait for OCI transport
-///
-/// Allows swapping out the transport implementation on Client
-#[allow(async_fn_in_trait)]
-pub trait OciTransport {
-    fn with_auth(self, username: Option<String>, password: Option<String>) -> Self;
-    async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Manifest, Error>;
-    async fn pull_blob(&self, name: String, descriptor: Descriptor) -> Result<impl Read, Error>;
-    async fn list_tags(&self, name: &str) -> Result<TagList, Error>;
-}
-
 /// Client to communicate with the OCI v2 registry
-pub struct Client<T: OciTransport> {
-    /// Transport to use
-    transport: T,
+pub struct PyOci {
+    registry: Url,
+    transport: HttpTransport,
 }
 
-impl<T: OciTransport> Client<T> {
+impl PyOci {
     /// Create a new Client
-    ///
-    /// returns an error if `registry` can't be parsed as an URL
-    pub fn new(transport: T) -> Self {
-        Client { transport }
+    pub fn new(registry: Url, auth: Option<String>) -> Self {
+        PyOci {
+            registry,
+            transport: HttpTransport::new(auth),
+        }
+    }
+
+    fn build_url(&self, uri: &str) -> Url {
+        let mut new_url = self.registry.clone();
+        new_url.set_path(uri);
+        new_url
     }
 
     /// List all files for the given package
@@ -152,10 +157,10 @@ impl<T: OciTransport> Client<T> {
         &self,
         package: &package::Info,
     ) -> Result<Vec<package::Info>, Error> {
-        let tags = self.transport.list_tags(&package.oci_name()).await?;
+        let tags = self.list_tags(&package.oci_name()).await?;
         let mut files: Vec<package::Info> = Vec::new();
         for tag in tags.tags() {
-            let manifest = self.transport.pull_manifest(tags.name(), tag).await?;
+            let manifest = self.pull_manifest(tags.name(), tag).await?;
             match manifest {
                 Manifest::Manifest(_) => {
                     return Err(Error::Other(
@@ -194,16 +199,15 @@ impl<T: OciTransport> Client<T> {
         Ok(files)
     }
 
-    pub async fn download_package_file<'a>(
-        &'a self,
+    pub async fn download_package_file(
+        &self,
         package: &crate::package::Info,
-    ) -> Result<impl Read + 'a, Error> {
+    ) -> Result<Response, Error> {
         if !package.file.is_valid() {
             return Err(Error::NotAFile(package.file.to_string()));
         };
         // Pull index
         let index = match self
-            .transport
             .pull_manifest(&package.oci_name(), &package.file.version)
             .await?
         {
@@ -239,7 +243,6 @@ impl<T: OciTransport> Client<T> {
         ))?;
         // pull manifest
         let manifest = match self
-            .transport
             .pull_manifest(&package.oci_name(), manifest_descriptor.digest())
             .await?
         {
@@ -252,8 +255,7 @@ impl<T: OciTransport> Client<T> {
         let [blob_descriptor] = &manifest.layers()[..] else {
             return Err(Error::Other("Unsupported number of layers".to_string()));
         };
-        self.transport
-            .pull_blob(package.oci_name(), blob_descriptor.to_owned())
+        self.pull_blob(package.oci_name(), blob_descriptor.to_owned())
             .await
     }
 
@@ -277,3 +279,94 @@ impl<T: OciTransport> Client<T> {
         // Ok(())
     }
 }
+
+impl PyOci {
+    /// Pull a blob from the registry
+    ///
+    /// This returns the raw response so the caller can handle the blob as needed
+    async fn pull_blob(&self, name: String, descriptor: Descriptor) -> Result<Response, Error> {
+        let digest = descriptor.digest();
+        let url = self.build_url(&format!("/v2/{name}/blobs/{digest}"));
+        let request = self.transport.get(url);
+        let response = self.transport.send(request).await.expect("valid response");
+
+        let status: u16 = response.status().into();
+        if !status == 200 {
+            return Err(Error::InvalidResponseCode(status));
+        };
+        Ok(response)
+    }
+    async fn list_tags(&self, name: &str) -> Result<TagList, Error> {
+        let url = self.build_url(&format!("/v2/{name}/tags/list"));
+        let request = self.transport.get(url);
+        let response = self.transport.send(request).await.expect("valid response");
+        let status: u16 = response.status().into();
+        if !(200..=299).contains(&status) {
+            return Err(Error::OciErrorResponse(
+                response
+                    .json::<ErrorResponse>()
+                    .await
+                    .expect("valid Error json"),
+            ));
+        };
+        let tags = response
+            .json::<TagList>()
+            .await
+            .expect("valid TagList json");
+        Ok(tags)
+    }
+    async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Manifest, Error> {
+        let url = self.build_url(&format!("/v2/{name}/manifests/{reference}"));
+        let request = self.transport.get(url).header(
+            "Accept",
+            "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
+        );
+        let response = self.transport.send(request).await.expect("valid response");
+        let status: u16 = response.status().into();
+        if !(200..299).contains(&status) {
+            return Err(Error::OciErrorResponse(
+                response.json::<ErrorResponse>().await.expect("valid json"),
+            ));
+        };
+        match response.headers().get("Content-Type") {
+            Some(value) if value == "application/vnd.oci.image.index.v1+json" => {
+                Ok(Manifest::Index(Box::new(
+                    response
+                        .json::<ImageIndex>()
+                        .await
+                        .expect("valid Index json"),
+                )))
+            }
+            Some(value) if value == "application/vnd.oci.image.manifest.v1+json" => {
+                Ok(Manifest::Manifest(Box::new(
+                    response
+                        .json::<ImageManifest>()
+                        .await
+                        .expect("valid Manifest json"),
+                )))
+            }
+            Some(_) => Err(Error::UnknownContentType),
+            None => Err(Error::MissingHeader("Content-Type".to_string())),
+        }
+    }
+}
+
+// fn parse_auth(value: &str) -> (Option<String>, Option<String>) {
+//     tracing::debug!("Parsing auth header: {:?}", value);
+//     let Some(value) = value.strip_prefix("Basic ") else {
+//         return (None, None);
+//     };
+//     match BASE64_STANDARD.decode(value.as_bytes()) {
+//         Ok(decoded) => {
+//             let decoded = String::from_utf8(decoded).expect("valid utf8");
+//             match decoded.splitn(2, ':').collect::<Vec<&str>>()[..] {
+//                 [username, password] => (Some(username.to_string()), Some(password.to_string())),
+//                 _ => (None, None),
+//             }
+//         }
+//         Err(err) => {
+//             tracing::warn!("Failed to decode auth header: {:?}", err);
+//             (None, None)
+//         }
+//     }
+// }

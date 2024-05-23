@@ -1,5 +1,4 @@
 use std::{error, fmt, fmt::Display, str::FromStr};
-use tracing;
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -16,7 +15,17 @@ pub enum ParseError {
 
 impl fmt::Display for ParseError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "Failed to parse")
+        match self {
+            ParseError::EmptyString => write!(f, "No package name provided"),
+            ParseError::InvalidPackageName(name) => {
+                write!(f, "[Invalid package name] {}", name)
+            }
+            ParseError::UnknownFileType(ext) => {
+                write!(f, "[Unknown file type] {}", ext)
+            }
+            ParseError::NameMismatch => write!(f, "Package URL does not match the filename"),
+            ParseError::UrlError => write!(f, "Not a valid URL"),
+        }
     }
 }
 impl error::Error for ParseError {}
@@ -108,7 +117,6 @@ impl FromStr for File {
 
     /// Parse
     fn from_str(value: &str) -> Result<Self, Self::Err> {
-        tracing::debug!("Parsing: {}", value);
         if value.is_empty() {
             return Err(ParseError::EmptyString);
         };
@@ -121,7 +129,10 @@ impl FromStr for File {
                     architecture: Some(architecture.to_string()),
                     dist_type: DistType::Wheel,
                 }),
-                _ => Err(ParseError::InvalidPackageName(value.to_string())),
+                _ => Err(ParseError::InvalidPackageName(format!(
+                    "Expected '<name>-<version>-<arch>.whl', got '{}.whl'",
+                    value
+                ))),
             }
         } else if let Some(value) = value.strip_suffix(".tar.gz") {
             // Select the str without the extention and split on "-" 2 times
@@ -132,7 +143,10 @@ impl FromStr for File {
                     architecture: None,
                     dist_type: DistType::Sdist,
                 }),
-                _ => Err(ParseError::InvalidPackageName(value.to_string())),
+                _ => Err(ParseError::InvalidPackageName(format!(
+                    "Expected '<name>-<version>.tar.gz', got '{}.tar.gz'",
+                    value
+                ))),
             }
         } else {
             Err(ParseError::UnknownFileType(value.to_string()))
