@@ -4,7 +4,7 @@ compatibility_date = "2023-12-01"
 
 # disable *.workers.dev
 workers_dev = false
-route = { pattern = "pyoci-worker.allexveldman.nl", custom_domain = true }
+route = { pattern = "pyoci.allexveldman.nl", custom_domain = true }
 
 # what worker-build does:
 # - install wasm-pack
