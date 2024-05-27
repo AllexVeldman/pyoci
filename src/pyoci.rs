@@ -1,7 +1,8 @@
 use core::fmt;
+use futures::stream::FuturesUnordered;
+use futures::stream::StreamExt;
 use reqwest::Response;
 use std::error;
-use std::io::{Cursor, Read};
 use url::{ParseError, Url};
 
 use oci_spec::{
@@ -159,41 +160,56 @@ impl PyOci {
     ) -> Result<Vec<package::Info>, Error> {
         let tags = self.list_tags(&package.oci_name()).await?;
         let mut files: Vec<package::Info> = Vec::new();
+        let futures = FuturesUnordered::new();
+
         for tag in tags.tags() {
-            let manifest = self.pull_manifest(tags.name(), tag).await?;
-            match manifest {
-                Manifest::Manifest(_) => {
-                    return Err(Error::Other(
-                        "Manifest without Index not supported".to_string(),
-                    ))
+            futures.push(self.package_info_for_ref(package, tags.name(), tag));
+        }
+        for result in futures
+            .collect::<Vec<Result<Vec<package::Info>, Error>>>()
+            .await
+        {
+            match result {
+                Ok(mut value) => files.append(&mut value),
+                Err(err) => return Err(err),
+            }
+        }
+        Ok(files)
+    }
+
+    async fn package_info_for_ref(
+        &self,
+        package: &package::Info,
+        name: &str,
+        reference: &str,
+    ) -> Result<Vec<package::Info>, Error> {
+        let manifest = self.pull_manifest(name, reference).await?;
+        let Manifest::Index(index) = manifest else {
+            return Err(Error::Other("Expected Index, got Manifest".to_string()));
+        };
+        let artifact_type = index.artifact_type();
+        match artifact_type {
+            // Artifact type is as expected, do nothing
+            Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
+            // Artifact type has unexpected value, err
+            Some(value) => return Err(Error::UnknownArtifactType(value.to_string())),
+            // Artifact type is not set, err
+            None => return Err(Error::UnknownArtifactType(String::new())),
+        };
+        let mut files: Vec<package::Info> = Vec::new();
+        for manifest in index.manifests() {
+            match manifest.platform().as_ref().unwrap().architecture() {
+                oci_spec::image::Arch::Other(arch) => {
+                    let mut file = package.clone();
+                    file.file = package
+                        .file
+                        .clone()
+                        .with_version(reference)
+                        .with_architecture(arch)
+                        .unwrap();
+                    files.push(file);
                 }
-                Manifest::Index(index) => {
-                    let artifact_type = index.artifact_type();
-                    match artifact_type {
-                        // Artifact type is as expected, do nothing
-                        Some(MediaType::Other(value))
-                            if value == "application/pyoci.package.v1" => {}
-                        // Artifact type has unexpected value, err
-                        Some(value) => return Err(Error::UnknownArtifactType(value.to_string())),
-                        // Artifact type is not set, err
-                        None => return Err(Error::UnknownArtifactType(String::new())),
-                    };
-                    for manifest in index.manifests() {
-                        match manifest.platform().as_ref().unwrap().architecture() {
-                            oci_spec::image::Arch::Other(arch) => {
-                                let mut file = package.clone();
-                                file.file = package
-                                    .file
-                                    .clone()
-                                    .with_version(tag)
-                                    .with_architecture(arch)
-                                    .unwrap();
-                                files.push(file);
-                            }
-                            arch => return Err(Error::UnknownArchitecture(arch.to_string())),
-                        };
-                    }
-                }
+                arch => return Err(Error::UnknownArchitecture(arch.to_string())),
             };
         }
         Ok(files)
