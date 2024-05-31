@@ -2,8 +2,7 @@ use std::sync::{Arc, Mutex};
 use url::Url;
 
 use crate::pyoci::{AuthResponse, WwwAuth};
-
-static USER_AGENT: &str = concat!("pyoci ", env!("CARGO_PKG_VERSION"), " (cloudflare worker)");
+use crate::USER_AGENT;
 
 /// HTTP Transport
 ///
@@ -105,6 +104,7 @@ impl HttpTransport {
         request: reqwest::RequestBuilder,
     ) -> Result<reqwest::Response, reqwest::Error> {
         let request = request.build().expect("valid request");
+        tracing::debug!("Request: {:#?}", request);
         let method = request.method().as_str().to_string();
         let url = request.url().to_owned();
         let response = self.client.execute(request).await.expect("valid response");
@@ -114,12 +114,25 @@ impl HttpTransport {
             status = response.status(),
             url = url
         );
+        tracing::debug!("Headers: {:#?}", response.headers());
         Ok(response)
     }
 
     /// Create a new GET request
     pub fn get(&self, url: url::Url) -> reqwest::RequestBuilder {
         self.client.get(url)
+    }
+    /// Create a new POST request
+    pub fn post(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.post(url)
+    }
+    /// Create a new PUT request
+    pub fn put(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.put(url)
+    }
+    /// Create a new HEAD request
+    pub fn head(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.head(url)
     }
 }
 

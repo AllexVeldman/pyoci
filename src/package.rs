@@ -1,4 +1,8 @@
-use std::{error, fmt, fmt::Display, str::FromStr};
+use std::{
+    error,
+    fmt::{self, Display},
+    str::FromStr,
+};
 
 #[derive(Debug)]
 pub enum ParseError {
@@ -10,7 +14,7 @@ pub enum ParseError {
     /// Name of the package in the URL does not match the package name in the filename
     NameMismatch,
     /// Failed to parse URL
-    UrlError,
+    UrlError(String),
 }
 
 impl fmt::Display for ParseError {
@@ -24,11 +28,17 @@ impl fmt::Display for ParseError {
                 write!(f, "[Unknown file type] {}", ext)
             }
             ParseError::NameMismatch => write!(f, "Package URL does not match the filename"),
-            ParseError::UrlError => write!(f, "Not a valid URL"),
+            ParseError::UrlError(err) => write!(f, "Not a valid URL: {}", err),
         }
     }
 }
 impl error::Error for ParseError {}
+
+impl From<url::ParseError> for ParseError {
+    fn from(err: url::ParseError) -> Self {
+        ParseError::UrlError(err.to_string())
+    }
+}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum DistType {
@@ -202,7 +212,9 @@ impl FromStr for Info {
     /// - `<registry>/<namespace>/<distribution>`
     /// - `<registry>/<namespace>/<distribution>/<filename>`
     fn from_str(value: &str) -> Result<Self, ParseError> {
+        tracing::debug!("Parsing package info from: {}", value);
         let value = value.trim().strip_prefix('/').unwrap_or(value);
+        let value = value.strip_suffix('/').unwrap_or(value);
 
         let parts: Vec<&str> = value.split('/').collect();
         match parts[..] {
@@ -228,27 +240,40 @@ impl FromStr for Info {
                     file,
                 })
             }
-            _ => Err(ParseError::UrlError),
+            _ => Err(ParseError::UrlError(value.to_string())),
         }
     }
 }
 
+/// Parse the registry URL
+///
+/// If no scheme is provided, it will default to `https://`
+/// To call an HTTP registry, the scheme must be provided as a url-encoded string.
+/// Example: `http://localhost:5000` -> `http%3A%2F%2Flocalhost%3A5000`
 fn registry_url(registry: &str) -> Result<url::Url, ParseError> {
-    match url::Url::parse(registry) {
-        Ok(value) => Ok(value),
-        Err(err) => match err {
-            url::ParseError::RelativeUrlWithoutBase => {
-                match url::Url::parse(&format!("https://{registry}")) {
-                    Ok(value) => Ok(value),
-                    Err(_) => Err(ParseError::UrlError),
-                }
-            }
-            _ => Err(ParseError::UrlError),
-        },
-    }
+    let registry =
+        urlencoding::decode(registry).map_err(|_| ParseError::UrlError(registry.to_string()))?;
+    let registry = if registry.starts_with("http://") || registry.starts_with("https://") {
+        registry.into_owned()
+    } else {
+        format!("https://{}", registry)
+    };
+
+    let url = url::Url::parse(&registry)?;
+    tracing::debug!("Registry URL: {:}", url);
+    Ok(url)
 }
 
 impl Info {
+    pub fn new(registry: &str, namespace: &str, filename: &str) -> Result<Self, ParseError> {
+        let info = Info {
+            registry: registry_url(registry)?,
+            namespace: namespace.to_string(),
+            file: File::from_str(filename)?,
+        };
+        tracing::debug!("Package info registry: {}", info.registry);
+        Ok(info)
+    }
     /// Name of the package as used for the OCI registry
     pub fn oci_name(&self) -> String {
         format!("{}/{}", self.namespace, self.file.name).to_lowercase()
@@ -257,14 +282,15 @@ impl Info {
     /// Relative uri for this package
     pub fn uri(&self) -> String {
         if self.file.is_valid() {
+            // url::Url adds a trailing slash to an empty path
+            // which we don't want to url-encode
+            let registry = self.registry.as_str();
+            let registry = urlencoding::encode(registry.strip_suffix('/').unwrap_or(registry));
             let path = format!(
-                "{}{}/{}/{}",
-                self.registry, self.namespace, self.file.name, self.file
+                "{}/{}/{}/{}",
+                registry, self.namespace, self.file.name, self.file
             );
-            match path.strip_prefix("https://") {
-                Some(value) => value.to_string(),
-                None => path,
-            }
+            path.strip_prefix("https://").unwrap_or(&path).to_string()
         } else {
             self.registry.as_str().to_string()
         }
@@ -291,6 +317,30 @@ mod tests {
     use test_case::test_case;
 
     use super::*;
+
+    #[test]
+    fn test_registry_url() {
+        assert_eq!(
+            registry_url("foo.io").unwrap(),
+            url::Url::parse("https://foo.io").unwrap()
+        );
+        assert_eq!(
+            registry_url("http://foo.io").unwrap(),
+            url::Url::parse("http://foo.io").unwrap()
+        );
+        assert_eq!(
+            registry_url("https://foo.io").unwrap(),
+            url::Url::parse("https://foo.io").unwrap()
+        );
+        assert_eq!(
+            registry_url("http://localhost:5000").unwrap(),
+            url::Url::parse("http://localhost:5000").unwrap()
+        );
+        assert_eq!(
+            registry_url("http%3A%2F%2Flocalhost%3A5000").unwrap(),
+            url::Url::parse("http://localhost:5000").unwrap()
+        );
+    }
 
     #[test_case("/foo.io/bar/baz",
         &Info{

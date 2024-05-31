@@ -1,5 +1,6 @@
 version: 0.1
 log:
+  level: debug
   fields:
     service: registry
 storage:
@@ -7,14 +8,16 @@ storage:
     enabled: true
   cache:
     blobdescriptor: inmemory
-  inmemory:
+  # inmemory:
+  filesystem:
+    rootdirectory: /var/lib/registry
 #auth:
 #  silly:
 #    realm: http://localhost:5000/
 #    service: silly-service
 http:
   addr: :5000
-  secret: "foobarbazqaz"
+  # secret: "foobarbazqaz"
 #  tls:
 #    certificate: /etc/docker/registry/certs/tls.crt
 #    key: /etc/docker/registry/certs/tls.key
