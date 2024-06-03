@@ -1,10 +1,9 @@
 use askama::Template;
 use std::str::FromStr;
 use tracing_subscriber::filter::LevelFilter;
-use tracing_subscriber::fmt::format::Pretty;
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
-use tracing_web::{performance_layer, MakeWebConsoleWriter};
+use tracing_web::MakeWebConsoleWriter;
 use worker::{
     event, Context, Env, FormEntry, Request, Response, ResponseBuilder, RouteContext, Router,
 };
@@ -45,18 +44,16 @@ fn start() {
         .with_ansi(false) // Only partially supported across browsers
         .with_timer(UtcTime::rfc_3339())
         .with_writer(MakeWebConsoleWriter::new())
-        .with_filter(LevelFilter::DEBUG);
-    let perf_layer = performance_layer().with_details_from_fields(Pretty::default());
+        .with_filter(LevelFilter::INFO);
 
-    tracing_subscriber::registry()
-        .with(fmt_layer)
-        .with(perf_layer)
-        .init();
+    tracing_subscriber::registry().with(fmt_layer).init();
 }
 
 /// Called for each request to the worker
+#[tracing::instrument(skip(req, env, _ctx), fields(path = %req.path(), method = %req.method()))]
 #[event(fetch, respond_with_errors)]
 async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
+    tracing::debug!("Request Headers: {:#?}", req.headers());
     router().run(req, env).await
 }
 
@@ -68,16 +65,17 @@ fn router<'a>() -> Router<'a, ()> {
             "/:registry/:namespace/:package/:filename",
             wrap!(download_package),
         )
-        .post_async("/:registry/:namespace", wrap!(publish_package))
+        .post_async("/:registry/:namespace/", wrap!(publish_package))
 }
 
 /// List package request handler
-#[tracing::instrument(skip(req, _ctx))]
 async fn list_package(req: Request, _ctx: RouteContext<()>) -> Result<Response, pyoci::Error> {
     let auth = req.headers().get("Authorization").expect("valid header");
     let package = package::Info::from_str(&req.path())?;
     let client = PyOci::new(package.registry.clone(), auth);
-    let files = client.list_package_files(&package).await?;
+    // Fetch at most 45 packages
+    // https://developers.cloudflare.com/workers/platform/limits/#account-plan-limits
+    let files = client.list_package_files(&package, 45).await?;
     let mut host = req.url().expect("valid url");
     host.set_path("");
     // TODO: swap to application/vnd.pypi.simple.v1+json
@@ -89,7 +87,6 @@ async fn list_package(req: Request, _ctx: RouteContext<()>) -> Result<Response, 
 }
 
 /// Download package request handler
-#[tracing::instrument(skip(req, _ctx))]
 async fn download_package(req: Request, _ctx: RouteContext<()>) -> Result<Response, pyoci::Error> {
     let auth = req.headers().get("Authorization").expect("valid header");
     let package = package::Info::from_str(&req.path())?;
@@ -113,26 +110,33 @@ async fn download_package(req: Request, _ctx: RouteContext<()>) -> Result<Respon
     Ok(response)
 }
 
-#[tracing::instrument(skip(req, ctx))]
+/// Publish package request handler
+///
+/// ref: https://warehouse.pypa.io/api-reference/legacy.html#upload-api
 async fn publish_package(
     mut req: Request,
     ctx: RouteContext<()>,
 ) -> Result<Response, pyoci::Error> {
-    let auth = req.headers().get("Authorization").expect("valid header");
-    let Some(form_data) = req.form_data().await.expect("valid form data").get("file") else {
-        return Err(pyoci::Error::Other("Missing file".to_string()));
-    };
-    let FormEntry::File(file) = form_data else {
-        return Err(pyoci::Error::Other("Expected file".to_string()));
-    };
     let (Some(registry), Some(namespace)) = (ctx.param("registry"), ctx.param("namespace")) else {
         return Err(pyoci::Error::Other(
             "Missing registry or namespace".to_string(),
         ));
     };
+    let Ok(form_data) = req.form_data().await else {
+        return Err(pyoci::Error::Other("Invalid form data".to_string()));
+    };
+    let Some(content) = form_data.get("content") else {
+        return Err(pyoci::Error::Other("Missing file".to_string()));
+    };
+    let FormEntry::File(file) = content else {
+        return Err(pyoci::Error::Other("Expected file".to_string()));
+    };
+    let auth = req.headers().get("Authorization").expect("valid header");
     let package = package::Info::new(registry, namespace, &file.name())?;
     let client = PyOci::new(package.registry.clone(), auth);
 
+    // FormEntry::File does not provide a streaming interface
+    // so we must read the entire file into memory
     let data = file.bytes().await.expect("valid bytes");
 
     client.publish_package_file(&package, data).await?;

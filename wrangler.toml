@@ -24,7 +24,6 @@ route = { pattern = "pyoci.allexveldman.nl", custom_domain = true }
 # Use env NO_MINIFY=1 to disable minification
 [build]
 command = "cargo install -q worker-build && worker-build --release"
-# watch_dir = ["pyoci_worker/src", "src"]
 
 [env.dev]
 build = { command = "cargo install -q worker-build && worker-build --dev" }

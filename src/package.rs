@@ -220,7 +220,7 @@ impl FromStr for Info {
         match parts[..] {
             [registry, namespace, distribution] => {
                 let file = File {
-                    name: distribution.to_string(),
+                    name: distribution.replace('-', "_"),
                     ..File::default()
                 };
                 Ok(Info {

@@ -227,18 +227,28 @@ impl PyOci {
 
     /// List all files for the given package
     ///
-    /// Includes all versions and files of each version.
-    /// Can take a long time for packages with a lot of versions and files.
+    /// Limits the number of files to `n`
+    /// ref: https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
     pub async fn list_package_files(
         &self,
         package: &package::Info,
+        n: usize,
     ) -> Result<Vec<package::Info>, Error> {
-        let tags = self.list_tags(&package.oci_name()).await?;
+        let result = self.list_tags(&package.oci_name()).await?;
+        tracing::debug!("{:?}", result);
+        let tags = result.tags();
+        let name = result.name();
         let mut files: Vec<package::Info> = Vec::new();
         let futures = FuturesUnordered::new();
 
-        for tag in tags.tags() {
-            futures.push(self.package_info_for_ref(package, tags.name(), tag));
+        // We fetch a list of all tags from the OCI registry.
+        // For each tag there can be multiple files.
+        // We fetch the last `n` tags and for each tag we fetch the file names.
+        // According to the spec the tags list should be in lexical order.
+        // Even for non-spec registries the last-added seems to be at the end of the list
+        // so this will result in the wanted list of tags in most cases.
+        for tag in tags.iter().rev().take(n) {
+            futures.push(self.package_info_for_ref(package, name, tag));
         }
         for result in futures
             .collect::<Vec<Result<Vec<package::Info>, Error>>>()
