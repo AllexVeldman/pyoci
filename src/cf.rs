@@ -39,14 +39,19 @@ fn start() {
     // Ensure panics are logged to the worker console
     console_error_panic_hook::set_once();
 
+    // OTLP exporter
+    let exporter = opentelemetry_otlp::new_exporter().http();
+
     // Setup tracing
-    let fmt_layer = tracing_subscriber::fmt::layer()
+    let console_log_layer = tracing_subscriber::fmt::layer()
         .with_ansi(false) // Only partially supported across browsers
         .with_timer(UtcTime::rfc_3339())
         .with_writer(MakeWebConsoleWriter::new())
         .with_filter(LevelFilter::INFO);
 
-    tracing_subscriber::registry().with(fmt_layer).init();
+    tracing_subscriber::registry()
+        .with(console_log_layer)
+        .init();
 }
 
 /// Called for each request to the worker

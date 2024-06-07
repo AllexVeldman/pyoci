@@ -1,5 +1,6 @@
 // Request handlers for the cloudflare worker
 mod cf;
+mod otlp;
 // Helper for parsing and managing Python/OCI packages
 mod package;
 // PyOci client
