@@ -8,19 +8,15 @@ storage:
     enabled: true
   cache:
     blobdescriptor: inmemory
-  # inmemory:
-  filesystem:
-    rootdirectory: /var/lib/registry
+  inmemory:
+  # filesystem:
+  #   rootdirectory: /var/lib/registry
 #auth:
 #  silly:
 #    realm: http://localhost:5000/
 #    service: silly-service
 http:
   addr: :5000
-  # secret: "foobarbazqaz"
-#  tls:
-#    certificate: /etc/docker/registry/certs/tls.crt
-#    key: /etc/docker/registry/certs/tls.key
   headers:
     X-Content-Type-Options: [nosniff]
     Access-Control-Allow-Origin: ['http://localhost:8080', 'http://localhost:5000', 'http://registry:5000']

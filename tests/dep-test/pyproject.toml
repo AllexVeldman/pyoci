@@ -1,0 +1,19 @@
+[tool.poetry]
+name = "dep-test"
+version = "0.1.0"
+description = "Test projects with pyoci published dependencies"
+authors = ["Allex Veldman <allex@allexveldman.nl"]
+
+
+[[tool.poetry.source]]
+name = "pyoci-local"
+url = "http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/allexveldman/"
+priority = "explicit"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+hello-world = {version = "0.1.0", source = "pyoci-local"}
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
