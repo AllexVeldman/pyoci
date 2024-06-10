@@ -1,3 +1,4 @@
+use anyhow::{bail, Result};
 use askama::Template;
 use std::str::FromStr;
 use tracing_subscriber::filter::LevelFilter;
@@ -8,7 +9,7 @@ use worker::{
     event, Context, Env, FormEntry, Request, Response, ResponseBuilder, RouteContext, Router,
 };
 
-use crate::{package, pyoci, templates, PyOci};
+use crate::{package, templates, PyOci};
 
 /// Wrap a async route handler into a closure that can be used in the router.
 ///
@@ -20,16 +21,10 @@ macro_rules! wrap {
     };
 }
 
-fn wrap(res: Result<Response, pyoci::Error>) -> worker::Result<Response> {
-    let err = match res {
-        Ok(response) => return Ok(response),
-        Err(e) => e,
-    };
-    match err {
-        pyoci::Error::OciErrorResponse(resp) => {
-            Response::error(serde_json::to_string(&resp).expect("valid json"), 400)
-        }
-        err => Response::error(err.to_string(), 400),
+fn wrap(res: Result<Response>) -> worker::Result<Response> {
+    match res {
+        Ok(response) => Ok(response),
+        Err(e) => Response::error(e.to_string(), 400),
     }
 }
 
@@ -53,7 +48,6 @@ fn start() {
 #[tracing::instrument(skip(req, env, _ctx), fields(path = %req.path(), method = %req.method()))]
 #[event(fetch, respond_with_errors)]
 async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
-    tracing::debug!("Request Headers: {:#?}", req.headers());
     router().run(req, env).await
 }
 
@@ -69,7 +63,7 @@ fn router<'a>() -> Router<'a, ()> {
 }
 
 /// List package request handler
-async fn list_package(req: Request, _ctx: RouteContext<()>) -> Result<Response, pyoci::Error> {
+async fn list_package(req: Request, _ctx: RouteContext<()>) -> Result<Response> {
     let auth = req.headers().get("Authorization").expect("valid header");
     let package = package::Info::from_str(&req.path())?;
     let client = PyOci::new(package.registry.clone(), auth);
@@ -87,7 +81,7 @@ async fn list_package(req: Request, _ctx: RouteContext<()>) -> Result<Response, 
 }
 
 /// Download package request handler
-async fn download_package(req: Request, _ctx: RouteContext<()>) -> Result<Response, pyoci::Error> {
+async fn download_package(req: Request, _ctx: RouteContext<()>) -> Result<Response> {
     let auth = req.headers().get("Authorization").expect("valid header");
     let package = package::Info::from_str(&req.path())?;
     let client = PyOci::new(package.registry.clone(), auth);
@@ -113,23 +107,18 @@ async fn download_package(req: Request, _ctx: RouteContext<()>) -> Result<Respon
 /// Publish package request handler
 ///
 /// ref: https://warehouse.pypa.io/api-reference/legacy.html#upload-api
-async fn publish_package(
-    mut req: Request,
-    ctx: RouteContext<()>,
-) -> Result<Response, pyoci::Error> {
+async fn publish_package(mut req: Request, ctx: RouteContext<()>) -> Result<Response> {
     let (Some(registry), Some(namespace)) = (ctx.param("registry"), ctx.param("namespace")) else {
-        return Err(pyoci::Error::Other(
-            "Missing registry or namespace".to_string(),
-        ));
+        bail!("Missing registry or namespace");
     };
     let Ok(form_data) = req.form_data().await else {
-        return Err(pyoci::Error::Other("Invalid form data".to_string()));
+        bail!("Invalid form data");
     };
     let Some(content) = form_data.get("content") else {
-        return Err(pyoci::Error::Other("Missing file".to_string()));
+        bail!("Missing file");
     };
     let FormEntry::File(file) = content else {
-        return Err(pyoci::Error::Other("Expected file".to_string()));
+        bail!("Expected file");
     };
     let auth = req.headers().get("Authorization").expect("valid header");
     let package = package::Info::new(registry, namespace, &file.name())?;

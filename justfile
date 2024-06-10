@@ -6,6 +6,10 @@ cli-list:
 cf-worker *args:
     NO_MINIFY=1 npx wrangler dev --port 8090 --local-upstream localhost:8090 {{args}}
 
+[group("dev")]
+build:
+   echo "todo"; exit 1
+
 [group("curl")]
 local-publish:
     curl -v http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/allexveldman/ \

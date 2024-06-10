@@ -8,7 +8,6 @@ mod pyoci;
 mod templates;
 // HTTP Transport
 mod transport;
-
 // Re-export the PyOci client
 pub use pyoci::PyOci;
 
