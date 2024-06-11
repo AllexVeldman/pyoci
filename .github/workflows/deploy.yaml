@@ -9,11 +9,13 @@ jobs:
   deploy:
     runs-on: ubuntu-latest
     name: Deploy
+    timeout-minutes: 10
     environment:
       name: pyoci
       url: https://pyoci.allexveldman.com
 
     steps:
+      - uses: extractions/setup-just@v2
       - uses: actions/checkout@v4
       - uses: actions/cache@v4
         with:

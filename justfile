@@ -7,8 +7,16 @@ cf-worker *args:
     NO_MINIFY=1 npx wrangler dev --port 8090 --local-upstream localhost:8090 {{args}}
 
 [group("dev")]
-build:
-   echo "todo"; exit 1
+install-build-dependencies:
+    cargo install wasm-pack
+
+[group("dev")]
+build *args: install-build-dependencies
+    rm -rf ./build/
+    wasm-pack build --no-typescript --target bundler --out-dir "build" --out-name "pyoci" {{args}}
+    cp -f ./js/pyoci.js ./build/
+    cp ./js/cf_worker.js ./build/
+    cd ./build && npx esbuild --external:./pyoci_bg.wasm --external:cloudflare:sockets --external:cloudflare:workers --format=esm --bundle ./cf_worker.js --outfile=cf_worker.mjs --minify
 
 [group("curl")]
 local-publish:
