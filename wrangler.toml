@@ -1,29 +1,15 @@
 name = "pyoci"
-main = "build/worker/shim.mjs"
+main = "build/cf_worker.mjs"
 compatibility_date = "2023-12-01"
 
 # disable *.workers.dev
 workers_dev = false
 route = { pattern = "pyoci.allexveldman.nl", custom_domain = true }
 
-# what worker-build does:
-# - install wasm-pack
-# - `wasm-pack build --no-typescript --target bundler --out-dir "build" --out-name "index" {args}`
-# - install esbuild
-# - create ./build/worker
-# - move build/index_bg.js to ./build/worker/index_bg.js
-# - move build/index_bg.wasm to ./build/worker/index.wasm
-# - move build/snippets/ to ./build/worker/snippets/
-#     https://rustwasm.github.io/wasm-bindgen/reference/js-snippets.html
-# - patch index_bg.js instantiate WASM module instead of importing it
-#     https://developers.cloudflare.com/workers/languages/rust/#javascript-plumbing-wasm-bindgen
-# - include glue.js and shim.js (hard-coded in worker-build)
-# - `esbuild --external:./index.wasm --externale:cloudflare:sockets --external:cloudflare:workers --format=esm --bundle ./shim.js --outfile=shim.mjs` --minify
-# - remove ./build/worker/snippets/, ./build/worker/index_bg.js, shim.js, and glue.js
-#      these are part of the esbuild bundle
-# Use env NO_MINIFY=1 to disable minification
 [build]
-command = "cargo install -q worker-build && worker-build --release"
+# command = "cargo install -q worker-build && worker-build --release"
+command = "just build --release"
 
 [env.dev]
-build = { command = "cargo install -q worker-build && worker-build --dev" }
+# build = { command = "cargo install -q worker-build && worker-build --dev" }
+build = { command = "just build --dev" }

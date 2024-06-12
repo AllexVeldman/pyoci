@@ -1,44 +1,9 @@
 use std::{
-    error,
     fmt::{self, Display},
     str::FromStr,
 };
 
-#[derive(Debug)]
-pub enum ParseError {
-    EmptyString,
-    /// Package name does not comply to the python packaging naming conventions
-    InvalidPackageName(String),
-    /// Filename has an unsupported extension
-    UnknownFileType(String),
-    /// Name of the package in the URL does not match the package name in the filename
-    NameMismatch,
-    /// Failed to parse URL
-    UrlError(String),
-}
-
-impl fmt::Display for ParseError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ParseError::EmptyString => write!(f, "No package name provided"),
-            ParseError::InvalidPackageName(name) => {
-                write!(f, "[Invalid package name] {}", name)
-            }
-            ParseError::UnknownFileType(ext) => {
-                write!(f, "[Unknown file type] {}", ext)
-            }
-            ParseError::NameMismatch => write!(f, "Package URL does not match the filename"),
-            ParseError::UrlError(err) => write!(f, "Not a valid URL: {}", err),
-        }
-    }
-}
-impl error::Error for ParseError {}
-
-impl From<url::ParseError> for ParseError {
-    fn from(err: url::ParseError) -> Self {
-        ParseError::UrlError(err.to_string())
-    }
-}
+use anyhow::{bail, Error, Result};
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum DistType {
@@ -90,7 +55,7 @@ impl File {
     /// Add/replace the `architecture` and `dist_type`
     /// returns a new File instance, consuming self.
     /// accepts the remainder of a python package filename after the version part
-    pub fn with_architecture(self, architecture: &str) -> Result<Self, ParseError> {
+    pub fn with_architecture(self, architecture: &str) -> Result<Self> {
         match DistType::from(architecture) {
             DistType::Sdist => Ok(File {
                 name: self.name,
@@ -123,15 +88,15 @@ impl File {
 }
 
 impl FromStr for File {
-    type Err = ParseError;
+    type Err = Error;
 
     /// Parse
-    fn from_str(value: &str) -> Result<Self, Self::Err> {
+    fn from_str(value: &str) -> Result<Self> {
         if value.is_empty() {
-            return Err(ParseError::EmptyString);
+            bail!("empty string");
         };
         if let Some(value) = value.strip_suffix(".whl") {
-            // Select the str without the extention and split on "-" 3 times
+            // Select the str without the extension and split on "-" 3 times
             match value.splitn(3, '-').collect::<Vec<&str>>()[..] {
                 [name, version, architecture] => Ok(File {
                     name: name.to_string(),
@@ -139,10 +104,10 @@ impl FromStr for File {
                     architecture: Some(architecture.to_string()),
                     dist_type: DistType::Wheel,
                 }),
-                _ => Err(ParseError::InvalidPackageName(format!(
+                _ => bail!(
                     "Expected '<name>-<version>-<arch>.whl', got '{}.whl'",
                     value
-                ))),
+                ),
             }
         } else if let Some(value) = value.strip_suffix(".tar.gz") {
             // Select the str without the extention and split on "-" 2 times
@@ -153,13 +118,10 @@ impl FromStr for File {
                     architecture: None,
                     dist_type: DistType::Sdist,
                 }),
-                _ => Err(ParseError::InvalidPackageName(format!(
-                    "Expected '<name>-<version>.tar.gz', got '{}.tar.gz'",
-                    value
-                ))),
+                _ => bail!("Expected '<name>-<version>.tar.gz', got '{}.tar.gz'", value),
             }
         } else {
-            Err(ParseError::UnknownFileType(value.to_string()))
+            bail!("Unkown filetype '{}'", value.to_string())
         }
     }
 }
@@ -195,7 +157,7 @@ pub struct Info {
 }
 
 impl FromStr for Info {
-    type Err = ParseError;
+    type Err = Error;
 
     /// Parse a string into Info
     ///
@@ -211,7 +173,7 @@ impl FromStr for Info {
     /// Supported formats:
     /// - `<registry>/<namespace>/<distribution>`
     /// - `<registry>/<namespace>/<distribution>/<filename>`
-    fn from_str(value: &str) -> Result<Self, ParseError> {
+    fn from_str(value: &str) -> Result<Self> {
         tracing::debug!("Parsing package info from: {}", value);
         let value = value.trim().strip_prefix('/').unwrap_or(value);
         let value = value.strip_suffix('/').unwrap_or(value);
@@ -232,7 +194,7 @@ impl FromStr for Info {
             [registry, namespace, distribution, filename] => {
                 let file = File::from_str(filename)?;
                 if distribution != file.name {
-                    return Err(ParseError::NameMismatch);
+                    bail!("Filename does not match distribution name");
                 };
                 Ok(Info {
                     registry: registry_url(registry)?,
@@ -240,7 +202,7 @@ impl FromStr for Info {
                     file,
                 })
             }
-            _ => Err(ParseError::UrlError(value.to_string())),
+            _ => bail!("Expected '<registry>/<namespace>/<distribution>' or '<registry>/<namespace>/<distribution>/<filename>', got '{}'", value),
         }
     }
 }
@@ -250,9 +212,8 @@ impl FromStr for Info {
 /// If no scheme is provided, it will default to `https://`
 /// To call an HTTP registry, the scheme must be provided as a url-encoded string.
 /// Example: `http://localhost:5000` -> `http%3A%2F%2Flocalhost%3A5000`
-fn registry_url(registry: &str) -> Result<url::Url, ParseError> {
-    let registry =
-        urlencoding::decode(registry).map_err(|_| ParseError::UrlError(registry.to_string()))?;
+fn registry_url(registry: &str) -> Result<url::Url> {
+    let registry = urlencoding::decode(registry)?;
     let registry = if registry.starts_with("http://") || registry.starts_with("https://") {
         registry.into_owned()
     } else {
@@ -260,18 +221,16 @@ fn registry_url(registry: &str) -> Result<url::Url, ParseError> {
     };
 
     let url = url::Url::parse(&registry)?;
-    tracing::debug!("Registry URL: {:}", url);
     Ok(url)
 }
 
 impl Info {
-    pub fn new(registry: &str, namespace: &str, filename: &str) -> Result<Self, ParseError> {
+    pub fn new(registry: &str, namespace: &str, filename: &str) -> Result<Self> {
         let info = Info {
             registry: registry_url(registry)?,
             namespace: namespace.to_string(),
             file: File::from_str(filename)?,
         };
-        tracing::debug!("Package info registry: {}", info.registry);
         Ok(info)
     }
     /// Name of the package as used for the OCI registry
@@ -281,18 +240,17 @@ impl Info {
 
     /// Relative uri for this package
     pub fn uri(&self) -> String {
+        // url::Url adds a trailing slash to an empty path
+        // which we don't want to url-encode
+        let registry = self.registry.as_str();
+        let registry = urlencoding::encode(registry.strip_suffix('/').unwrap_or(registry));
         if self.file.is_valid() {
-            // url::Url adds a trailing slash to an empty path
-            // which we don't want to url-encode
-            let registry = self.registry.as_str();
-            let registry = urlencoding::encode(registry.strip_suffix('/').unwrap_or(registry));
-            let path = format!(
-                "{}/{}/{}/{}",
+            format!(
+                "/{}/{}/{}/{}",
                 registry, self.namespace, self.file.name, self.file
-            );
-            path.strip_prefix("https://").unwrap_or(&path).to_string()
+            )
         } else {
-            self.registry.as_str().to_string()
+            format!("/{registry}/")
         }
     }
 
@@ -306,7 +264,7 @@ impl Info {
 
 impl Display for Info {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}/{}/{}", self.registry, self.namespace, self.file)
+        write!(f, "{}", self.uri())
     }
 }
 
@@ -344,7 +302,7 @@ mod tests {
 
     #[test_case("/foo.io/bar/baz",
         &Info{
-            registry: url::Url::parse("foo.io").unwrap(),
+            registry: url::Url::parse("https://foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name:"baz".to_string(),
@@ -352,7 +310,7 @@ mod tests {
         ; "with package")]
     #[test_case("foo.io/bar/baz/baz-1-cp311-cp311-macosx_13_0_x86_64.whl",
         &Info{
-            registry: url::Url::parse("foo.io").unwrap(),
+            registry: url::Url::parse("https://foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
@@ -363,7 +321,7 @@ mod tests {
     ; "with wheel, minimal")]
     #[test_case("foo.io/bar/baz/baz-2.5.1.dev4+g1664eb2.d20231017-1234-cp311-cp311-macosx_13_0_x86_64.whl",
         &Info{
-            registry: url::Url::parse("foo.io").unwrap(),
+            registry: url::Url::parse("https://foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
@@ -374,7 +332,7 @@ mod tests {
         ; "with wheel, full")]
     #[test_case("foo.io/bar/baz/baz-1.tar.gz",
         &Info{
-            registry: url::Url::parse("foo.io").unwrap(),
+            registry: url::Url::parse("https://foo.io").unwrap(),
             namespace: "bar".to_string(),
             file: File{
                 name: "baz".to_string(),
@@ -383,25 +341,15 @@ mod tests {
                 ..File::default()}}
     ; "with sdist")]
     /// Test if we can parse a sting into a package::Info object
-    fn info_try_from(input: &str, expected: &Info) {
+    fn test_info_from_str(input: &str, expected: &Info) {
         assert_eq!(Info::from_str(input).unwrap(), *expected);
-    }
-
-    #[test_case("baz-1-cp311-cp311-macosx_13_0_x86_64.whl"; "wheel simple version")]
-    #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017-1234-cp311-cp311-macosx_13_0_x86_64.whl"; "wheel full version")]
-    #[test_case("baz-1.tar.gz"; "sdist simple version")]
-    #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017.tar.gz"; "sdist full version")]
-    /// Test if a File an be serialized into a string
-    fn file_display(input: &str) {
-        let obj = File::from_str(input).unwrap();
-        assert_eq!(obj.to_string(), input);
     }
 
     #[test]
     /// Test if we can get the package OCI name (namespace/name)
-    fn info_oci_name() {
+    fn test_info_oci_name() {
         let into = Info {
-            registry: url::Url::parse("foo.example").unwrap(),
+            registry: url::Url::parse("https://foo.example").unwrap(),
             namespace: "bar".to_string(),
             file: File {
                 name: "baz".to_string(),
@@ -409,5 +357,70 @@ mod tests {
             },
         };
         assert_eq!(into.oci_name(), "bar/baz".to_string());
+    }
+
+    #[test]
+    /// Test if Info.uri() url-encodes the registry
+    fn test_info_uri() {
+        let info = Info {
+            registry: url::Url::parse("https://foo.example:4000").unwrap(),
+            namespace: "bar".to_string(),
+            file: File {
+                name: "baz".to_string(),
+                version: "1".to_string(),
+                dist_type: DistType::Sdist,
+                ..File::default()
+            },
+        };
+        assert_eq!(
+            info.uri(),
+            "/https%3A%2F%2Ffoo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
+        );
+    }
+
+    #[test]
+    /// Test Info.url() returns a valid URL
+    fn test_info_url() {
+        let info = Info {
+            registry: url::Url::parse("https://foo.example").unwrap(),
+            namespace: "bar".to_string(),
+            file: File {
+                name: "baz".to_string(),
+                version: "1".to_string(),
+                dist_type: DistType::Sdist,
+                ..File::default()
+            },
+        };
+        assert_eq!(
+            info.url(&url::Url::parse("https://example.com").unwrap())
+                .as_str(),
+            "https://example.com/https%3A%2F%2Ffoo.example/bar/baz/baz-1.tar.gz"
+        );
+    }
+
+    #[test]
+    /// Test Info.uri() when the File is invalid
+    fn test_info_uri_invalid() {
+        let into = Info {
+            registry: url::Url::parse("https://foo.example").unwrap(),
+            namespace: "bar".to_string(),
+            file: File {
+                name: "baz".to_string(),
+                version: "".to_string(),
+                dist_type: DistType::Sdist,
+                ..File::default()
+            },
+        };
+        assert_eq!(into.uri(), "/https%3A%2F%2Ffoo.example/".to_string());
+    }
+
+    #[test_case("baz-1-cp311-cp311-macosx_13_0_x86_64.whl"; "wheel simple version")]
+    #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017-1234-cp311-cp311-macosx_13_0_x86_64.whl"; "wheel full version")]
+    #[test_case("baz-1.tar.gz"; "sdist simple version")]
+    #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017.tar.gz"; "sdist full version")]
+    /// Test if a File can be serialized into a string
+    fn test_file_display(input: &str) {
+        let obj = File::from_str(input).unwrap();
+        assert_eq!(obj.to_string(), input);
     }
 }

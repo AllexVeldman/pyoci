@@ -1,0 +1,8 @@
+[repositories.pyoci-local]
+url = "http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/allexveldman/"
+
+[repositories.pyoci-local-ghcr]
+url = "http://localhost:8090/ghcr.io/allexveldman/"
+
+[repositories.pyoci-ghcr]
+url = "https://pyoci.allexveldman.nl/ghcr.io/allexveldman/"

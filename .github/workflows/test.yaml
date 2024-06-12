@@ -1,18 +1,16 @@
-name: Deploy
+name: Test
 
 on:
   push:
     branches:
       - main
+  pull_request:
 
 jobs:
-  deploy:
+  test:
     runs-on: ubuntu-latest
-    name: Deploy
+    name: Test
     timeout-minutes: 10
-    environment:
-      name: pyoci
-      url: https://pyoci.allexveldman.com
 
     steps:
       - uses: extractions/setup-just@v2
@@ -24,8 +22,8 @@ jobs:
             target/
           key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
 
-      - name: Deploy
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+      - name: Build
+        run: just build
+
+      - name: Test
+        run: cargo test

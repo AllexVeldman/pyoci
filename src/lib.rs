@@ -1,3 +1,5 @@
+#![warn(unused_extern_crates)]
+
 // Request handlers for the cloudflare worker
 mod cf;
 mod otlp;
@@ -9,7 +11,6 @@ mod pyoci;
 mod templates;
 // HTTP Transport
 mod transport;
-
 // Re-export the PyOci client
 pub use pyoci::PyOci;
 

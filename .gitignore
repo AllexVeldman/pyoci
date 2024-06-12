@@ -6,3 +6,4 @@ __pycache__/
 build/
 /target
 node_modules/
+.venv/

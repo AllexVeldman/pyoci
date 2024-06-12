@@ -1,6 +1,6 @@
+use anyhow::{bail, Context, Error, Result};
 use base16ct::lower::encode_string as hex_encode;
 use base64::prelude::*;
-use core::fmt;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use oci_spec::image::Arch;
@@ -11,68 +11,20 @@ use oci_spec::image::Os;
 use oci_spec::image::Platform;
 use oci_spec::image::PlatformBuilder;
 use oci_spec::image::SCHEMA_VERSION;
-use reqwest::Response;
-use reqwest::StatusCode;
-use sha2::{Digest, Sha256};
-use std::error;
-use url::{ParseError, Url};
-
 use oci_spec::{
     distribution::{ErrorResponse, TagList},
     image::{Descriptor, ImageIndex, ImageManifest, MediaType},
 };
 use regex::Regex;
+use reqwest::Response;
+use reqwest::StatusCode;
 use serde::Deserialize;
+use sha2::{Digest, Sha256};
+use url::Url;
 
 use crate::package;
 use crate::transport::HttpTransport;
 use crate::ARTIFACT_TYPE;
-
-#[derive(Debug)]
-pub enum Error {
-    Package(package::ParseError),
-    InvalidUrl(ParseError),
-    InvalidResponseCode(u16),
-    MissingHeader(String),
-    UnknownContentType,
-    UnknownArtifactType(String),
-    UnknownArchitecture(String),
-    OciErrorResponse(ErrorResponse),
-    NotAFile(String),
-    Other(String),
-}
-
-impl fmt::Display for Error {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        write!(f, "{self:?}")
-    }
-}
-
-impl error::Error for Error {}
-
-impl From<&str> for Error {
-    fn from(value: &str) -> Self {
-        Error::Other(value.to_string())
-    }
-}
-
-impl From<ParseError> for Error {
-    fn from(value: ParseError) -> Self {
-        Error::InvalidUrl(value)
-    }
-}
-
-impl From<package::ParseError> for Error {
-    fn from(value: package::ParseError) -> Self {
-        Error::Package(value)
-    }
-}
-
-impl From<ErrorResponse> for Error {
-    fn from(value: ErrorResponse) -> Self {
-        Error::OciErrorResponse(value)
-    }
-}
 
 /// Return type for ``pull_manifest``
 /// as the same endpoint can return both a manifest and a manifest index
@@ -158,32 +110,25 @@ pub struct WwwAuth {
 }
 
 impl WwwAuth {
-    pub fn parse(value: &str) -> Result<Self, Error> {
+    /// Parse a WWW-Authenticate header
+    pub fn parse(value: &str) -> Result<Self> {
         let value = match value.strip_prefix("Bearer ") {
-            None => return Err("not bearer".into()),
+            None => bail!("Not a Bearer token"),
             Some(value) => value,
         };
         let realm = match Regex::new(r#"realm="(?P<realm>[^"\s]*)"#)
-            .expect("valid regex")
+            .unwrap()
             .captures(value)
         {
-            Some(value) => value
-                .name("realm")
-                .expect("realm to be part of match")
-                .as_str()
-                .to_string(),
-            None => return Err("realm missing".into()),
+            Some(value) => value.name("realm").unwrap().as_str().to_string(),
+            None => bail!("`realm` key missing from WWW-Authenticate header"),
         };
         let service = match Regex::new(r#"service="(?P<service>[^"\s]*)"#)
             .expect("valid regex")
             .captures(value)
         {
-            Some(value) => value
-                .name("service")
-                .expect("service to be part of match")
-                .as_str()
-                .to_string(),
-            None => return Err("service missing".into()),
+            Some(value) => value.name("service").unwrap().as_str().to_string(),
+            None => bail!("`service` key missing from WWW-Authenticate header"),
         };
         // let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
         //     .expect("valid regex")
@@ -233,7 +178,7 @@ impl PyOci {
         &self,
         package: &package::Info,
         n: usize,
-    ) -> Result<Vec<package::Info>, Error> {
+    ) -> Result<Vec<package::Info>> {
         let result = self.list_tags(&package.oci_name()).await?;
         tracing::debug!("{:?}", result);
         let tags = result.tags();
@@ -254,10 +199,7 @@ impl PyOci {
             .collect::<Vec<Result<Vec<package::Info>, Error>>>()
             .await
         {
-            match result {
-                Ok(mut value) => files.append(&mut value),
-                Err(err) => return Err(err),
-            }
+            files.append(&mut result?);
         }
         Ok(files)
     }
@@ -267,19 +209,19 @@ impl PyOci {
         package: &package::Info,
         name: &str,
         reference: &str,
-    ) -> Result<Vec<package::Info>, Error> {
+    ) -> Result<Vec<package::Info>> {
         let manifest = self.pull_manifest(name, reference).await?;
         let Manifest::Index(index) = manifest else {
-            return Err(Error::Other("Expected Index, got Manifest".to_string()));
+            bail!("Expected ImageIndex, got ImageManifest");
         };
         let artifact_type = index.artifact_type();
         match artifact_type {
             // Artifact type is as expected, do nothing
             Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
             // Artifact type has unexpected value, err
-            Some(value) => return Err(Error::UnknownArtifactType(value.to_string())),
+            Some(value) => bail!("Unknown artifact type: {}", value),
             // Artifact type is not set, err
-            None => return Err(Error::UnknownArtifactType(String::new())),
+            None => bail!("No artifact type set"),
         };
         let mut files: Vec<package::Info> = Vec::new();
         for manifest in index.manifests() {
@@ -290,22 +232,18 @@ impl PyOci {
                         .file
                         .clone()
                         .with_version(reference)
-                        .with_architecture(arch)
-                        .unwrap();
+                        .with_architecture(arch)?;
                     files.push(file);
                 }
-                arch => return Err(Error::UnknownArchitecture(arch.to_string())),
+                arch => bail!("Unsupported architecture '{}'", arch),
             };
         }
         Ok(files)
     }
 
-    pub async fn download_package_file(
-        &self,
-        package: &crate::package::Info,
-    ) -> Result<Response, Error> {
+    pub async fn download_package_file(&self, package: &crate::package::Info) -> Result<Response> {
         if !package.file.is_valid() {
-            return Err(Error::NotAFile(package.file.to_string()));
+            bail!("Not a valid package file: {}", package.file);
         };
         // Pull index
         let index = match self
@@ -314,7 +252,7 @@ impl PyOci {
         {
             Manifest::Index(index) => index,
             Manifest::Manifest(_) => {
-                return Err(Error::Other("Expected Index, got Manifest".to_string()))
+                bail!("Expected ImageIndex, got ImageManifest");
             }
         };
         // Check artifact type
@@ -322,9 +260,9 @@ impl PyOci {
             // Artifact type is as expected, do nothing
             Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
             // Artifact type has unexpected value, err
-            Some(value) => return Err(Error::UnknownArtifactType(value.to_string())),
+            Some(value) => bail!("Unknown artifact type: {}", value),
             // Artifact type is not set, err
-            None => return Err(Error::UnknownArtifactType(String::new())),
+            None => bail!("No artifact type set"),
         };
         // Find manifest descriptor for platform
         let mut platform_manifest: Option<&oci_spec::image::Descriptor> = None;
@@ -339,10 +277,12 @@ impl PyOci {
                 }
             }
         }
-        let manifest_descriptor = platform_manifest.ok_or(Error::Other(format!(
-            "Requested architecture '{}' not available",
-            package.file.architecture()
-        )))?;
+        let manifest_descriptor = platform_manifest.with_context(|| {
+            format!(
+                "Requested architecture '{}' not available",
+                package.file.architecture()
+            )
+        })?;
         let manifest = match manifest_descriptor.data() {
             Some(data) => {
                 // Manifest is embedded in the index
@@ -356,7 +296,7 @@ impl PyOci {
                     .await?
                 {
                     Manifest::Index(_) => {
-                        return Err(Error::Other("Expected Manifest, got Index".to_string()))
+                        bail!("Expected ImageManifest, got ImageIndex");
                     }
                     Manifest::Manifest(manifest) => *manifest,
                 }
@@ -364,7 +304,7 @@ impl PyOci {
         };
         // pull blob in first layer of manifest
         let [blob_descriptor] = &manifest.layers()[..] else {
-            return Err(Error::Other("Unsupported number of layers".to_string()));
+            bail!("Manifest should define exactly one layer");
         };
         self.pull_blob(package.oci_name(), blob_descriptor.to_owned())
             .await
@@ -374,9 +314,9 @@ impl PyOci {
         &self,
         package: &crate::package::Info,
         file: Vec<u8>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         if !package.file.is_valid() {
-            return Err(Error::NotAFile(package.file.to_string()));
+            bail!("Not a valid package file: {}", package.file);
         };
 
         let name = package.oci_name();
@@ -397,7 +337,7 @@ impl PyOci {
         // Pull an existing index
         let index = match self.pull_manifest(&name, &package.file.version).await {
             Ok(Manifest::Manifest(_)) => {
-                return Err(Error::Other("Expected Index, got Manifest".to_string()))
+                bail!("Expected ImageIndex, got ImageManifest");
             }
             Ok(Manifest::Index(index)) => Some(index),
             // TODO: This swallows 404 and all other errors, only 404 is expected
@@ -417,21 +357,18 @@ impl PyOci {
             Some(mut index) => {
                 // Check artifact type
                 match index.artifact_type() {
-                    // Artifact type is as expected, do nothing
                     Some(MediaType::Other(value)) if value == ARTIFACT_TYPE => {}
-                    // Artifact type has unexpected value, err
-                    Some(value) => return Err(Error::UnknownArtifactType(value.to_string())),
-                    // Artifact type is not set, err
-                    None => return Err(Error::UnknownArtifactType(String::new())),
+                    Some(value) => bail!("Unknown artifact type: {}", value),
+                    None => bail!("No artifact type set"),
                 };
                 for existing in index.manifests() {
                     match existing.platform() {
                         Some(platform) if *platform == manifest.platform => {
-                            return Err(Error::Other(format!(
+                            bail!(
                                 "Platform '{}' already exists for version '{}'",
                                 package.file.architecture(),
                                 package.file.version
-                            )));
+                            );
                         }
                         _ => {}
                     }
@@ -467,7 +404,7 @@ impl PyOci {
         // Name of the package, including namespace. e.g. "library/alpine"
         name: &str,
         blob: Blob,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let digest = blob.descriptor.digest();
         let response = self
             .transport
@@ -498,9 +435,7 @@ impl PyOci {
                 .to_str()
                 .expect("valid Location header value"),
             _ => {
-                return Err(Error::OciErrorResponse(
-                    response.json().await.expect("valid json"),
-                ))
+                bail!(response.json::<ErrorResponse>().await?)
             }
         };
         let mut url: Url = if location.starts_with('/') {
@@ -518,9 +453,7 @@ impl PyOci {
             .body(blob.data);
         let response = self.transport.send(request).await.expect("valid response");
         if response.status() != StatusCode::CREATED {
-            return Err(Error::OciErrorResponse(
-                response.json().await.expect("valid Error json"),
-            ));
+            bail!(response.json::<ErrorResponse>().await?)
         }
         tracing::debug!(
             "Blob-location: {}",
@@ -543,15 +476,14 @@ impl PyOci {
         name: String,
         // Descriptor of the blob to pull
         descriptor: Descriptor,
-    ) -> Result<Response, Error> {
+    ) -> Result<Response> {
         let digest = descriptor.digest();
         let url = self.build_url(&format!("/v2/{name}/blobs/{digest}"));
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
 
-        let status: u16 = response.status().into();
-        if !status == 200 {
-            return Err(Error::InvalidResponseCode(status));
+        if !response.status().is_success() {
+            bail!(response.json::<ErrorResponse>().await?)
         };
         Ok(response)
     }
@@ -559,14 +491,8 @@ impl PyOci {
         let url = self.build_url(&format!("/v2/{name}/tags/list"));
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
-        let status: u16 = response.status().into();
-        if !(200..=299).contains(&status) {
-            return Err(Error::OciErrorResponse(
-                response
-                    .json::<ErrorResponse>()
-                    .await
-                    .expect("valid Error json"),
-            ));
+        if !response.status().is_success() {
+            bail!(response.json::<ErrorResponse>().await?)
         };
         let tags = response
             .json::<TagList>()
@@ -584,11 +510,10 @@ impl PyOci {
         name: &str,
         manifest: Manifest,
         version: Option<&str>,
-    ) -> Result<(), Error> {
+    ) -> Result<()> {
         let (url, data, content_type) = match manifest {
             Manifest::Index(index) => {
-                let version =
-                    version.ok_or(Error::Other("Version required for Index".to_string()))?;
+                let version = version.context("`version` required for pushing and ImageIndex")?;
                 let url = self.build_url(&format!("/v2/{name}/manifests/{version}"));
                 let data = index.to_string().expect("valid json");
                 (url, data, "application/vnd.oci.image.index.v1+json")
@@ -608,30 +533,21 @@ impl PyOci {
             .header("Content-Type", content_type)
             .body(data);
         let response = self.transport.send(request).await.expect("valid response");
-        let status: u16 = response.status().into();
-        if !(200..299).contains(&status) {
-            return Err(Error::OciErrorResponse(
-                response
-                    .json::<ErrorResponse>()
-                    .await
-                    .expect("valid Error json"),
-            ));
+        if !response.status().is_success() {
+            bail!(response.json::<ErrorResponse>().await?)
         };
         Ok(())
     }
 
-    async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Manifest, Error> {
+    async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Manifest> {
         let url = self.build_url(&format!("/v2/{name}/manifests/{reference}"));
         let request = self.transport.get(url).header(
             "Accept",
             "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
         );
         let response = self.transport.send(request).await.expect("valid response");
-        let status: u16 = response.status().into();
-        if !(200..299).contains(&status) {
-            return Err(Error::OciErrorResponse(
-                response.json::<ErrorResponse>().await.expect("valid json"),
-            ));
+        if !response.status().is_success() {
+            bail!(response.json::<ErrorResponse>().await?)
         };
         match response.headers().get("Content-Type") {
             Some(value) if value == "application/vnd.oci.image.index.v1+json" => {
@@ -650,8 +566,8 @@ impl PyOci {
                         .expect("valid Manifest json"),
                 )))
             }
-            Some(_) => Err(Error::UnknownContentType),
-            None => Err(Error::MissingHeader("Content-Type".to_string())),
+            Some(content_type) => bail!("Unknown Content-Type: {}", content_type.to_str().unwrap()),
+            None => bail!("Missing Content-Type header"),
         }
     }
 }
