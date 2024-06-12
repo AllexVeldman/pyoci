@@ -1,3 +1,5 @@
+#![warn(unused_extern_crates)]
+
 // Request handlers for the cloudflare worker
 mod cf;
 // Helper for parsing and managing Python/OCI packages
