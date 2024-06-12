@@ -5,12 +5,20 @@ import wasmModule from "./pyoci_bg.wasm";
 import { WorkerEntrypoint } from "cloudflare:workers";
 
 // Run the worker's initialization function.
+console.log("Starting worker...");
 imports.start?.();
 
 export { wasmModule };
 
 class Entrypoint extends WorkerEntrypoint {
     async fetch(request) {
+        // Limit requests by Authorization header
+        // Unauthorized requests will be rate limited as a single user
+        let rl_key = request.headers.get("Authorization") || "public";
+        let { success } = await this.env.PYOCI_RATELIMITER.limit({key: rl_key});
+        if (!success) {
+            return new Response(`Rate limit exceeded`, { status: 429 })
+        }
         return await imports.fetch(request, this.env, this.ctx)
     }
 

@@ -14,8 +14,8 @@ install-build-dependencies:
 build *args: install-build-dependencies
     rm -rf ./build/
     wasm-pack build --no-typescript --target bundler --out-dir "build" --out-name "pyoci" {{args}}
-    cp -f ./js/pyoci.js ./build/
-    cp ./js/cf_worker.js ./build/
+    cp -f ./src/js/pyoci.js ./build/
+    cp ./src/js/cf_worker.js ./build/
     cd ./build && npx esbuild --external:./pyoci_bg.wasm --external:cloudflare:sockets --external:cloudflare:workers --format=esm --bundle ./cf_worker.js --outfile=cf_worker.mjs --minify
 
 [group("curl")]
