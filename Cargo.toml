@@ -4,6 +4,8 @@ version = "0.1.0"
 edition = "2021"
 authors = ["Allex Veldman"]
 description = "Let any OCI compliant registry act as a PyPi index"
+repository = "https://github.com/allexveldman/pyoci"
+license = "MIT"
 
 [lib]
 crate-type = ["cdylib"]
