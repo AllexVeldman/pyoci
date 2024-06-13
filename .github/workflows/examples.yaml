@@ -25,4 +25,4 @@ jobs:
       - run: |
           poetry version "$(poetry version -s)+example-poetry-$(git rev-parse --short HEAD)"
           poetry build
-          poetry publish -n -r pyoci-ghcr -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+          poetry publish -n -r pyoci-ghcr-allexveldman -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
