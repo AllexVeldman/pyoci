@@ -6,7 +6,8 @@ use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
 use tracing_web::MakeWebConsoleWriter;
 use worker::{
-    event, Context, Env, FormEntry, Request, Response, ResponseBuilder, RouteContext, Router,
+    console_log, event, Context, Env, FormEntry, Request, Response, ResponseBuilder, RouteContext,
+    Router,
 };
 
 use crate::{package, templates, PyOci};
@@ -47,6 +48,7 @@ fn start() {
     tracing_subscriber::registry()
         .with(console_log_layer)
         .init();
+    console_log!("Worker started");
 }
 
 /// Called for each request to the worker
