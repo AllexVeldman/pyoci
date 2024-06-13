@@ -15,10 +15,6 @@ jobs:
       name: pyoci
       url: https://pyoci.allexveldman.com
 
-    permissions:
-      packages: write
-      contents: read
-
     steps:
       - uses: extractions/setup-just@v2
       - uses: actions/checkout@v4
@@ -35,5 +31,10 @@ jobs:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
 
-      - name: Examples
-        uses: ./.github/workflows/examples.yaml
+  examples:
+    name: Examples
+    needs: [deploy]
+    uses: ./.github/workflows/examples.yaml
+    permissions:
+      packages: write
+      contents: read
