@@ -10,9 +10,14 @@ jobs:
     runs-on: ubuntu-latest
     name: Deploy
     timeout-minutes: 10
+
     environment:
       name: pyoci
       url: https://pyoci.allexveldman.com
+
+    permissions:
+      packages: write
+      contents: read
 
     steps:
       - uses: extractions/setup-just@v2
@@ -29,3 +34,6 @@ jobs:
         with:
           apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+
+      - name: Examples
+        uses: ./.github/workflows/examples.yaml
