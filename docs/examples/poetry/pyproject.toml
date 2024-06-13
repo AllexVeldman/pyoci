@@ -1,0 +1,13 @@
+[tool.poetry]
+name = "hello-world"
+version = "0.0.1"
+description = "Example project for PyOCI with poetry"
+authors = ["Allex Veldman <allexveldman@gmail.com>"]
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.8"
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
