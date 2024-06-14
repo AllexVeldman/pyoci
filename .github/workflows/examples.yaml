@@ -1,0 +1,28 @@
+name: Examples
+
+on:
+  workflow_call:
+
+permissions:
+  packages: write
+  contents: read
+
+jobs:
+  poetry:
+    name: Poetry
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+    defaults:
+      run:
+        working-directory: ./docs/examples/poetry
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+
+      - run: pip install poetry
+
+      - run: |
+          poetry version "$(poetry version -s)+example-poetry-$(git rev-parse --short HEAD)"
+          poetry build
+          poetry publish -n -r pyoci-ghcr-allexveldman -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"

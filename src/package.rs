@@ -31,21 +31,22 @@ impl From<&str> for DistType {
 /// Container for a python package filename
 /// Supports wheel and sdist filenames
 #[derive(Debug, PartialEq, Eq, Default, Clone)]
-pub struct File {
-    /// package name
-    pub name: String,
-    /// package version
-    pub version: String,
-    /// package architecture
+struct File {
+    /// Python package name
+    name: String,
+    /// Python package version
+    version: String,
+    /// Python package architecture
     /// only applicable for dist_type: DistType::Wheel
+    /// TODO: move architecture to DistType::Wheel(String)
     architecture: Option<String>,
-    /// package distribution type
+    /// Python package distribution type
     dist_type: DistType,
 }
 
 impl File {
     /// Replace the version, consumes self
-    pub fn with_version(self, version: &str) -> Self {
+    fn with_version(self, version: &str) -> Self {
         File {
             version: version.to_string(),
             ..self
@@ -55,7 +56,7 @@ impl File {
     /// Add/replace the `architecture` and `dist_type`
     /// returns a new File instance, consuming self.
     /// accepts the remainder of a python package filename after the version part
-    pub fn with_architecture(self, architecture: &str) -> Result<Self> {
+    fn with_architecture(self, architecture: &str) -> Result<Self> {
         match DistType::from(architecture) {
             DistType::Sdist => Ok(File {
                 name: self.name,
@@ -71,7 +72,7 @@ impl File {
     }
 
     /// Return the architecture string as used on the OCI side
-    pub fn architecture(&self) -> String {
+    fn architecture(&self) -> String {
         match &self.dist_type {
             DistType::Sdist => ".tar.gz".to_string(),
             DistType::Wheel => {
@@ -81,16 +82,39 @@ impl File {
         }
     }
 
-    /// Return True if this File can be used as an OCI reference
-    pub fn is_valid(&self) -> bool {
-        !self.name.is_empty() && !self.version.is_empty()
+    /// Name of the package
+    ///
+    /// Returns an error when the package name is not set
+    fn name(&self) -> Result<String> {
+        if self.name.is_empty() {
+            bail!("File '{}' does not define a package name", self);
+        }
+        Ok(self.name.to_string())
+    }
+
+    /// Version of the package
+    ///
+    /// Returns an error when the package version is not set
+    fn version(&self) -> Result<String> {
+        if self.version.is_empty() {
+            bail!("File '{}' does not define a package version", self);
+        }
+        Ok(self.version.to_string())
+    }
+
+    /// OCI tag for the file
+    ///
+    /// Returns an error when the package version is not set
+    fn tag(&self) -> Result<String> {
+        self.version()
     }
 }
 
 impl FromStr for File {
     type Err = Error;
 
-    /// Parse
+    /// Parse a filename into the package name, version and architecture
+
     fn from_str(value: &str) -> Result<Self> {
         if value.is_empty() {
             bail!("empty string");
@@ -153,7 +177,7 @@ pub struct Info {
     /// The package namespace in the OCI registry
     pub namespace: String,
     /// Python package file attributes
-    pub file: File,
+    file: File,
 }
 
 impl FromStr for Info {
@@ -233,38 +257,77 @@ impl Info {
         };
         Ok(info)
     }
+
+    /// Replace the version of the package for an OCI tag
+    ///
+
+    ///
+    /// <reference> as a tag MUST be at most 128 characters in length and MUST match the following regular expression:
+    /// [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}
+    /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests>
+    pub fn with_oci_tag(self, tag: &str) -> Result<Self> {
+        // OCI tags are not allowed to contain a "+" character
+        // python versions can't contain a "-" character
+        // Info stores the version in the python format
+        let file = self.file.with_version(&tag.replace('-', "+"));
+        Ok(Info { file, ..self })
+    }
+
+    pub fn with_oci_architecture(self, architecture: &str) -> Result<Self> {
+        let file = self.file.with_architecture(architecture)?;
+        Ok(Info { file, ..self })
+    }
+
     /// Name of the package as used for the OCI registry
-    pub fn oci_name(&self) -> String {
-        format!("{}/{}", self.namespace, self.file.name).to_lowercase()
+    ///
+    /// Returns an error when the package name is not set
+    pub fn oci_name(&self) -> Result<String> {
+        Ok(format!("{}/{}", self.namespace, self.file.name()?).to_lowercase())
+    }
+
+    /// Tag of the package as used for the OCI registry
+    ///
+    /// Returns an error when the package version is not set
+    pub fn oci_tag(&self) -> Result<String> {
+        // OCI tags are not allowed to contain a "+" character
+        // python versions can't contain a "-" character
+        // Replace the "+" from the python version with a "-" in the OCI version
+        Ok(self.file.tag()?.replace('+', "-"))
+    }
+
+    /// Architecture of the package as used for the OCI registry
+    pub fn oci_architecture(&self) -> String {
+        self.file.architecture()
     }
 
     /// Relative uri for this package
-    pub fn uri(&self) -> String {
+    pub fn py_uri(&self) -> String {
         // url::Url adds a trailing slash to an empty path
         // which we don't want to url-encode
         let registry = self.registry.as_str();
         let registry = urlencoding::encode(registry.strip_suffix('/').unwrap_or(registry));
-        if self.file.is_valid() {
-            format!(
-                "/{}/{}/{}/{}",
-                registry, self.namespace, self.file.name, self.file
-            )
-        } else {
-            format!("/{registry}/")
+        match self.file.name() {
+            Ok(name) => format!("/{}/{}/{}/{}", registry, self.namespace, name, self.file),
+            Err(_) => format!("/{registry}/"),
         }
     }
 
     /// Return the full URL for this package
-    pub fn url(&self, host: &url::Url) -> url::Url {
+    pub fn py_url(&self, host: &url::Url) -> url::Url {
         let mut url = host.clone();
-        url.set_path(&self.uri());
+        url.set_path(&self.py_uri());
         url
+    }
+
+    /// Return the filename of this package
+    pub fn filename(&self) -> String {
+        self.file.to_string()
     }
 }
 
 impl Display for Info {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.uri())
+        write!(f, "{}", self.py_uri())
     }
 }
 
@@ -356,12 +419,29 @@ mod tests {
                 ..File::default()
             },
         };
-        assert_eq!(into.oci_name(), "bar/baz".to_string());
+        assert_eq!(into.oci_name().unwrap(), "bar/baz".to_string());
+    }
+
+    /// Test if we can get the package OCI tag (version)
+    #[test_case("1", "1"; "major version")]
+    #[test_case("1.0.0", "1.0.0"; "simple version")]
+    #[test_case("1.0.0.dev4+g1664eb2.d20231017", "1.0.0.dev4-g1664eb2.d20231017"; "full version")]
+    fn test_info_oci_tag(version: &str, expected: &str) {
+        let info = Info {
+            registry: url::Url::parse("https://foo.example").unwrap(),
+            namespace: "bar".into(),
+            file: File {
+                name: "baz".into(),
+                version: version.into(),
+                ..File::default()
+            },
+        };
+        assert_eq!(info.oci_tag().unwrap(), expected.to_string());
     }
 
     #[test]
-    /// Test if Info.uri() url-encodes the registry
-    fn test_info_uri() {
+    /// Test if Info.py_uri() url-encodes the registry
+    fn test_info_py_uri() {
         let info = Info {
             registry: url::Url::parse("https://foo.example:4000").unwrap(),
             namespace: "bar".to_string(),
@@ -373,14 +453,14 @@ mod tests {
             },
         };
         assert_eq!(
-            info.uri(),
+            info.py_uri(),
             "/https%3A%2F%2Ffoo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
         );
     }
 
     #[test]
-    /// Test Info.url() returns a valid URL
-    fn test_info_url() {
+    /// Test Info.py_url() returns a valid URL
+    fn test_info_py_url() {
         let info = Info {
             registry: url::Url::parse("https://foo.example").unwrap(),
             namespace: "bar".to_string(),
@@ -392,26 +472,45 @@ mod tests {
             },
         };
         assert_eq!(
-            info.url(&url::Url::parse("https://example.com").unwrap())
+            info.py_url(&url::Url::parse("https://example.com").unwrap())
                 .as_str(),
             "https://example.com/https%3A%2F%2Ffoo.example/bar/baz/baz-1.tar.gz"
         );
     }
 
     #[test]
-    /// Test Info.uri() when the File is invalid
-    fn test_info_uri_invalid() {
+    /// Test Info.py_uri() when the File is invalid
+    fn test_info_py_uri_invalid() {
         let into = Info {
             registry: url::Url::parse("https://foo.example").unwrap(),
             namespace: "bar".to_string(),
             file: File {
-                name: "baz".to_string(),
-                version: "".to_string(),
+                name: "".to_string(),
+                version: "1".to_string(),
                 dist_type: DistType::Sdist,
                 ..File::default()
             },
         };
-        assert_eq!(into.uri(), "/https%3A%2F%2Ffoo.example/".to_string());
+        assert_eq!(into.py_uri(), "/https%3A%2F%2Ffoo.example/".to_string());
+    }
+
+    #[test]
+    /// Test Info.with_oci_tag() return an Info object with the new version
+    /// OCI tags are not allowed to contain a "+" character
+    /// python versions can't contain a "-" character
+    fn test_info_with_oci_tag() {
+        let info = Info {
+            registry: url::Url::parse("https://foo.example").unwrap(),
+            namespace: "bar".to_string(),
+            file: File {
+                name: "baz".to_string(),
+                version: "1".to_string(),
+                dist_type: DistType::Sdist,
+                ..File::default()
+            },
+        };
+        let info = info.with_oci_tag("0.1.pre3-1234.foobar").unwrap();
+        assert_eq!(info.file.version, "0.1.pre3+1234.foobar".to_string());
     }
 
     #[test_case("baz-1-cp311-cp311-macosx_13_0_x86_64.whl"; "wheel simple version")]

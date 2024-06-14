@@ -1,4 +1,4 @@
-PyOci Hello World
+PyOCI Hello World
 =================
 
 This is a sample project to demonstrate how to publish a package to a OCI compliant registry using PyOci.
