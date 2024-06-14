@@ -211,9 +211,14 @@ impl PyOci {
         reference: &str,
     ) -> Result<Vec<package::Info>> {
         let manifest = self.pull_manifest(name, reference).await?;
-        let Manifest::Index(index) = manifest else {
-            bail!("Expected ImageIndex, got ImageManifest");
+        let index = match manifest {
+            Some(Manifest::Index(index)) => index,
+            Some(Manifest::Manifest(_)) => {
+                bail!("Expected ImageIndex, got ImageManifest");
+            }
+            None => bail!("Manifest does not exist"),
         };
+
         let artifact_type = index.artifact_type();
         match artifact_type {
             // Artifact type is as expected, do nothing
@@ -245,10 +250,11 @@ impl PyOci {
             .pull_manifest(&package.oci_name()?, &package.oci_tag()?)
             .await?
         {
-            Manifest::Index(index) => index,
-            Manifest::Manifest(_) => {
+            Some(Manifest::Index(index)) => index,
+            Some(Manifest::Manifest(_)) => {
                 bail!("Expected ImageIndex, got ImageManifest");
             }
+            None => bail!("Manifest does not exist"),
         };
         // Check artifact type
         match index.artifact_type() {
@@ -278,24 +284,15 @@ impl PyOci {
                 package.oci_architecture()
             )
         })?;
-        let manifest = match manifest_descriptor.data() {
-            Some(data) => {
-                // Manifest is embedded in the index
-                let data = BASE64_STANDARD.decode(data).expect("valid base64");
-                serde_json::from_slice::<ImageManifest>(&data).expect("valid json")
+        let manifest = match self
+            .pull_manifest(&package.oci_name()?, manifest_descriptor.digest())
+            .await?
+        {
+            Some(Manifest::Manifest(manifest)) => *manifest,
+            Some(Manifest::Index(_)) => {
+                bail!("Expected ImageManifest, got ImageIndex");
             }
-            None => {
-                // pull manifest
-                match self
-                    .pull_manifest(&package.oci_name()?, manifest_descriptor.digest())
-                    .await?
-                {
-                    Manifest::Index(_) => {
-                        bail!("Expected ImageManifest, got ImageIndex");
-                    }
-                    Manifest::Manifest(manifest) => *manifest,
-                }
-            }
+            None => bail!("Manifest does not exist"),
         };
         // pull blob in first layer of manifest
         let [blob_descriptor] = &manifest.layers()[..] else {
@@ -327,13 +324,13 @@ impl PyOci {
             .expect("valid ImageManifest");
         let manifest = PlatformManifest::new(manifest, package);
         // Pull an existing index
-        let index = match self.pull_manifest(&name, &tag).await {
-            Ok(Manifest::Manifest(_)) => {
+        let index = match self.pull_manifest(&name, &tag).await? {
+            Some(Manifest::Manifest(_)) => {
                 bail!("Expected ImageIndex, got ImageManifest");
             }
-            Ok(Manifest::Index(index)) => Some(index),
+            Some(Manifest::Index(index)) => Some(index),
             // TODO: This swallows 404 and all other errors, only 404 is expected
-            Err(_) => None,
+            None => None,
         };
 
         let index = match index {
@@ -527,32 +524,40 @@ impl PyOci {
         Ok(())
     }
 
-    async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Manifest> {
+    /// Pull a manifest from the registry
+    ///
+    /// If the manifest does not exist, Ok<None> is returned
+    /// If any other error happens, an Err is returned
+    async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Option<Manifest>> {
         let url = self.build_url(&format!("/v2/{name}/manifests/{reference}"));
         let request = self.transport.get(url).header(
             "Accept",
             "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
         );
         let response = self.transport.send(request).await.expect("valid response");
-        if !response.status().is_success() {
+        let status = response.status();
+        if status == StatusCode::NOT_FOUND {
+            return Ok(None);
+        };
+        if !status.is_success() {
             bail!(response.json::<ErrorResponse>().await?)
         };
         match response.headers().get("Content-Type") {
             Some(value) if value == "application/vnd.oci.image.index.v1+json" => {
-                Ok(Manifest::Index(Box::new(
+                Ok(Some(Manifest::Index(Box::new(
                     response
                         .json::<ImageIndex>()
                         .await
                         .expect("valid Index json"),
-                )))
+                ))))
             }
             Some(value) if value == "application/vnd.oci.image.manifest.v1+json" => {
-                Ok(Manifest::Manifest(Box::new(
+                Ok(Some(Manifest::Manifest(Box::new(
                     response
                         .json::<ImageManifest>()
                         .await
                         .expect("valid Manifest json"),
-                )))
+                ))))
             }
             Some(content_type) => bail!("Unknown Content-Type: {}", content_type.to_str().unwrap()),
             None => bail!("Missing Content-Type header"),
