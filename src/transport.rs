@@ -83,6 +83,7 @@ impl HttpTransport {
         let auth_response = self._send(auth_request).await.expect("valid response");
 
         if auth_response.status() != 200 {
+            // Authentication failed, return the original response
             return Ok(response);
         }
 

@@ -1,6 +1,5 @@
 use anyhow::{bail, Context, Error, Result};
 use base16ct::lower::encode_string as hex_encode;
-use base64::prelude::*;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use oci_spec::image::Arch;
@@ -57,10 +56,6 @@ impl PlatformManifest {
             .media_type("application/vnd.oci.image.manifest.v1+json")
             .digest(digest)
             .size(data.len() as i64)
-            // Embed the content of the manifest in it's Descriptor
-            // This would put the entire content of the manifest in the ImageIndex
-            // saving a roundtrip to the registry when pulling the package
-            // .data(BASE64_STANDARD.encode(data.as_bytes()))
             .platform(self.platform.clone())
             .build()
             .expect("Valid PlatformManifest Descriptor")
@@ -95,6 +90,42 @@ fn digest(data: &[u8]) -> String {
     let sha = <Sha256 as Digest>::digest(data);
     format!("sha256:{}", hex_encode(&sha))
 }
+
+/// Returned when a request has been authorized but the user has insufficient permissions
+#[derive(Debug)]
+pub enum OciError {
+    /// The user has insufficient permissions
+    Forbidden,
+    /// The user could not authorize
+    Unauthorized,
+}
+
+impl OciError {
+    pub fn status(&self) -> StatusCode {
+        match self {
+            OciError::Forbidden => StatusCode::FORBIDDEN,
+            OciError::Unauthorized => StatusCode::UNAUTHORIZED,
+        }
+    }
+
+    fn from_status(status: StatusCode) -> Option<Self> {
+        match status {
+            StatusCode::FORBIDDEN => Some(OciError::Forbidden),
+            StatusCode::UNAUTHORIZED => Some(OciError::Unauthorized),
+            _ => None,
+        }
+    }
+}
+
+impl std::fmt::Display for OciError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        match self {
+            OciError::Forbidden => write!(f, "Forbidden"),
+            OciError::Unauthorized => write!(f, "Unauthorized"),
+        }
+    }
+}
+impl std::error::Error for OciError {}
 
 #[derive(Deserialize)]
 pub struct AuthResponse {
@@ -329,7 +360,6 @@ impl PyOci {
                 bail!("Expected ImageIndex, got ImageManifest");
             }
             Some(Manifest::Index(index)) => Some(index),
-            // TODO: This swallows 404 and all other errors, only 404 is expected
             None => None,
         };
 
@@ -538,6 +568,9 @@ impl PyOci {
         let status = response.status();
         if status == StatusCode::NOT_FOUND {
             return Ok(None);
+        };
+        if let Some(err) = OciError::from_status(status) {
+            return Err(err.into());
         };
         if !status.is_success() {
             bail!(response.json::<ErrorResponse>().await?)

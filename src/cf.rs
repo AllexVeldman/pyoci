@@ -10,7 +10,7 @@ use worker::{
     Router,
 };
 
-use crate::{package, templates, PyOci};
+use crate::{package, pyoci::OciError, templates, PyOci};
 
 /// Wrap a async route handler into a closure that can be used in the router.
 ///
@@ -25,7 +25,12 @@ macro_rules! wrap {
 fn wrap(res: Result<Response>) -> worker::Result<Response> {
     match res {
         Ok(response) => Ok(response),
-        Err(e) => Response::error(e.to_string(), 400),
+        Err(e) => {
+            match e.downcast_ref::<OciError>() {
+                Some(err) => Response::error(err.to_string(), err.status().into()),
+                None => Response::error(e.to_string(), 400)
+            }
+        },
     }
 }
 
