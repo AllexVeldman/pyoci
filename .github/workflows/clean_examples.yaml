@@ -1,4 +1,4 @@
-name: Examples
+name: Cleanup
 
 on:
   workflow_dispatch:
