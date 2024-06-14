@@ -98,7 +98,7 @@ async fn download_package(req: Request, _ctx: RouteContext<()>) -> Result<Respon
     let response = ResponseBuilder::new()
         .with_header(
             "Content-Disposition",
-            &format!("attachment; filename=\"{}\"", package.file),
+            &format!("attachment; filename=\"{}\"", package.filename()),
         )
         .expect("valid header")
         .from_bytes(data.into())

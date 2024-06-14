@@ -7,11 +7,7 @@ cf-worker *args:
     NO_MINIFY=1 npx wrangler dev --port 8090 --local-upstream localhost:8090 {{args}}
 
 [group("dev")]
-install-build-dependencies:
-    cargo install wasm-pack
-
-[group("dev")]
-build *args: install-build-dependencies
+build *args:
     rm -rf ./build/
     wasm-pack build --no-typescript --target bundler --out-dir "build" --out-name "pyoci" {{args}}
     cp -f ./src/js/pyoci.js ./build/
@@ -54,5 +50,5 @@ poetry-local-install version:
     poetry add -C tests/dep-test hello-world@{{version}} --source pyoci-local --no-cache
 
 [group("test")]
-test-smoke: (poetry-local-publish "0.1.0") (poetry-local-install "0.1.0")
+test-smoke: (poetry-local-publish "0.1.0+1234") (poetry-local-install "0.1.0+1234")
     poetry run -C tests/dep-test python -m hello_world

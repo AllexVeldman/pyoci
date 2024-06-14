@@ -12,7 +12,7 @@ priority = "explicit"
 
 [tool.poetry.dependencies]
 python = "^3.8"
-hello-world = {version = "0.1.0", source = "pyoci-local"}
+hello-world = {version = "0.1.0+1234", source = "pyoci-local"}
 
 [build-system]
 requires = ["poetry-core"]

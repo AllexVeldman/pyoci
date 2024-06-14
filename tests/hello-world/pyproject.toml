@@ -1,6 +1,6 @@
 [tool.poetry]
 name = "hello-world"
-version = "0.1.0"
+version = "0.1.0+1234"
 description = "demo package to demonstrate pyoci"
 authors = ["Allex Veldman <allexveldman@gmail.com>"]
 readme = "README.md"

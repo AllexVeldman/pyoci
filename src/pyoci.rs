@@ -44,7 +44,7 @@ struct PlatformManifest {
 impl PlatformManifest {
     fn new(manifest: ImageManifest, package: &package::Info) -> Self {
         let platform = PlatformBuilder::default()
-            .architecture(Arch::Other(package.file.architecture()))
+            .architecture(Arch::Other(package.oci_architecture()))
             .os(Os::Other("any".to_string()))
             .build()
             .expect("valid Platform");
@@ -179,7 +179,7 @@ impl PyOci {
         package: &package::Info,
         n: usize,
     ) -> Result<Vec<package::Info>> {
-        let result = self.list_tags(&package.oci_name()).await?;
+        let result = self.list_tags(&package.oci_name()?).await?;
         tracing::debug!("{:?}", result);
         let tags = result.tags();
         let name = result.name();
@@ -227,12 +227,10 @@ impl PyOci {
         for manifest in index.manifests() {
             match manifest.platform().as_ref().unwrap().architecture() {
                 oci_spec::image::Arch::Other(arch) => {
-                    let mut file = package.clone();
-                    file.file = package
-                        .file
+                    let file = package
                         .clone()
-                        .with_version(reference)
-                        .with_architecture(arch)?;
+                        .with_oci_tag(reference)?
+                        .with_oci_architecture(arch)?;
                     files.push(file);
                 }
                 arch => bail!("Unsupported architecture '{}'", arch),
@@ -242,12 +240,9 @@ impl PyOci {
     }
 
     pub async fn download_package_file(&self, package: &crate::package::Info) -> Result<Response> {
-        if !package.file.is_valid() {
-            bail!("Not a valid package file: {}", package.file);
-        };
         // Pull index
         let index = match self
-            .pull_manifest(&package.oci_name(), &package.file.version)
+            .pull_manifest(&package.oci_name()?, &package.oci_tag()?)
             .await?
         {
             Manifest::Index(index) => index,
@@ -269,7 +264,7 @@ impl PyOci {
         for manifest in index.manifests() {
             if let Some(platform) = manifest.platform() {
                 match platform.architecture() {
-                    oci_spec::image::Arch::Other(arch) if *arch == package.file.architecture() => {
+                    oci_spec::image::Arch::Other(arch) if *arch == package.oci_architecture() => {
                         platform_manifest = Some(manifest);
                         break;
                     }
@@ -280,7 +275,7 @@ impl PyOci {
         let manifest_descriptor = platform_manifest.with_context(|| {
             format!(
                 "Requested architecture '{}' not available",
-                package.file.architecture()
+                package.oci_architecture()
             )
         })?;
         let manifest = match manifest_descriptor.data() {
@@ -292,7 +287,7 @@ impl PyOci {
             None => {
                 // pull manifest
                 match self
-                    .pull_manifest(&package.oci_name(), manifest_descriptor.digest())
+                    .pull_manifest(&package.oci_name()?, manifest_descriptor.digest())
                     .await?
                 {
                     Manifest::Index(_) => {
@@ -306,7 +301,7 @@ impl PyOci {
         let [blob_descriptor] = &manifest.layers()[..] else {
             bail!("Manifest should define exactly one layer");
         };
-        self.pull_blob(package.oci_name(), blob_descriptor.to_owned())
+        self.pull_blob(package.oci_name()?, blob_descriptor.to_owned())
             .await
     }
 
@@ -315,11 +310,8 @@ impl PyOci {
         package: &crate::package::Info,
         file: Vec<u8>,
     ) -> Result<()> {
-        if !package.file.is_valid() {
-            bail!("Not a valid package file: {}", package.file);
-        };
-
-        let name = package.oci_name();
+        let name = package.oci_name()?;
+        let tag = package.oci_tag()?;
 
         let layer = Blob::new(file, ARTIFACT_TYPE);
 
@@ -335,7 +327,7 @@ impl PyOci {
             .expect("valid ImageManifest");
         let manifest = PlatformManifest::new(manifest, package);
         // Pull an existing index
-        let index = match self.pull_manifest(&name, &package.file.version).await {
+        let index = match self.pull_manifest(&name, &tag).await {
             Ok(Manifest::Manifest(_)) => {
                 bail!("Expected ImageIndex, got ImageManifest");
             }
@@ -366,8 +358,8 @@ impl PyOci {
                         Some(platform) if *platform == manifest.platform => {
                             bail!(
                                 "Platform '{}' already exists for version '{}'",
-                                package.file.architecture(),
-                                package.file.version
+                                package.oci_architecture(),
+                                tag
                             );
                         }
                         _ => {}
@@ -386,12 +378,8 @@ impl PyOci {
         self.push_blob(&name, config).await?;
         self.push_manifest(&name, Manifest::Manifest(Box::new(manifest.manifest)), None)
             .await?;
-        self.push_manifest(
-            &name,
-            Manifest::Index(Box::new(index)),
-            Some(&package.file.version),
-        )
-        .await
+        self.push_manifest(&name, Manifest::Index(Box::new(index)), Some(&tag))
+            .await
     }
 }
 
