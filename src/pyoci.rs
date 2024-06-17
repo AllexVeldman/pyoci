@@ -25,6 +25,31 @@ use crate::package;
 use crate::transport::HttpTransport;
 use crate::ARTIFACT_TYPE;
 
+/// Build an URL from a format string while sanitizing the parameters
+///
+/// Returns Err when a parameter fails sanitization
+macro_rules! build_url {
+    ($pyoci:expr, $uri:literal, $($param:expr),+) => {{
+            let uri = format!(
+                $uri,
+                $(sanitize($param)?,)*
+            );
+            let mut new_url = $pyoci.registry.clone();
+            new_url.set_path(&uri);
+            new_url
+        }}
+}
+
+/// Sanitize a string
+///
+/// Returns an error if the string contains ".."
+fn sanitize(value: &str) -> Result<String> {
+    match value {
+        value if value.contains("..") => bail!("Invalid value: {}", value),
+        value => Ok(value.to_string()),
+    }
+}
+
 /// Return type for ``pull_manifest``
 /// as the same endpoint can return both a manifest and a manifest index
 #[derive(Debug)]
@@ -195,12 +220,6 @@ impl PyOci {
         }
     }
 
-    fn build_url(&self, uri: &str) -> Url {
-        let mut new_url = self.registry.clone();
-        new_url.set_path(uri);
-        new_url
-    }
-
     /// List all files for the given package
     ///
     /// Limits the number of files to `n`
@@ -210,10 +229,11 @@ impl PyOci {
         package: &package::Info,
         n: usize,
     ) -> Result<Vec<package::Info>> {
-        let result = self.list_tags(&package.oci_name()?).await?;
+        let name = package.oci_name()?;
+        let result = self.list_tags(&name).await?;
         tracing::debug!("{:?}", result);
+
         let tags = result.tags();
-        let name = result.name();
         let mut files: Vec<package::Info> = Vec::new();
         let futures = FuturesUnordered::new();
 
@@ -224,7 +244,7 @@ impl PyOci {
         // Even for non-spec registries the last-added seems to be at the end of the list
         // so this will result in the wanted list of tags in most cases.
         for tag in tags.iter().rev().take(n) {
-            futures.push(self.package_info_for_ref(package, name, tag));
+            futures.push(self.package_info_for_ref(package, &name, tag));
         }
         for result in futures
             .collect::<Vec<Result<Vec<package::Info>, Error>>>()
@@ -425,7 +445,7 @@ impl PyOci {
             .transport
             .send(
                 self.transport
-                    .head(self.build_url(&format!("/v2/{name}/blobs/{digest}"))),
+                    .head(build_url!(&self, "/v2/{}/blobs/{}", name, digest)),
             )
             .await
             .expect("valid response");
@@ -435,7 +455,7 @@ impl PyOci {
             return Ok(());
         }
 
-        let url = self.build_url(&format!("/v2/{name}/blobs/uploads/"));
+        let url = build_url!(&self, "/v2/{}/blobs/uploads/", name);
         let request = self
             .transport
             .post(url)
@@ -449,12 +469,18 @@ impl PyOci {
                 .expect("a Location header")
                 .to_str()
                 .expect("valid Location header value"),
-            _ => {
-                bail!(response.json::<ErrorResponse>().await?)
+            status => {
+                bail!(response
+                    .json::<ErrorResponse>()
+                    .await
+                    .with_context(|| format!(
+                        "Failed to upload blob, registry responded with '{}'",
+                        status
+                    ))?)
             }
         };
         let mut url: Url = if location.starts_with('/') {
-            self.build_url(location)
+            build_url!(&self, "{}", location)
         } else {
             location.parse().expect("valid url")
         };
@@ -493,7 +519,7 @@ impl PyOci {
         descriptor: Descriptor,
     ) -> Result<Response> {
         let digest = descriptor.digest();
-        let url = self.build_url(&format!("/v2/{name}/blobs/{digest}"));
+        let url = build_url!(&self, "/v2/{}/blobs/{}", &name, digest);
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
 
@@ -503,7 +529,7 @@ impl PyOci {
         Ok(response)
     }
     async fn list_tags(&self, name: &str) -> Result<TagList, Error> {
-        let url = self.build_url(&format!("/v2/{name}/tags/list"));
+        let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
         if !response.status().is_success() {
@@ -529,7 +555,7 @@ impl PyOci {
         let (url, data, content_type) = match manifest {
             Manifest::Index(index) => {
                 let version = version.context("`version` required for pushing and ImageIndex")?;
-                let url = self.build_url(&format!("/v2/{name}/manifests/{version}"));
+                let url = build_url!(&self, "v2/{}/manifests/{}", name, version);
                 let data = index.to_string().expect("valid json");
                 (url, data, "application/vnd.oci.image.index.v1+json")
             }
@@ -537,7 +563,7 @@ impl PyOci {
                 let data = manifest.to_string().expect("valid json");
                 let sha = <Sha256 as Digest>::digest(&data);
                 let digest = format!("sha256:{}", hex_encode(&sha));
-                let url = self.build_url(&format!("/v2/{name}/manifests/{digest}"));
+                let url = build_url!(&self, "/v2/{}/manifests/{}", name, &digest);
                 (url, data, "application/vnd.oci.image.manifest.v1+json")
             }
         };
@@ -559,7 +585,7 @@ impl PyOci {
     /// If the manifest does not exist, Ok<None> is returned
     /// If any other error happens, an Err is returned
     async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Option<Manifest>> {
-        let url = self.build_url(&format!("/v2/{name}/manifests/{reference}"));
+        let url = build_url!(&self, "/v2/{}/manifests/{}", name, reference);
         let request = self.transport.get(url).header(
             "Accept",
             "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
@@ -603,22 +629,28 @@ fn empty_config() -> Blob {
     Blob::new("{}".into(), "application/vnd.oci.empty.v1+json")
 }
 
-// fn parse_auth(value: &str) -> (Option<String>, Option<String>) {
-//     tracing::debug!("Parsing auth header: {:?}", value);
-//     let Some(value) = value.strip_prefix("Basic ") else {
-//         return (None, None);
-//     };
-//     match BASE64_STANDARD.decode(value.as_bytes()) {
-//         Ok(decoded) => {
-//             let decoded = String::from_utf8(decoded).expect("valid utf8");
-//             match decoded.splitn(2, ':').collect::<Vec<&str>>()[..] {
-//                 [username, password] => (Some(username.to_string()), Some(password.to_string())),
-//                 _ => (None, None),
-//             }
-//         }
-//         Err(err) => {
-//             tracing::warn!("Failed to decode auth header: {:?}", err);
-//             (None, None)
-//         }
-//     }
-// }
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_build_url() -> Result<()> {
+        let client = PyOci {
+            registry: Url::parse("https://example.com").expect("valid url"),
+            transport: HttpTransport::new(None),
+        };
+        let url = build_url!(&client, "/foo/{}/", "latest");
+        assert_eq!(url.as_str(), "https://example.com/foo/latest/");
+        Ok(())
+    }
+
+    #[test]
+    fn test_build_url_double_period() {
+        let client = PyOci {
+            registry: Url::parse("https://example.com").expect("valid url"),
+            transport: HttpTransport::new(None),
+        };
+        let x = || -> Result<Url> { Ok(build_url!(&client, "/foo/{}/", "..")) }();
+        assert!(x.is_err());
+    }
+}
