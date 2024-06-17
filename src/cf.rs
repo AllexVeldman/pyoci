@@ -1,9 +1,9 @@
 use anyhow::{bail, Result};
 use askama::Template;
-use std::str::FromStr;
-use tracing_subscriber::filter::LevelFilter;
+use std::{str::FromStr, sync::OnceLock};
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 use tracing_web::MakeWebConsoleWriter;
 use worker::{
     console_log, event, Context, Env, FormEntry, Request, Response, ResponseBuilder, RouteContext,
@@ -15,7 +15,6 @@ use crate::{package, pyoci::OciError, templates, PyOci};
 /// Wrap a async route handler into a closure that can be used in the router.
 ///
 /// Allows request handlers to return Result<Response, pyoci::Error> instead of worker::Result<worker::Response>
-#[macro_export]
 macro_rules! wrap {
     ($e:expr) => {
         |req: Request, ctx: RouteContext<()>| async { wrap($e(req, ctx).await) }
@@ -25,11 +24,9 @@ macro_rules! wrap {
 fn wrap(res: Result<Response>) -> worker::Result<Response> {
     match res {
         Ok(response) => Ok(response),
-        Err(e) => {
-            match e.downcast_ref::<OciError>() {
-                Some(err) => Response::error(err.to_string(), err.status().into()),
-                None => Response::error(e.to_string(), 400)
-            }
+        Err(e) => match e.downcast_ref::<OciError>() {
+            Some(err) => Response::error(err.to_string(), err.status().into()),
+            None => Response::error(e.to_string(), 400),
         },
     }
 }
@@ -39,27 +36,37 @@ fn wrap(res: Result<Response>) -> worker::Result<Response> {
 fn start() {
     // Ensure panics are logged to the worker console
     console_error_panic_hook::set_once();
+}
 
-    // OTLP exporter
-    let exporter = opentelemetry_otlp::new_exporter().http();
 
-    // Setup tracing
-    let console_log_layer = tracing_subscriber::fmt::layer()
-        .with_ansi(false) // Only partially supported across browsers
-        .with_timer(UtcTime::rfc_3339())
-        .with_writer(MakeWebConsoleWriter::new())
-        .with_filter(LevelFilter::INFO);
+fn init(env: &Env) {
+    static INIT: OnceLock<bool> = OnceLock::new();
+    INIT.get_or_init(|| {
+        let rust_log = match env.var("RUST_LOG") {
+            Ok(log) => log.to_string(),
+            Err(_) => "info".to_string(),
+        };
+        // OTLP exporter
+        let exporter = opentelemetry_otlp::new_exporter().http();
 
-    tracing_subscriber::registry()
-        .with(console_log_layer)
-        .init();
-    console_log!("Worker started");
+        // Setup tracing
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false) // Only partially supported across browsers
+            .with_timer(UtcTime::rfc_3339())
+            .with_writer(MakeWebConsoleWriter::new())
+            .with_filter(EnvFilter::new(rust_log));
+
+        tracing_subscriber::registry().with(fmt_layer).init();
+        console_log!("Worker initialized");
+        true
+    });
 }
 
 /// Called for each request to the worker
 #[tracing::instrument(skip(req, env, _ctx), fields(path = %req.path(), method = %req.method()))]
 #[event(fetch, respond_with_errors)]
 async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
+    init(&env);
     router().run(req, env).await
 }
 

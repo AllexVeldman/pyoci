@@ -15,16 +15,18 @@ build *args:
     cd ./build && npx esbuild --external:./pyoci_bg.wasm --external:cloudflare:sockets --external:cloudflare:workers --format=esm --bundle ./cf_worker.js --outfile=cf_worker.mjs --minify
 
 [group("curl")]
-local-publish:
+local-publish: refresh-registry
+    poetry version -C tests/hello-world 0.1.0
+    cd tests/hello-world && poetry build
     curl -v http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/allexveldman/ \
     -F ":action=file_upload" \
     -F protocol_version=1 \
     -F filetype=sdist \
     -F pyversion=source \
     -F metadata_version=2.3 \
-    -F name=pyoci \
+    -F name=hello_world \
     -F version=0.1.0 \
-    -F content=@py/dist/pyoci-0.1.0.tar.gz
+    -F content=@tests/hello-world/dist/hello_world-0.1.0.tar.gz
 
 [group("curl")]
 local-list:
@@ -32,7 +34,8 @@ local-list:
 
 [group("curl")]
 local-download:
-    curl -vOJ http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/allexveldman/pyoci/pyoci-0.1.0.tar.gz
+    curl -vOJ http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/allexveldman/hello_world/hello_world-0.1.0.tar.gz
+
 
 [group("setup")]
 refresh-registry:

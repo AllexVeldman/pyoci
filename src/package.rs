@@ -280,6 +280,7 @@ impl Info {
 
     /// Name of the package as used for the OCI registry
     ///
+    /// The package is in the format `<namespace>/<name>`
     /// Returns an error when the package name is not set
     pub fn oci_name(&self) -> Result<String> {
         Ok(format!("{}/{}", self.namespace, self.file.name()?).to_lowercase())
