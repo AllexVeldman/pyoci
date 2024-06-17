@@ -1,9 +1,9 @@
 use anyhow::{bail, Result};
 use askama::Template;
-use std::str::FromStr;
-use tracing_subscriber::filter::LevelFilter;
+use std::{str::FromStr, sync::OnceLock};
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
+use tracing_subscriber::EnvFilter;
 use tracing_web::MakeWebConsoleWriter;
 use worker::{
     console_log, event, Context, Env, FormEntry, Request, Response, ResponseBuilder, RouteContext,
@@ -36,22 +36,34 @@ fn wrap(res: Result<Response>) -> worker::Result<Response> {
 fn start() {
     // Ensure panics are logged to the worker console
     console_error_panic_hook::set_once();
+}
 
-    // Setup tracing
-    let fmt_layer = tracing_subscriber::fmt::layer()
-        .with_ansi(false) // Only partially supported across browsers
-        .with_timer(UtcTime::rfc_3339())
-        .with_writer(MakeWebConsoleWriter::new())
-        .with_filter(LevelFilter::INFO);
+fn init(env: &Env) {
+    static INIT: OnceLock<bool> = OnceLock::new();
+    INIT.get_or_init(|| {
+        let rust_log = match env.var("RUST_LOG") {
+            Ok(log) => log.to_string(),
+            Err(_) => "info".to_string(),
+        };
 
-    tracing_subscriber::registry().with(fmt_layer).init();
-    console_log!("Worker started");
+        // Setup tracing
+        let fmt_layer = tracing_subscriber::fmt::layer()
+            .with_ansi(false) // Only partially supported across browsers
+            .with_timer(UtcTime::rfc_3339())
+            .with_writer(MakeWebConsoleWriter::new())
+            .with_filter(EnvFilter::new(rust_log));
+
+        tracing_subscriber::registry().with(fmt_layer).init();
+        console_log!("Worker initialized");
+        true
+    });
 }
 
 /// Called for each request to the worker
 #[tracing::instrument(skip(req, env, _ctx), fields(path = %req.path(), method = %req.method()))]
 #[event(fetch, respond_with_errors)]
 async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
+    init(&env);
     router().run(req, env).await
 }
 

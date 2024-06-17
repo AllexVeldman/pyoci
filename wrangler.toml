@@ -6,6 +6,9 @@ compatibility_date = "2023-12-01"
 workers_dev = false
 route = { pattern = "pyoci.allexveldman.nl", custom_domain = true }
 
+[vars]
+RUST_LOG = "info"
+
 [build]
 # command = "cargo install -q worker-build && worker-build --release"
 command = "just build --release"
