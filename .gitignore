@@ -1,3 +1,4 @@
+.dev.vars
 dist/
 out/
 __pycache__/

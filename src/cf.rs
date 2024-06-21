@@ -18,16 +18,28 @@ use crate::{package, pyoci::OciError, templates, PyOci};
 /// Allows request handlers to return Result<Response, pyoci::Error> instead of worker::Result<worker::Response>
 macro_rules! wrap {
     ($e:expr) => {
-        |req: Request, ctx: RouteContext<()>| async { wrap($e(req, ctx).await) }
+        |req: Request, ctx: RouteContext<()>| async {
+            let method = req.method().to_string();
+            let path = req.path();
+            let (response, status) = wrap($e(req, ctx).await);
+            tracing::info!(method, status, path, "type" = "request");
+            response
+        }
     };
 }
 
-fn wrap(res: Result<Response>) -> worker::Result<Response> {
+fn wrap(res: Result<Response>) -> (worker::Result<Response>, u16) {
     match res {
-        Ok(response) => Ok(response),
+        Ok(response) => {
+            let status = response.status_code();
+            (Ok(response), status)
+        }
         Err(e) => match e.downcast_ref::<OciError>() {
-            Some(err) => Response::error(err.to_string(), err.status().into()),
-            None => Response::error(e.to_string(), 400),
+            Some(err) => (
+                Response::error(err.to_string(), err.status().into()),
+                err.status().into(),
+            ),
+            None => (Response::error(e.to_string(), 400), 400),
         },
     }
 }
