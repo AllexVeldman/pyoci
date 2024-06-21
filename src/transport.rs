@@ -107,14 +107,10 @@ impl HttpTransport {
         let request = request.build().expect("valid request");
         tracing::debug!("Request: {:#?}", request);
         let method = request.method().as_str().to_string();
-        let url = request.url().to_owned();
+        let url = request.url().to_owned().to_string();
         let response = self.client.execute(request).await.expect("valid response");
-        tracing::info!(
-            "[{method}] {status} {url}",
-            method = method,
-            status = response.status(),
-            url = url
-        );
+        let status: u16 = response.status().into();
+        tracing::info!(method, status, url);
         tracing::debug!("Response Headers: {:#?}", response.headers());
         Ok(response)
     }

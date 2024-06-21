@@ -10,11 +10,9 @@ route = { pattern = "pyoci.allexveldman.nl", custom_domain = true }
 RUST_LOG = "info"
 
 [build]
-# command = "cargo install -q worker-build && worker-build --release"
 command = "just build --release"
 
 [env.dev]
-# build = { command = "cargo install -q worker-build && worker-build --dev" }
 build = { command = "just build --dev" }
 
 # The rate limiting API is in open beta.
