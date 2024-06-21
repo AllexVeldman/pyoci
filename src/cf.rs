@@ -1,5 +1,6 @@
 use anyhow::{bail, Result};
 use askama::Template;
+use opentelemetry_proto::tonic::logs::v1::LogRecord;
 use std::{str::FromStr, sync::OnceLock};
 use tracing_subscriber::fmt::time::UtcTime;
 use tracing_subscriber::prelude::*;
@@ -38,35 +39,67 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-
-fn init(env: &Env) {
-    static INIT: OnceLock<bool> = OnceLock::new();
+fn init(env: &Env) -> &'static Option<async_channel::Receiver<Vec<LogRecord>>> {
+    static INIT: OnceLock<Option<async_channel::Receiver<Vec<LogRecord>>>> = OnceLock::new();
     INIT.get_or_init(|| {
         let rust_log = match env.var("RUST_LOG") {
             Ok(log) => log.to_string(),
             Err(_) => "info".to_string(),
         };
-        // OTLP exporter
-        let exporter = opentelemetry_otlp::new_exporter().http();
 
         // Setup tracing
         let fmt_layer = tracing_subscriber::fmt::layer()
-            .with_ansi(false) // Only partially supported across browsers
+            .with_ansi(false)
             .with_timer(UtcTime::rfc_3339())
             .with_writer(MakeWebConsoleWriter::new())
-            .with_filter(EnvFilter::new(rust_log));
+            .with_filter(EnvFilter::new(&rust_log));
 
-        tracing_subscriber::registry().with(fmt_layer).init();
+        let registry = tracing_subscriber::registry().with(fmt_layer);
+        // OTLP exporter
+        let (otlp_layer, receiver) = if env.secret("OTLP_ENDPOINT").is_err() {
+            (None, None)
+        } else {
+            let (otlp_layer, receiver) = crate::otlp::OtlpLogLayer::new();
+            (
+                Some(otlp_layer.with_filter(EnvFilter::new(rust_log))),
+                Some(receiver),
+            )
+        };
+
+        registry.with(otlp_layer).init();
         console_log!("Worker initialized");
-        true
-    });
+        receiver
+    })
 }
 
-/// Called for each request to the worker
-#[tracing::instrument(skip(req, env, _ctx), fields(path = %req.path(), method = %req.method()))]
+/// Entrypoint for the fetch event
 #[event(fetch, respond_with_errors)]
-async fn main(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
-    init(&env);
+async fn fetch(req: Request, env: Env, ctx: Context) -> worker::Result<Response> {
+    let receiver = init(&env);
+    let cf = req.cf().expect("valid cf").clone();
+    let otlp_endpoint = match env.secret("OTLP_ENDPOINT") {
+        Ok(endpoint) => endpoint.to_string(),
+        Err(_) => "".to_string(),
+    };
+    let otlp_auth = match env.secret("OTLP_AUTH") {
+        Ok(auth) => auth.to_string(),
+        Err(_) => "".to_string(),
+    };
+
+    let result = _fetch(req, env, ctx).await;
+
+    if let Some(receiver) = receiver {
+        crate::otlp::flush(receiver, otlp_endpoint, otlp_auth, &cf).await;
+    }
+    result
+}
+
+#[tracing::instrument(
+    name="fetch",
+    skip(req, env, _ctx),
+    fields(path = %req.path(), method = %req.method()))
+]
+async fn _fetch(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
     router().run(req, env).await
 }
 
