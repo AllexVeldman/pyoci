@@ -18,28 +18,16 @@ use crate::{package, pyoci::OciError, templates, PyOci};
 /// Allows request handlers to return Result<Response, pyoci::Error> instead of worker::Result<worker::Response>
 macro_rules! wrap {
     ($e:expr) => {
-        |req: Request, ctx: RouteContext<()>| async {
-            let method = req.method().to_string();
-            let path = req.path();
-            let (response, status) = wrap($e(req, ctx).await);
-            tracing::info!(method, status, path, "type" = "request");
-            response
-        }
+        |req: Request, ctx: RouteContext<()>| async { wrap($e(req, ctx).await) }
     };
 }
 
-fn wrap(res: Result<Response>) -> (worker::Result<Response>, u16) {
+fn wrap(res: Result<Response>) -> worker::Result<Response> {
     match res {
-        Ok(response) => {
-            let status = response.status_code();
-            (Ok(response), status)
-        }
+        Ok(response) => Ok(response),
         Err(e) => match e.downcast_ref::<OciError>() {
-            Some(err) => (
-                Response::error(err.to_string(), err.status().into()),
-                err.status().into(),
-            ),
-            None => (Response::error(e.to_string(), 400), 400),
+            Some(err) => Response::error(err.to_string(), err.status().into()),
+            None => Response::error(e.to_string(), 400),
         },
     }
 }
@@ -112,7 +100,18 @@ async fn fetch(req: Request, env: Env, ctx: Context) -> worker::Result<Response>
     fields(path = %req.path(), method = %req.method()))
 ]
 async fn _fetch(req: Request, env: Env, _ctx: Context) -> worker::Result<Response> {
-    router().run(req, env).await
+    let method = req.method().to_string();
+    let path = req.path();
+
+    let response = router().run(req, env).await;
+
+    let status = match &response {
+        Ok(response) => response.status_code(),
+        Err(_) => 400,
+    };
+
+    tracing::info!(method, status, path, "type" = "request");
+    response
 }
 
 /// Request Router
