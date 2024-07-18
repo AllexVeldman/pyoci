@@ -3,6 +3,11 @@ name: Examples
 on:
   workflow_call:
 
+  pull_request:
+    paths:
+      - 'docs/examples/**'
+      - '.github/workflows/examples.yaml'
+
 permissions:
   packages: write
   contents: read
@@ -12,9 +17,6 @@ jobs:
     name: Poetry
     runs-on: ubuntu-latest
     timeout-minutes: 2
-    defaults:
-      run:
-        working-directory: ./docs/examples/poetry
 
     steps:
       - uses: actions/checkout@v4
@@ -22,7 +24,24 @@ jobs:
 
       - run: pip install poetry
 
-      - run: |
-          poetry version "$(poetry version -s)+example-poetry-$(git rev-parse --short HEAD)"
+      - name: Version
+        id: version
+        working-directory: ./docs/examples/poetry/publish
+        run: |
+          echo "VERSION=$(poetry version -s)+example-poetry-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        working-directory: ./docs/examples/poetry/publish
+        run: |
+          poetry version "${{ steps.version.outputs.VERSION }}"
           poetry build
           poetry publish -n -r pyoci-ghcr-allexveldman -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+
+      - name: Install
+        working-directory: ./docs/examples/poetry/install
+        env:
+          POETRY_HTTP_BASIC_PYOCI_USERNAME: ${{ github.actor }}
+          POETRY_HTTP_BASIC_PYOCI_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          poetry add "hello-world@${{ steps.version.outputs.VERSION }}" --source pyoci
+          poetry run python -m hello_world
