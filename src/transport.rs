@@ -7,7 +7,7 @@ use crate::USER_AGENT;
 /// HTTP Transport
 ///
 /// This struct is responsible for sending HTTP requests to the upstream OCI registry.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct HttpTransport {
     /// HTTP client
     client: reqwest::Client,

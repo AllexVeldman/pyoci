@@ -1,7 +1,10 @@
 #![warn(unused_extern_crates)]
 
+// Webserver request handlers
+mod app;
 // Request handlers for the cloudflare worker
 mod cf;
+// OTLP handlers
 mod otlp;
 // Helper for parsing and managing Python/OCI packages
 mod package;

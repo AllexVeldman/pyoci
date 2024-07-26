@@ -114,8 +114,8 @@ impl FromStr for File {
     type Err = Error;
 
     /// Parse a filename into the package name, version and architecture
-
     fn from_str(value: &str) -> Result<Self> {
+        // TODO: No need to identify wheel vs sdist, only extract name and version
         if value.is_empty() {
             bail!("empty string");
         };
@@ -205,29 +205,49 @@ impl FromStr for Info {
         let parts: Vec<&str> = value.split('/').collect();
         match parts[..] {
             [registry, namespace, distribution] => {
-                let file = File {
-                    name: distribution.replace('-', "_"),
-                    ..File::default()
-                };
-                Ok(Info {
-                    registry: registry_url(registry)?,
-                    namespace: namespace.to_string(),
-                    file,
-                })
+                Ok((registry.into(), namespace.into(), distribution.into()).try_into()?)
             }
             [registry, namespace, distribution, filename] => {
-                let file = File::from_str(filename)?;
-                if distribution != file.name {
-                    bail!("Filename does not match distribution name");
-                };
-                Ok(Info {
-                    registry: registry_url(registry)?,
-                    namespace: namespace.to_string(),
-                    file,
-                })
+                Ok((registry.into(), namespace.into(), Some(distribution.into()), filename.into()).try_into()?)
             }
             _ => bail!("Expected '<registry>/<namespace>/<distribution>' or '<registry>/<namespace>/<distribution>/<filename>', got '{}'", value),
         }
+    }
+}
+
+impl TryFrom<(String, String, String)> for Info {
+    type Error = Error;
+
+    fn try_from((registry, namespace, distribution): (String, String, String)) -> Result<Self> {
+        Ok(Info {
+            registry: registry_url(&registry)?,
+            namespace,
+            file: File {
+                name: distribution.replace('-', "_"),
+                ..File::default()
+            },
+        })
+    }
+}
+
+impl TryFrom<(String, String, Option<String>, String)> for Info {
+    type Error = Error;
+
+    fn try_from(
+        (registry, namespace, distribution, filename): (String, String, Option<String>, String),
+    ) -> Result<Self> {
+        let file = File::from_str(&filename)?;
+        if let Some(distribution) = distribution {
+            if distribution != file.name {
+                bail!("Filename does not match distribution name");
+            }
+        }
+
+        Ok(Info {
+            registry: registry_url(&registry)?,
+            namespace,
+            file,
+        })
     }
 }
 
@@ -249,18 +269,7 @@ fn registry_url(registry: &str) -> Result<url::Url> {
 }
 
 impl Info {
-    pub fn new(registry: &str, namespace: &str, filename: &str) -> Result<Self> {
-        let info = Info {
-            registry: registry_url(registry)?,
-            namespace: namespace.to_string(),
-            file: File::from_str(filename)?,
-        };
-        Ok(info)
-    }
-
     /// Replace the version of the package for an OCI tag
-    ///
-
     ///
     /// <reference> as a tag MUST be at most 128 characters in length and MUST match the following regular expression:
     /// [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}

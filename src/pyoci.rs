@@ -116,6 +116,34 @@ fn digest(data: &[u8]) -> String {
     format!("sha256:{}", hex_encode(&sha))
 }
 
+#[derive(Debug)]
+pub struct PyOciError {
+    pub status: StatusCode,
+    pub message: String,
+}
+impl std::error::Error for PyOciError {}
+
+impl std::fmt::Display for PyOciError {
+    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
+        write!(f, "{}: {}", self.status, self.message)
+    }
+}
+
+impl From<(StatusCode, &str)> for PyOciError {
+    fn from((status, message): (StatusCode, &str)) -> Self {
+        PyOciError {
+            status,
+            message: message.to_string(),
+        }
+    }
+}
+
+impl From<(StatusCode, String)> for PyOciError {
+    fn from((status, message): (StatusCode, String)) -> Self {
+        PyOciError { status, message }
+    }
+}
+
 /// Returned when a request has been authorized but the user has insufficient permissions
 #[derive(Debug)]
 pub enum OciError {
@@ -206,6 +234,7 @@ impl WwwAuth {
 }
 
 /// Client to communicate with the OCI v2 registry
+#[derive(Debug)]
 pub struct PyOci {
     registry: Url,
     transport: HttpTransport,
@@ -232,7 +261,6 @@ impl PyOci {
         let name = package.oci_name()?;
         let result = self.list_tags(&name).await?;
         tracing::debug!("{:?}", result);
-
         let tags = result.tags();
         let mut files: Vec<package::Info> = Vec::new();
         let futures = FuturesUnordered::new();
@@ -347,7 +375,7 @@ impl PyOci {
         };
         // pull blob in first layer of manifest
         let [blob_descriptor] = &manifest.layers()[..] else {
-            bail!("Manifest should define exactly one layer");
+            bail!("Image Manifest defines unexpected number of layers, was this package published by pyoci?");
         };
         self.pull_blob(package.oci_name()?, blob_descriptor.to_owned())
             .await
@@ -528,12 +556,14 @@ impl PyOci {
         };
         Ok(response)
     }
-    async fn list_tags(&self, name: &str) -> Result<TagList, Error> {
+
+    /// List the available tags for a package
+    async fn list_tags(&self, name: &str) -> anyhow::Result<TagList> {
         let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
         if !response.status().is_success() {
-            bail!(response.json::<ErrorResponse>().await?)
+            return Err(PyOciError::from((StatusCode::NOT_FOUND, response.text().await?)).into());
         };
         let tags = response
             .json::<TagList>()
