@@ -1,0 +1,52 @@
+
+
+# Publish using the `poetry` package manager
+poetry-publish version username="" token="" repository="https://pyoci.allexveldman.nl/ghcr.io/allexveldman/":
+    #!/usr/bin/env bash
+    set -exuo pipefail
+
+    cd ./poetry/publish
+    poetry config --local repositories.pyoci "{{repository}}"
+    poetry version "{{version}}"
+    poetry build
+    poetry publish -n -r pyoci -u "{{username}}" -p "{{token}}"
+
+poetry-install version username="" token="" repository="https://pyoci.allexveldman.nl/ghcr.io/allexveldman/":
+    #!/usr/bin/env bash
+    set -exuo pipefail
+
+    cd ./poetry/install
+
+    # Setup the registry source credentials
+    poetry source add --priority=explicit pyoci "{{repository}}"
+    export POETRY_HTTP_BASIC_PYOCI_USERNAME={{username}}
+    export POETRY_HTTP_BASIC_PYOCI_PASSWORD={{token}}
+
+    poetry add "hello-world@{{version}}" --source pyoci --no-cache
+    poetry run python -m hello_world
+
+
+curl-publish version username token repository="http://localhost:8090/ghcr.io/allexveldman/":
+    #!/usr/bin/env bash
+    set -exuo pipefail
+
+    cd ./poetry/publish
+    poetry version {{version}}
+    poetry build -f sdist
+    curl -v {{repository}} \
+    -u {{username}}:{{token}} \
+    -F ":action=file_upload" \
+    -F protocol_version=1 \
+    -F filetype=sdist \
+    -F pyversion=source \
+    -F metadata_version=2.3 \
+    -F name=hello_world \
+    -F version={{version}} \
+    -F content=@dist/hello_world-{{version}}.tar.gz
+
+curl-list username token repository="http://localhost:8090/ghcr.io/allexveldman/":
+    curl -v -u {{username}}:{{token}} {{repository}}hello-world/
+
+curl-download version username token repository="http://localhost:8090/ghcr.io/allexveldman/":
+    curl -vOJ -u {{username}}:{{token}} {{repository}}hello_world/hello_world-{{version}}.tar.gz
+    rm hello_world-{{version}}.tar.gz
