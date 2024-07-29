@@ -13,7 +13,7 @@ jobs:
 
     environment:
       name: pyoci
-      url: https://pyoci.allexveldman.com
+      url: https://pyoci.allexveldman.nl
 
     steps:
       - uses: extractions/setup-just@v2
