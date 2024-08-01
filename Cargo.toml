@@ -65,5 +65,6 @@ features = [
 ]
 
 [dev-dependencies]
+mockito = "1.4.0"
 test-case = "3.3.1"
 tokio = { version = "1.39.1", features = ["macros"]}

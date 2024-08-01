@@ -52,6 +52,7 @@ impl HttpTransport {
         };
         let response = self._send(request).await.expect("valid response");
         if response.status() != 401 {
+            // TODO: support returning 403 when the authentication is not sufficient
             return Ok(response);
         }
         let Some(org_request) = org_request else {

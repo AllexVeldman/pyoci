@@ -553,6 +553,91 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_url_encoded_registry() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let mut mocks = vec![];
+        // Mock the server, in order of expected requests
+        // IndexManifest does not yet exist
+        mocks.push(
+            server
+                .mock("GET", "/v2/mockserver/foobar/manifests/1.0.0")
+                .with_status(404)
+                .create_async()
+                .await,
+        );
+        // HEAD request to check if blob exists for:
+        // - layer
+        // - config
+        mocks.push(
+            server
+                .mock(
+                    "HEAD",
+                    mockito::Matcher::Regex(r"/v2/mockserver/foobar/blobs/.+".to_string()),
+                )
+                .expect(2)
+                .with_status(404)
+                .create_async()
+                .await,
+        );
+        // POST request with blob for layer
+        mocks.push(
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/1?_state=uploading"),
+                )
+                .create_async()
+                .await,
+        );
+        mocks.push(
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/1?_state=uploading&digest=sha256%3Ab7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+        );
+        // POST request with blob for config
+        mocks.push(
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/2?_state=uploading"),
+                )
+                .create_async()
+                .await,
+        );
+        mocks.push(
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/2?_state=uploading&digest=sha256%3A44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+        );
+        // PUT request to create Manifest
+        mocks.push(
+            server
+                .mock("PUT", "/v2/mockserver/foobar/manifests/sha256:7ffd96d9eab411893eeacfa906e30956290a07b0141d7c1dd54c9fd5c7c48cf5")
+                .match_header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+        );
+        // PUT request to create Index
+        mocks.push(
+            server
+                .mock("PUT", "/v2/mockserver/foobar/manifests/1.0.0")
+                .match_header("Content-Type", "application/vnd.oci.image.index.v1+json")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+        );
+
         let router = router();
 
         let form = "--foobar\r\n\
@@ -570,7 +655,7 @@ mod tests {
             --foobar--\r\n";
         let req = Request::builder()
             .method("POST")
-            .uri("/pyoci.allexveldman.nl/pyoci/")
+            .uri(format!("/{encoded_url}/mockserver/"))
             .header("Content-Type", "multipart/form-data; boundary=foobar")
             .body(form.to_string())
             .unwrap();
@@ -584,7 +669,11 @@ mod tests {
                 .into(),
         )
         .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
         assert_eq!(&body, "Published");
-        assert_eq!(status, StatusCode::CREATED);
+        assert_eq!(status, StatusCode::OK);
     }
 }
