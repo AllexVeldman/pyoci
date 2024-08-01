@@ -147,42 +147,6 @@ impl From<(StatusCode, String)> for PyOciError {
     }
 }
 
-/// Returned when a request has been authorized but the user has insufficient permissions
-#[derive(Debug)]
-pub enum OciError {
-    /// The user has insufficient permissions
-    Forbidden,
-    /// The user could not authorize
-    Unauthorized,
-}
-
-impl OciError {
-    pub fn status(&self) -> StatusCode {
-        match self {
-            OciError::Forbidden => StatusCode::FORBIDDEN,
-            OciError::Unauthorized => StatusCode::UNAUTHORIZED,
-        }
-    }
-
-    fn from_status(status: StatusCode) -> Option<Self> {
-        match status {
-            StatusCode::FORBIDDEN => Some(OciError::Forbidden),
-            StatusCode::UNAUTHORIZED => Some(OciError::Unauthorized),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for OciError {
-    fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            OciError::Forbidden => write!(f, "Forbidden"),
-            OciError::Unauthorized => write!(f, "Unauthorized"),
-        }
-    }
-}
-impl std::error::Error for OciError {}
-
 #[derive(Deserialize)]
 pub struct AuthResponse {
     pub token: String,
@@ -627,16 +591,12 @@ impl PyOci {
             "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
         );
         let response = self.transport.send(request).await.expect("valid response");
-        let status = response.status();
-        if status == StatusCode::NOT_FOUND {
-            return Ok(None);
+        match response.status() {
+            StatusCode::NOT_FOUND => return Ok(None),
+            StatusCode::OK => {}
+            status => return Err(PyOciError::from((status, response.text().await?)).into()),
         };
-        if let Some(err) = OciError::from_status(status) {
-            return Err(err.into());
-        };
-        if !status.is_success() {
-            bail!(response.json::<ErrorResponse>().await?)
-        };
+
         match response.headers().get("Content-Type") {
             Some(value) if value == "application/vnd.oci.image.index.v1+json" => {
                 Ok(Some(Manifest::Index(Box::new(
