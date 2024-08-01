@@ -10,25 +10,6 @@ use tracing_subscriber::EnvFilter;
 use tracing_web::MakeWebConsoleWriter;
 use worker::{console_log, event, Body, Cf, Context, Env};
 
-/// Wrap an async route handler into a closure that can be used in the router.
-///
-/// Allows request handlers to return Result<Response, pyoci::Error> instead of worker::Result<worker::Response>
-// macro_rules! wrap {
-//     ($e:expr) => {
-//         |req: Request<Body>, ctx: RouteContext<()>| async { wrap($e(req, ctx).await) }
-//     };
-// }
-//
-// fn wrap(res: Result<Response>) -> worker::Result<Response> {
-//     match res {
-//         Ok(response) => Ok(response),
-//         Err(e) => match e.downcast_ref::<OciError>() {
-//             Some(err) => Response::error(err.to_string(), err.status().into()),
-//             None => Response::error(e.to_string(), 400),
-//         },
-//     }
-// }
-
 /// Called once when the worker is started
 #[event(start)]
 fn start() {

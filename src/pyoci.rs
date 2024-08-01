@@ -11,7 +11,7 @@ use oci_spec::image::Platform;
 use oci_spec::image::PlatformBuilder;
 use oci_spec::image::SCHEMA_VERSION;
 use oci_spec::{
-    distribution::{ErrorResponse, TagList},
+    distribution::TagList,
     image::{Descriptor, ImageIndex, ImageManifest, MediaType},
 };
 use regex::Regex;
@@ -520,10 +520,10 @@ impl PyOci {
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
 
-        if !response.status().is_success() {
-            bail!(response.json::<ErrorResponse>().await?)
-        };
-        Ok(response)
+        match response.status() {
+            StatusCode::OK => Ok(response),
+            status => Err(PyOciError::from((status, response.text().await?)).into()),
+        }
     }
 
     /// List the available tags for a package
@@ -531,8 +531,9 @@ impl PyOci {
         let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
-        if !response.status().is_success() {
-            return Err(PyOciError::from((StatusCode::NOT_FOUND, response.text().await?)).into());
+        match response.status() {
+            StatusCode::OK => {}
+            status => return Err(PyOciError::from((status, response.text().await?)).into()),
         };
         let tags = response
             .json::<TagList>()
