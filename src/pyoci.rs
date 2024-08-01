@@ -27,6 +27,9 @@ use crate::ARTIFACT_TYPE;
 
 /// Build an URL from a format string while sanitizing the parameters
 ///
+/// Note that if the resulting path is an absolute URL, the registry URL is ignored.
+/// For more info, see [`Url::join`]
+///
 /// Returns Err when a parameter fails sanitization
 macro_rules! build_url {
     ($pyoci:expr, $uri:literal, $($param:expr),+) => {{
@@ -35,8 +38,8 @@ macro_rules! build_url {
                 $(sanitize($param)?,)*
             );
             let mut new_url = $pyoci.registry.clone();
-            new_url.set_path(&uri);
-            new_url
+            new_url.set_path("");
+            new_url.join(&uri)?
         }}
 }
 
@@ -116,41 +119,33 @@ fn digest(data: &[u8]) -> String {
     format!("sha256:{}", hex_encode(&sha))
 }
 
-/// Returned when a request has been authorized but the user has insufficient permissions
 #[derive(Debug)]
-pub enum OciError {
-    /// The user has insufficient permissions
-    Forbidden,
-    /// The user could not authorize
-    Unauthorized,
+pub struct PyOciError {
+    pub status: StatusCode,
+    pub message: String,
 }
+impl std::error::Error for PyOciError {}
 
-impl OciError {
-    pub fn status(&self) -> StatusCode {
-        match self {
-            OciError::Forbidden => StatusCode::FORBIDDEN,
-            OciError::Unauthorized => StatusCode::UNAUTHORIZED,
-        }
-    }
-
-    fn from_status(status: StatusCode) -> Option<Self> {
-        match status {
-            StatusCode::FORBIDDEN => Some(OciError::Forbidden),
-            StatusCode::UNAUTHORIZED => Some(OciError::Unauthorized),
-            _ => None,
-        }
-    }
-}
-
-impl std::fmt::Display for OciError {
+impl std::fmt::Display for PyOciError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
-        match self {
-            OciError::Forbidden => write!(f, "Forbidden"),
-            OciError::Unauthorized => write!(f, "Unauthorized"),
+        write!(f, "{}: {}", self.status, self.message)
+    }
+}
+
+impl From<(StatusCode, &str)> for PyOciError {
+    fn from((status, message): (StatusCode, &str)) -> Self {
+        PyOciError {
+            status,
+            message: message.to_string(),
         }
     }
 }
-impl std::error::Error for OciError {}
+
+impl From<(StatusCode, String)> for PyOciError {
+    fn from((status, message): (StatusCode, String)) -> Self {
+        PyOciError { status, message }
+    }
+}
 
 #[derive(Deserialize)]
 pub struct AuthResponse {
@@ -206,6 +201,7 @@ impl WwwAuth {
 }
 
 /// Client to communicate with the OCI v2 registry
+#[derive(Debug)]
 pub struct PyOci {
     registry: Url,
     transport: HttpTransport,
@@ -232,7 +228,6 @@ impl PyOci {
         let name = package.oci_name()?;
         let result = self.list_tags(&name).await?;
         tracing::debug!("{:?}", result);
-
         let tags = result.tags();
         let mut files: Vec<package::Info> = Vec::new();
         let futures = FuturesUnordered::new();
@@ -347,7 +342,7 @@ impl PyOci {
         };
         // pull blob in first layer of manifest
         let [blob_descriptor] = &manifest.layers()[..] else {
-            bail!("Manifest should define exactly one layer");
+            bail!("Image Manifest defines unexpected number of layers, was this package published by pyoci?");
         };
         self.pull_blob(package.oci_name()?, blob_descriptor.to_owned())
             .await
@@ -450,9 +445,15 @@ impl PyOci {
             .await
             .expect("valid response");
 
-        if response.status() == StatusCode::OK {
-            tracing::info!("Blob already exists: {name}:{digest}");
-            return Ok(());
+        match response.status() {
+            StatusCode::OK => {
+                tracing::info!("Blob already exists: {name}:{digest}");
+                return Ok(());
+            }
+            StatusCode::NOT_FOUND => {}
+            status => {
+                return Err(PyOciError::from((status, response.text().await?)).into());
+            }
         }
 
         let url = build_url!(&self, "/v2/{}/blobs/uploads/", name);
@@ -466,24 +467,17 @@ impl PyOci {
             StatusCode::ACCEPTED => response
                 .headers()
                 .get("Location")
-                .expect("a Location header")
+                .context("Registry response did not contain a Location header")?
                 .to_str()
-                .expect("valid Location header value"),
+                .context("Failed to parse Location header as ASCII")?,
             status => {
-                bail!(response
-                    .json::<ErrorResponse>()
-                    .await
-                    .with_context(|| format!(
-                        "Failed to upload blob, registry responded with '{}'",
-                        status
-                    ))?)
+                return Err(PyOciError::from((status, response.text().await?)).into());
             }
         };
-        let mut url: Url = if location.starts_with('/') {
-            build_url!(&self, "{}", location)
-        } else {
-            location.parse().expect("valid url")
-        };
+        let mut url: Url = build_url!(&self, "{}", location);
+        // `append_pair` percent-encodes the values as application/x-www-form-urlencoded.
+        // ghcr.io seems to be fine with a percent-encoded digest but this could be an issue with
+        // other registries.
         url.query_pairs_mut().append_pair("digest", digest);
 
         let request = self
@@ -493,8 +487,11 @@ impl PyOci {
             .header("Content-Length", blob.data.len().to_string())
             .body(blob.data);
         let response = self.transport.send(request).await.expect("valid response");
-        if response.status() != StatusCode::CREATED {
-            bail!(response.json::<ErrorResponse>().await?)
+        match response.status() {
+            StatusCode::CREATED => {}
+            status => {
+                return Err(PyOciError::from((status, response.text().await?)).into());
+            }
         }
         tracing::debug!(
             "Blob-location: {}",
@@ -528,12 +525,14 @@ impl PyOci {
         };
         Ok(response)
     }
-    async fn list_tags(&self, name: &str) -> Result<TagList, Error> {
+
+    /// List the available tags for a package
+    async fn list_tags(&self, name: &str) -> anyhow::Result<TagList> {
         let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
         let response = self.transport.send(request).await.expect("valid response");
         if !response.status().is_success() {
-            bail!(response.json::<ErrorResponse>().await?)
+            return Err(PyOciError::from((StatusCode::NOT_FOUND, response.text().await?)).into());
         };
         let tags = response
             .json::<TagList>()
@@ -554,7 +553,7 @@ impl PyOci {
     ) -> Result<()> {
         let (url, data, content_type) = match manifest {
             Manifest::Index(index) => {
-                let version = version.context("`version` required for pushing and ImageIndex")?;
+                let version = version.context("`version` required for pushing an ImageIndex")?;
                 let url = build_url!(&self, "v2/{}/manifests/{}", name, version);
                 let data = index.to_string().expect("valid json");
                 (url, data, "application/vnd.oci.image.index.v1+json")
@@ -574,8 +573,9 @@ impl PyOci {
             .header("Content-Type", content_type)
             .body(data);
         let response = self.transport.send(request).await.expect("valid response");
-        if !response.status().is_success() {
-            bail!(response.json::<ErrorResponse>().await?)
+        match response.status() {
+            StatusCode::CREATED => {}
+            status => return Err(PyOciError::from((status, response.text().await?)).into()),
         };
         Ok(())
     }
@@ -591,16 +591,12 @@ impl PyOci {
             "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
         );
         let response = self.transport.send(request).await.expect("valid response");
-        let status = response.status();
-        if status == StatusCode::NOT_FOUND {
-            return Ok(None);
+        match response.status() {
+            StatusCode::NOT_FOUND => return Ok(None),
+            StatusCode::OK => {}
+            status => return Err(PyOciError::from((status, response.text().await?)).into()),
         };
-        if let Some(err) = OciError::from_status(status) {
-            return Err(err.into());
-        };
-        if !status.is_success() {
-            bail!(response.json::<ErrorResponse>().await?)
-        };
+
         match response.headers().get("Content-Type") {
             Some(value) if value == "application/vnd.oci.image.index.v1+json" => {
                 Ok(Some(Manifest::Index(Box::new(
@@ -645,6 +641,17 @@ mod tests {
     }
 
     #[test]
+    fn test_build_url_absolute() -> Result<()> {
+        let client = PyOci {
+            registry: Url::parse("https://example.com").expect("valid url"),
+            transport: HttpTransport::new(None),
+        };
+        let url = build_url!(&client, "{}/foo?bar=baz&qaz=sha:123", "http://pyoci.nl");
+        assert_eq!(url.as_str(), "http://pyoci.nl/foo?bar=baz&qaz=sha:123");
+        Ok(())
+    }
+
+    #[test]
     fn test_build_url_double_period() {
         let client = PyOci {
             registry: Url::parse("https://example.com").expect("valid url"),
@@ -652,5 +659,116 @@ mod tests {
         };
         let x = || -> Result<Url> { Ok(build_url!(&client, "/foo/{}/", "..")) }();
         assert!(x.is_err());
+    }
+
+    /// Test if a relative Location header is properly handled
+    #[tokio::test]
+    async fn test_push_blob_location_relative() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let mut mocks = vec![];
+        // Mock the server, in order of expected requests
+
+        // HEAD request to check if blob exists
+        mocks.push(
+            server
+                .mock(
+                    "HEAD",
+                    "/v2/mockserver/foobar/blobs/sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+                )
+                .with_status(404)
+                .create_async()
+                .await,
+        );
+        // POST request initiating blob upload
+        mocks.push(
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    "/v2/mockserver/foobar/blobs/uploads/1?_state=uploading",
+                )
+                .create_async()
+                .await,
+        );
+        // PUT request to upload blob
+        mocks.push(
+            server
+                .mock(
+                    "PUT",
+                    "/v2/mockserver/foobar/blobs/uploads/1?_state=uploading&digest=sha256%3A2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+                )
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+        );
+
+        let client = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None),
+        };
+        let blob = Blob::new("hello".into(), "application/octet-stream");
+        assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+    }
+    /// Test if an absolute Location header is properly handled
+    #[tokio::test]
+    async fn test_push_blob_location_absolute() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let mut mocks = vec![];
+        // Mock the server, in order of expected requests
+
+        // HEAD request to check if blob exists
+        mocks.push(
+            server
+                .mock(
+                    "HEAD",
+                    "/v2/mockserver/foobar/blobs/sha256:2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+                )
+                .with_status(404)
+                .create_async()
+                .await,
+        );
+        // POST request initiating blob upload
+        mocks.push(
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/1?_state=uploading"),
+                )
+                .create_async()
+                .await,
+        );
+        // PUT request to upload blob
+        mocks.push(
+            server
+                .mock(
+                    "PUT",
+                    "/v2/mockserver/foobar/blobs/uploads/1?_state=uploading&digest=sha256%3A2cf24dba5fb0a30e26e83b2ac5b9e29e1b161e5c1fa7425e73043362938b9824",
+                )
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+        );
+
+        let client = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None),
+        };
+        let blob = Blob::new("hello".into(), "application/octet-stream");
+        assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
     }
 }

@@ -7,7 +7,7 @@ use crate::USER_AGENT;
 /// HTTP Transport
 ///
 /// This struct is responsible for sending HTTP requests to the upstream OCI registry.
-#[derive(Default)]
+#[derive(Debug, Default)]
 pub struct HttpTransport {
     /// HTTP client
     client: reqwest::Client,
@@ -52,6 +52,7 @@ impl HttpTransport {
         };
         let response = self._send(request).await.expect("valid response");
         if response.status() != 401 {
+            // TODO: support returning 403 when the authentication is not sufficient
             return Ok(response);
         }
         let Some(org_request) = org_request else {

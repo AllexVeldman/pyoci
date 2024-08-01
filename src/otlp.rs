@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::sync::RwLock;
 
@@ -7,7 +8,7 @@ use time::OffsetDateTime;
 use tracing::Subscriber;
 use tracing_core::Event;
 use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
-use worker::{console_log, Cf};
+use worker::console_log;
 
 use tracing::field::{Field, Visit};
 
@@ -21,38 +22,31 @@ use crate::USER_AGENT;
 
 /// Convert a batch of log records into a ExportLogsServiceRequest
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
-fn build_logs_export_body(logs: Vec<LogRecord>, cf: &Cf) -> ExportLogsServiceRequest {
+fn build_logs_export_body(
+    logs: Vec<LogRecord>,
+    attributes: &HashMap<String, Option<String>>,
+) -> ExportLogsServiceRequest {
     let scope_logs = ScopeLogs {
         scope: None,
         log_records: logs,
         schema_url: "".to_string(),
     };
 
-    let region = cf.region().map(|region| AnyValue {
-        value: Some(any_value::Value::StringValue(region)),
-    });
-    let zone = Some(AnyValue {
-        value: Some(any_value::Value::StringValue(cf.colo())),
-    });
-
+    let mut attrs = vec![];
+    for (key, value) in attributes {
+        let Some(value) = value else {
+            continue;
+        };
+        attrs.push(KeyValue {
+            key: key.into(),
+            value: Some(AnyValue {
+                value: Some(any_value::Value::StringValue(value.into())),
+            }),
+        });
+    }
     let resource_logs = ResourceLogs {
         resource: Some(Resource {
-            attributes: vec![
-                KeyValue {
-                    key: "service.name".to_string(),
-                    value: Some(AnyValue {
-                        value: Some(any_value::Value::StringValue("pyoci".to_string())),
-                    }),
-                },
-                KeyValue {
-                    key: "cloud.region".to_string(),
-                    value: region,
-                },
-                KeyValue {
-                    key: "cloud.availability_zone".to_string(),
-                    value: zone,
-                },
-            ],
+            attributes: attrs,
             dropped_attributes_count: 0,
         }),
         scope_logs: vec![scope_logs],
@@ -89,7 +83,7 @@ pub async fn flush(
     receiver: &async_channel::Receiver<Vec<LogRecord>>,
     otlp_endpoint: String,
     otlp_auth: String,
-    cf: &Cf,
+    attributes: &HashMap<String, Option<String>>,
 ) {
     console_log!("Flushing logs to OTLP");
     let client = reqwest::Client::builder()
@@ -107,7 +101,7 @@ pub async fn flush(
                 break;
             }
         };
-        let body = build_logs_export_body(log_records, cf).encode_to_vec();
+        let body = build_logs_export_body(log_records, attributes).encode_to_vec();
         let mut url = url::Url::parse(&otlp_endpoint).unwrap();
         url.path_segments_mut().unwrap().extend(&["v1", "logs"]);
         // send to OTLP Collector
@@ -141,6 +135,8 @@ pub async fn flush(
 
 // Private methods
 impl OtlpLogLayer {
+    /// Push all recorded log messages onto the channel
+    /// This is called at the end of every request
     fn flush(&self) -> Result<()> {
         let records: Vec<LogRecord> = self.records.write().unwrap().drain(..).collect();
         console_log!("Sending {} log records to OTLP", records.len());
@@ -216,7 +212,12 @@ where
         self.records.write().unwrap().push(log_record);
     }
 
-    fn on_close(&self, _id: tracing_core::span::Id, _ctx: Context<'_, S>) {
+    fn on_close(&self, id: tracing_core::span::Id, ctx: Context<'_, S>) {
+        let span = ctx.span(&id).expect("span not found");
+        if !span.parent().is_none() {
+            // This is a sub-span, we'll flush all messages when the root span is closed
+            return;
+        }
         if let Err(err) = self.flush() {
             console_log!("Failed to flush log records: {:?}", err);
         }
