@@ -5,6 +5,11 @@ on:
     branches:
       - main
 
+# Prevent parallel deployments
+concurrency:
+  group: ${{ github.workflow }}-pyoci.allexveldman.nl
+  cancel-in-progress: false
+
 jobs:
   deploy:
     runs-on: ubuntu-latest
