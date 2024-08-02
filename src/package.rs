@@ -4,6 +4,9 @@ use std::{
 };
 
 use anyhow::{bail, Error, Result};
+use http::StatusCode;
+
+use crate::pyoci::PyOciError;
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 enum DistType {
@@ -134,7 +137,7 @@ impl FromStr for File {
                 ),
             }
         } else if let Some(value) = value.strip_suffix(".tar.gz") {
-            // Select the str without the extention and split on "-" 2 times
+            // Select the str without the extension and split on "-" 2 times
             match value.splitn(2, '-').collect::<Vec<&str>>()[..] {
                 [name, version] => Ok(File {
                     name: name.to_string(),
@@ -145,7 +148,10 @@ impl FromStr for File {
                 _ => bail!("Expected '<name>-<version>.tar.gz', got '{}.tar.gz'", value),
             }
         } else {
-            bail!("Unkown filetype '{}'", value.to_string())
+            Err(PyOciError::from((
+                StatusCode::NOT_FOUND,
+                format!("Unkown filetype '{}'", value),
+            )))?
         }
     }
 }
