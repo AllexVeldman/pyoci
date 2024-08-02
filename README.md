@@ -1,5 +1,9 @@
 # PyOCI
-Publish and download python packages using OCI registries
+Publish and download python packages using OCI registries.
+
+[![Test](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml)
+[![Examples](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml)
+[![Deploy](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml)
 
 PyOCI allows using any (private) OCI registry as a python package index.
 It acts as a proxy between pip and the OCI registry.
@@ -18,9 +22,9 @@ instead the [token authentication](https://distribution.github.io/distribution/s
 
 To install a package with pip using PyOCI:
 ```commandline
-pip install --extra-index-url=http://<username>:<password>@<pyoci url>/<OCI registry url>/<namespace>/ <package name>
+pip install --extra-index-url=http://<username>:<password>@<pyoci url>/<OCI registry url>/<namespace>/<package name>
 ```
 Example installing package `bar` from user `Foo` using `ghcr.io` as the registry:
 ```commandline
-pip install --extra-index-url=https://Foo:$GH_TOKEN@example.pyoci.com/ghcr.io/foo/ bar
+pip install --extra-index-url=https://Foo:$GH_TOKEN@example.pyoci.com/ghcr.io/foo/bar
 ```
