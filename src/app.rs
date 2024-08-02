@@ -54,13 +54,17 @@ pub fn router() -> Router {
 async fn trace_middleware(
     method: axum::http::Method,
     uri: axum::http::Uri,
+    headers: axum::http::HeaderMap,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     let response = next.run(request).await;
 
     let status: u16 = response.status().into();
-    tracing::info!(method = %method, status, path = %uri.path(), "type" = "request");
+    let user_agent = headers
+        .get("user-agent")
+        .map(|ua| ua.to_str().unwrap_or(""));
+    tracing::info!(method = %method, status, path = %uri.path(), user_agent, "type" = "request");
     response
 }
 
