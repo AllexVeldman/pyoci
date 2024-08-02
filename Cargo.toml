@@ -42,7 +42,7 @@ axum = { version = "0.7.5", default-features = false, features = ["multipart","m
 time = { version = "0.3.36", features = ["wasm-bindgen"] }
 console_error_panic_hook = "0.1.7"
 wasm-bindgen = "0.2.92"
-worker = { version = "0.3.0", features = ["http", "axum"] }
+worker = { version = "0.3.0", features = ["http"] }
 tracing-web = "0.1.3"
 futures = "0.3.30"
 
