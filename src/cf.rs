@@ -55,7 +55,7 @@ fn init(env: &Env) -> &'static Option<async_channel::Receiver<Vec<LogRecord>>> {
 async fn fetch(
     req: Request<Body>,
     env: Env,
-    _ctx: Context,
+    ctx: Context,
 ) -> worker::Result<Response<axum::body::Body>> {
     let receiver = init(&env);
     let cf = req.extensions().get::<Cf>().unwrap().to_owned();
@@ -77,8 +77,9 @@ async fn fetch(
             ("cloud.region".to_string(), cf.region()),
             ("cloud.availability_zone".to_string(), Some(cf.colo())),
         ]);
-
-        crate::otlp::flush(receiver, otlp_endpoint, otlp_auth, &attributes).await;
+        ctx.wait_until(async move {
+            crate::otlp::flush(receiver, otlp_endpoint, otlp_auth, &attributes).await;
+        });
     }
     Ok(result?)
 }
