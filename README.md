@@ -1,25 +1,46 @@
 # PyOCI
-Publish and download python packages using OCI registries.
+Publish and download (private) python packages using an OCI registry for storage.
 
 [![Test](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml)
 [![Examples](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml)
 [![Deploy](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml)
 
-PyOCI allows using any (private) OCI registry as a python package index.
+## Introduction
+Most subscriptions with cloud providers include an [OCI](https://opencontainers.org/) (docker image) registry where private containers can be published and distributed from.
+
+PyOCI allows using any (private) OCI registry as a python package index, as long as it implements the [OCI distribution specification](https://github.com/opencontainers/distribution-spec/blob/main/spec.md).
 It acts as a proxy between pip and the OCI registry.
 
+An instance of PyOCI is available at https://pyoci.allexveldman.nl, to use this proxy, please see the [Examples](#Examples).
+
+Tested registries:
+- [ghcr.io](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+
+Packages published through PyOCI use the `application/pyoci.package.v1` [artifactType](https://github.com/opencontainers/image-spec/blob/v1.1.0/manifest.md#guidelines-for-artifact-usage).
+
+Published packages will show up in the OCI registry UI:
+
+<img width="500" alt="ghcr.io hello-world package versions" src="https://github.com/user-attachments/assets/c3595da9-91e7-4ee6-b890-2ed9baca3c9d">
+
+
+Distinct distributions will show up as separate architectures for the same version:
+
+<img width="500" alt="ghcr.io hello-world distinct architectures" src="https://github.com/user-attachments/assets/63d130cf-5551-4131-b48b-a6e8f259cbc5">
+
+## Authentication
 Basic authentication is forwarded to the target registry.
 
 For PyOCI to resolve to the correct package, the following parts are needed as part of the index-url:
-- OCI registry url, https is assumed
-- namespace, for most registries this is the username or organization name
-- name of the python package
+- OCI registry url, https is assumed.
+- namespace, for most registries this is the username or organization name.
+- name of the python package.
 
 Currently only Basic authentication is supported.
 This is due to pip [only supporting basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
 and [not all OCI registries supporting OAuth](https://distribution.github.io/distribution/spec/auth/oauth/),
 instead the [token authentication](https://distribution.github.io/distribution/spec/auth/token/) is used.
 
+## Examples
 To install a package with pip using PyOCI:
 ```commandline
 pip install --extra-index-url=http://<username>:<password>@<pyoci url>/<OCI registry url>/<namespace>/<package name>
@@ -29,7 +50,14 @@ Example installing package `bar` from user `Foo` using `ghcr.io` as the registry
 pip install --extra-index-url=https://Foo:$GH_TOKEN@pyoci.allexveldman.nl/ghcr.io/foo/bar
 ```
 
-For more examples, see the [examples](/docs/examples)
+For more examples, including how to publish a package, see the [examples](/docs/examples)
+
+## Changing a package
+PyOCI will refuse to upload a package file if the package name, version and architecture already exist.
+To update an existing file, delete it first and re-publish it.
+
+## Deleting a package
+PyOCI does not provide a way to delete a package, instead you can use the OCI registry provided methods to delete your package.
 
 ## Renovate + ghcr.io
 As PyOCI acts as a private pypi index, Renovate needs to be configured to use credentials for your private packages.
