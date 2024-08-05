@@ -2,7 +2,7 @@ use askama::Template;
 use async_trait::async_trait;
 use axum::{
     debug_handler,
-    extract::{FromRequestParts, Multipart, Path},
+    extract::{DefaultBodyLimit, FromRequestParts, Multipart, Path},
     http::{header, request::Parts, HeaderMap},
     response::{Html, IntoResponse},
     routing::{get, post},
@@ -46,7 +46,10 @@ pub fn router() -> Router {
             "/:registry/:namespace/:package/:filename",
             get(download_package),
         )
-        .route("/:registry/:namespace/", post(publish_package))
+        .route(
+            "/:registry/:namespace/",
+            post(publish_package).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
+        )
         .layer(axum::middleware::from_fn(trace_middleware))
 }
 
