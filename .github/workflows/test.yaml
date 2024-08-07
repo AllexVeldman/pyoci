@@ -15,6 +15,7 @@ jobs:
     steps:
       - uses: extractions/setup-just@v2
       - uses: actions/checkout@v4
+      - uses: taiki-e/install-action@cargo-llvm-cov
       - uses: actions/cache@v4
         with:
           path: |
@@ -29,4 +30,9 @@ jobs:
         run: just build
 
       - name: Test
-        run: cargo test
+        run: just test-coverage
+
+      - name: Upload coverage reports to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          token: ${{ secrets.CODECOV_TOKEN }}
