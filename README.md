@@ -4,6 +4,7 @@ Publish and download (private) python packages using an OCI registry for storage
 [![Test](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml)
 [![Examples](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml)
 [![Deploy](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml)
+[![codecov](https://codecov.io/github/AllexVeldman/pyoci/graph/badge.svg?token=SXFCPX8M22)](https://codecov.io/github/AllexVeldman/pyoci)
 
 ## Introduction
 Most subscriptions with cloud providers include an [OCI](https://opencontainers.org/) (docker image) registry where private containers can be published and distributed from.
@@ -66,7 +67,7 @@ To prevent having to check-in [encrypted secrets](https://docs.renovatebot.com/g
 you can:
 1. Self-host renovate as a github workflow
 2. Set `package: read` permissions for the workflow
-3. Pass the `GITHUB_TOKEN` as an environment variable to Renovate 
+3. Pass the `GITHUB_TOKEN` as an environment variable to Renovate
 4. Add a hostRule for the Renovate runner to apply basic auth for pyoci using the environment variable
 5. In the [package settings](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility#ensuring-workflow-access-to-your-package) of the private package give the repository running renovate `read` access.
 

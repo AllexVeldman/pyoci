@@ -14,6 +14,12 @@ build *args:
     cp ./src/js/cf_worker.js ./build/
     cd ./build && npx esbuild --external:./pyoci_bg.wasm --external:cloudflare:sockets --external:cloudflare:workers --format=esm --bundle ./cf_worker.js --outfile=cf_worker.mjs --minify
 
+# Run tests with coverage, requires cargo-llvm-cov. Add `--open` to open the report in the browser.
+[group("ci")]
+test-coverage *args:
+    cargo llvm-cov --lcov --output-path lcov.info
+    cargo llvm-cov report {{args}}
+
 # Recreate the OCI registry, clears it's package cache
 [group("setup")]
 refresh-registry:

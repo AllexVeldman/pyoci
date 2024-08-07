@@ -8,3 +8,4 @@ build/
 /target
 node_modules/
 .venv/
+lcov.info
