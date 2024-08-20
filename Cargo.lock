@@ -1436,6 +1436,7 @@ dependencies = [
  "mockito",
  "oci-spec",
  "opentelemetry-proto",
+ "pin-project",
  "prost",
  "regex",
  "reqwest",

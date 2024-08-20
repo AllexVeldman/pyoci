@@ -9,6 +9,7 @@ use axum::{
     Router,
 };
 use http::StatusCode;
+use time::OffsetDateTime;
 use url::Url;
 
 use crate::{package, pyoci::PyOciError, templates, PyOci};
@@ -50,24 +51,32 @@ pub fn router() -> Router {
             "/:registry/:namespace/",
             post(publish_package).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
         )
-        .layer(axum::middleware::from_fn(trace_middleware))
+        .layer(axum::middleware::from_fn(accesslog_middleware))
 }
 
 /// Log incoming requests
-async fn trace_middleware(
+async fn accesslog_middleware(
     method: axum::http::Method,
     uri: axum::http::Uri,
     headers: axum::http::HeaderMap,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
+    let start = OffsetDateTime::now_utc();
     let response = next.run(request).await;
 
     let status: u16 = response.status().into();
     let user_agent = headers
         .get("user-agent")
         .map(|ua| ua.to_str().unwrap_or(""));
-    tracing::info!(method = %method, status, path = %uri.path(), user_agent, "type" = "request");
+    tracing::info!(
+        elapsed_ms = (OffsetDateTime::now_utc() - start).whole_milliseconds(),
+        method = method.to_string(),
+        status,
+        path = uri.path(),
+        user_agent,
+        "type" = "request"
+    );
     response
 }
 
@@ -90,7 +99,7 @@ async fn list_package(
 
     let package: package::Info = path_params.0.try_into()?;
 
-    let client = PyOci::new(package.registry.clone(), auth);
+    let mut client = PyOci::new(package.registry.clone(), auth);
     // Fetch at most 45 packages
     // https://developers.cloudflare.com/workers/platform/limits/#account-plan-limits
     let files = client.list_package_files(&package, 45).await?;
@@ -101,7 +110,7 @@ async fn list_package(
 }
 
 /// Download package request handler
-// #[debug_handler]
+#[debug_handler]
 // Mark the handler as Send when building a wasm target
 //  JsFuture, and most other JS objects are !Send
 //  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
@@ -117,7 +126,7 @@ async fn download_package(
     };
     let package: package::Info = path_params.0.try_into()?;
 
-    let client = PyOci::new(package.registry.clone(), auth);
+    let mut client = PyOci::new(package.registry.clone(), auth);
     let data = client
         .download_package_file(&package)
         .await?
@@ -125,7 +134,6 @@ async fn download_package(
         .await
         .expect("valid bytes");
 
-    // TODO: With some trickery we could stream the data directly to the response
     Ok((
         [(
             header::CONTENT_DISPOSITION,
@@ -138,7 +146,7 @@ async fn download_package(
 /// Publish package request handler
 ///
 /// ref: https://warehouse.pypa.io/api-reference/legacy.html#upload-api
-// #[debug_handler]
+#[debug_handler]
 // Mark the handler as Send when building a wasm target
 //  JsFuture, and most other JS objects are !Send
 //  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
@@ -156,7 +164,7 @@ async fn publish_package(
         None => None,
     };
     let package: package::Info = (registry, namespace, None, form_data.filename).try_into()?;
-    let client = PyOci::new(package.registry.clone(), auth);
+    let mut client = PyOci::new(package.registry.clone(), auth);
 
     client
         .publish_package_file(&package, form_data.content)
