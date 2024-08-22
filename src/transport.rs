@@ -51,12 +51,12 @@ impl HttpTransport {
     ///
     /// auth: Basic auth string
     ///       Will be swapped for a Bearer token if needed
-    pub fn new(auth: Option<String>) -> Self {
+    pub fn new(auth: Option<String>) -> Result<Self> {
         let client = reqwest::Client::builder().user_agent(USER_AGENT);
-        Self {
-            client: client.build().unwrap(),
-            auth_layer: AuthLayer::new(auth),
-        }
+        Ok(Self {
+            client: client.build()?,
+            auth_layer: AuthLayer::new(auth)?,
+        })
     }
 
     /// Send a request
@@ -116,7 +116,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(None);
+        let mut transport = HttpTransport::new(None).unwrap();
         let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -163,7 +163,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string()));
+        let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string())).unwrap();
         let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -191,7 +191,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(None);
+        let mut transport = HttpTransport::new(None).unwrap();
         let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -226,7 +226,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string()));
+        let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string())).unwrap();
         let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -272,7 +272,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string()));
+        let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string())).unwrap();
         let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {

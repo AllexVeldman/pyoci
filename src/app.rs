@@ -99,7 +99,7 @@ async fn list_package(
 
     let package: package::Info = path_params.0.try_into()?;
 
-    let mut client = PyOci::new(package.registry.clone(), auth);
+    let mut client = PyOci::new(package.registry.clone(), auth)?;
     // Fetch at most 45 packages
     // https://developers.cloudflare.com/workers/platform/limits/#account-plan-limits
     let files = client.list_package_files(&package, 45).await?;
@@ -126,7 +126,7 @@ async fn download_package(
     };
     let package: package::Info = path_params.0.try_into()?;
 
-    let mut client = PyOci::new(package.registry.clone(), auth);
+    let mut client = PyOci::new(package.registry.clone(), auth)?;
     let data = client
         .download_package_file(&package)
         .await?
@@ -164,7 +164,7 @@ async fn publish_package(
         None => None,
     };
     let package: package::Info = (registry, namespace, None, form_data.filename).try_into()?;
-    let mut client = PyOci::new(package.registry.clone(), auth);
+    let mut client = PyOci::new(package.registry.clone(), auth)?;
 
     client
         .publish_package_file(&package, form_data.content)

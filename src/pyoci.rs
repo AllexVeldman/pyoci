@@ -209,11 +209,11 @@ pub struct PyOci {
 
 impl PyOci {
     /// Create a new Client
-    pub fn new(registry: Url, auth: Option<String>) -> Self {
-        PyOci {
+    pub fn new(registry: Url, auth: Option<String>) -> Result<Self> {
+        Ok(PyOci {
             registry,
-            transport: HttpTransport::new(auth),
-        }
+            transport: HttpTransport::new(auth)?,
+        })
     }
 
     /// List all files for the given package
@@ -638,7 +638,7 @@ mod tests {
     fn test_build_url() -> Result<()> {
         let client = PyOci {
             registry: Url::parse("https://example.com").expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let url = build_url!(&client, "/foo/{}/", "latest");
         assert_eq!(url.as_str(), "https://example.com/foo/latest/");
@@ -649,7 +649,7 @@ mod tests {
     fn test_build_url_absolute() -> Result<()> {
         let client = PyOci {
             registry: Url::parse("https://example.com").expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let url = build_url!(&client, "{}/foo?bar=baz&qaz=sha:123", "http://pyoci.nl");
         assert_eq!(url.as_str(), "http://pyoci.nl/foo?bar=baz&qaz=sha:123");
@@ -660,7 +660,7 @@ mod tests {
     fn test_build_url_double_period() {
         let client = PyOci {
             registry: Url::parse("https://example.com").expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let x = || -> Result<Url> { Ok(build_url!(&client, "/foo/{}/", "..")) }();
         assert!(x.is_err());
@@ -712,7 +712,7 @@ mod tests {
 
         let mut client = PyOci {
             registry: Url::parse(&url).expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let blob = Blob::new("hello".into(), "application/octet-stream");
         assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());
@@ -767,7 +767,7 @@ mod tests {
 
         let mut client = PyOci {
             registry: Url::parse(&url).expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let blob = Blob::new("hello".into(), "application/octet-stream");
         assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());

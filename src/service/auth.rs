@@ -1,3 +1,4 @@
+use anyhow::Result;
 use futures::ready;
 use http::StatusCode;
 use pin_project::pin_project;
@@ -10,28 +11,33 @@ use url::Url;
 
 use crate::pyoci::{AuthResponse, WwwAuth};
 
+/// Authentication layer for the OCI registry
+/// This layer will handle [token authentication](https://distribution.github.io/distribution/spec/auth/token/)
+/// based on the authentication header of the original request.
 #[derive(Debug, Default, Clone)]
 pub struct AuthLayer {
     // The Basic token to trade for a Bearer token
     basic: Option<http::HeaderValue>,
     // The Bearer token to use for authentication
-    // Will be updated after successful authentication
+    // Will be set after successful authentication
     bearer: Arc<RwLock<Option<http::HeaderValue>>>,
 }
 
 impl AuthLayer {
-    pub fn new(basic_token: Option<String>) -> Self {
-        let basic_token = basic_token.map(|token| {
-            let mut token =
-                http::HeaderValue::try_from(token).expect("Failed to create basic token");
-            token.set_sensitive(true);
-            token
-        });
+    pub fn new(basic_token: Option<String>) -> Result<Self> {
+        let basic_token = match basic_token {
+            None => None,
+            Some(token) => {
+                let mut token = http::HeaderValue::try_from(token)?;
+                token.set_sensitive(true);
+                Some(token)
+            }
+        };
 
-        Self {
+        Ok(Self {
             basic: basic_token,
             bearer: Arc::new(RwLock::new(None)),
-        }
+        })
     }
 }
 
@@ -51,7 +57,7 @@ pub struct AuthService<S> {
 }
 
 impl<S> AuthService<S> {
-    pub fn new(
+    fn new(
         basic: Option<http::HeaderValue>,
         bearer: Arc<RwLock<Option<http::HeaderValue>>>,
         service: S,
