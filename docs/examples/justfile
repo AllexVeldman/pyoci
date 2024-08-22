@@ -50,3 +50,10 @@ curl-list username token repository="http://localhost:8090/ghcr.io/allexveldman/
 curl-download version username token repository="http://localhost:8090/ghcr.io/allexveldman/":
     curl -vOJ -u {{username}}:{{token}} {{repository}}hello_world/hello_world-{{version}}.tar.gz
     rm hello_world-{{version}}.tar.gz
+
+# Undo changes in the examples to the most recent commit
+reset:
+   git checkout -- \
+   ./poetry/install/pyproject.toml \
+   ./poetry/publish/poetry.toml \
+   ./poetry/publish/pyproject.toml
