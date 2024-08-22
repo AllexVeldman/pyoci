@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Error, Result};
 use base16ct::lower::encode_string as hex_encode;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use http::HeaderValue;
 use oci_spec::image::Arch;
 use oci_spec::image::DescriptorBuilder;
 use oci_spec::image::ImageIndexBuilder;
@@ -162,7 +163,10 @@ pub struct WwwAuth {
 
 impl WwwAuth {
     /// Parse a WWW-Authenticate header
-    pub fn parse(value: &str) -> Result<Self> {
+    pub fn parse(header: &HeaderValue) -> Result<Self> {
+        let value = header
+            .to_str()
+            .context("Failed to parse WWW-Authenticate header")?;
         let value = match value.strip_prefix("Bearer ") {
             None => bail!("Not a Bearer token"),
             Some(value) => value,
@@ -446,8 +450,7 @@ impl PyOci {
                 self.transport
                     .head(build_url!(&self, "/v2/{}/blobs/{}", name, digest)),
             )
-            .await
-            .expect("valid response");
+            .await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -465,7 +468,7 @@ impl PyOci {
             .transport
             .post(url)
             .header("Content-Type", "application/octet-stream");
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         let location = match response.status() {
             StatusCode::CREATED => return Ok(()),
             StatusCode::ACCEPTED => response
@@ -490,7 +493,7 @@ impl PyOci {
             .header("Content-Type", "application/octet-stream")
             .header("Content-Length", blob.data.len().to_string())
             .body(blob.data);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::CREATED => {}
             status => {
@@ -522,7 +525,7 @@ impl PyOci {
         let digest = descriptor.digest();
         let url = build_url!(&self, "/v2/{}/blobs/{}", &name, digest);
         let request = self.transport.get(url);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
 
         match response.status() {
             StatusCode::OK => Ok(response),
@@ -534,7 +537,7 @@ impl PyOci {
     async fn list_tags(&mut self, name: &str) -> anyhow::Result<TagList> {
         let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::OK => {}
             status => return Err(PyOciError::from((status, response.text().await?)).into()),
@@ -577,7 +580,7 @@ impl PyOci {
             .put(url)
             .header("Content-Type", content_type)
             .body(data);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::CREATED => {}
             status => return Err(PyOciError::from((status, response.text().await?)).into()),
@@ -595,7 +598,7 @@ impl PyOci {
             "Accept",
             "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
         );
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::NOT_FOUND => return Ok(None),
             StatusCode::OK => {}

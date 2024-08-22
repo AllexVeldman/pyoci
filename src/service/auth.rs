@@ -1,5 +1,5 @@
-use anyhow::Result;
-use futures::ready;
+use anyhow::{anyhow, Context as _, Result};
+use futures::{ready, FutureExt};
 use http::StatusCode;
 use pin_project::pin_project;
 use std::future::Future;
@@ -74,13 +74,14 @@ impl<S> Service<reqwest::Request> for AuthService<S>
 where
     S: Service<reqwest::Request, Response = reqwest::Response> + Clone + Send + 'static,
     <S as Service<reqwest::Request>>::Future: Send,
+    <S as Service<reqwest::Request>>::Error: Into<anyhow::Error>,
 {
     type Response = S::Response;
-    type Error = S::Error;
+    type Error = anyhow::Error;
     type Future = AuthFuture<S, reqwest::Request>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
-        self.service.poll_ready(cx)
+        self.service.poll_ready(cx).map_err(Into::into)
     }
 
     fn call(&mut self, mut request: reqwest::Request) -> Self::Future {
@@ -126,7 +127,7 @@ enum AuthState<F> {
     // Polling the authentication request
     Authenticating {
         #[pin]
-        future: Pin<Box<dyn Future<Output = Result<http::HeaderValue, reqwest::Response>> + Send>>,
+        future: Pin<Box<dyn Future<Output = Result<http::HeaderValue, AuthError>> + Send>>,
     },
 }
 
@@ -148,8 +149,9 @@ where
     // Service being called that we might need to authenticate for
     S: Service<reqwest::Request, Response = reqwest::Response> + Clone + Send + 'static,
     <S as Service<reqwest::Request>>::Future: Send,
+    <S as Service<reqwest::Request>>::Error: Into<anyhow::Error>,
 {
-    type Output = Result<reqwest::Response, S::Error>;
+    type Output = anyhow::Result<reqwest::Response>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let mut this = self.project();
@@ -158,7 +160,7 @@ where
             match this.state.as_mut().project() {
                 // Polling original request
                 AuthStateProj::Called { future } => {
-                    let response = ready!(future.poll(cx))?;
+                    let response = ready!(future.poll(cx)).map_err(Into::into)?;
 
                     if response.status() != StatusCode::UNAUTHORIZED {
                         return Poll::Ready(Ok(response));
@@ -181,11 +183,7 @@ where
                             tracing::debug!("No WWW-Authenticate header, skipping authentication");
                             return Poll::Ready(Ok(response));
                         }
-                        Some(value) => match WwwAuth::parse(
-                            value
-                                .to_str()
-                                .expect("Header contains non-ASCII characters"),
-                        ) {
+                        Some(value) => match WwwAuth::parse(value) {
                             Ok(value) => value,
                             Err(err) => {
                                 tracing::error!("Failed to parse WWW-Authenticate header: {}", err);
@@ -196,32 +194,58 @@ where
                     let srv = this.auth.clone();
                     this.state.set(AuthState::Authenticating {
                         // No idea how to type this Future, lets just Pin<Box> it
-                        future: Box::pin(async { authenticate(basic_token, www_auth, srv).await }),
+                        future: authenticate(basic_token, www_auth, srv).boxed(),
                     });
                 }
                 // Polling authentication request
                 AuthStateProj::Authenticating { future } => match ready!(future.poll(cx)) {
                     Ok(bearer_token) => {
-                        // Take the original request, this prevent infinitely retrying if the
+                        // Take the original request, this prevents infinitely retrying if the
                         // server keeps returning 401
-                        let mut request = this.request.take().expect("Failed to take request");
+                        let mut request = this
+                            .request
+                            .take()
+                            .ok_or_else(|| anyhow!("Tried to retry twice after authentication"))?;
                         request
                             .headers_mut()
                             .insert(http::header::AUTHORIZATION, bearer_token.clone());
                         this.auth
                             .bearer
                             .write()
-                            .expect("Failed to get write lock")
+                            .map_err(|_| {
+                                anyhow!("Another thread panicked while writing bearer token")
+                            })?
                             .replace(bearer_token);
                         // Retry the original request with the new bearer token
                         this.state.set(AuthState::Called {
                             future: this.auth.service.call(request),
                         });
                     }
-                    Err(response) => return Poll::Ready(Ok(response)),
+                    Err(err) => match err {
+                        // Error during authentication, return the authentication response
+                        AuthError::AuthResponse(auth_response) => {
+                            return Poll::Ready(Ok(auth_response))
+                        }
+                        // Other error, return it
+                        AuthError::Error(err) => return Poll::Ready(Err(err)),
+                    },
                 },
             };
         }
+    }
+}
+
+enum AuthError {
+    AuthResponse(reqwest::Response),
+    Error(anyhow::Error),
+}
+
+impl<E> From<E> for AuthError
+where
+    E: Into<anyhow::Error>,
+{
+    fn from(err: E) -> Self {
+        AuthError::Error(err.into())
     }
 }
 
@@ -232,13 +256,13 @@ async fn authenticate<S>(
     basic_token: http::HeaderValue,
     www_auth: WwwAuth,
     mut service: S,
-    // TODO: Figure out how to do error propagation
-) -> Result<http::HeaderValue, reqwest::Response>
+) -> Result<http::HeaderValue, AuthError>
 where
     S: Service<reqwest::Request, Response = reqwest::Response>,
     <S as Service<reqwest::Request>>::Future: Send,
+    <S as Service<reqwest::Request>>::Error: Into<anyhow::Error>,
 {
-    let mut auth_url = Url::parse(&www_auth.realm).expect("Failed to parse realm URL");
+    let mut auth_url = Url::parse(&www_auth.realm).context("Failed to parse realm URL")?;
     auth_url
         .query_pairs_mut()
         .append_pair("grant_type", "password")
@@ -247,18 +271,16 @@ where
     auth_request
         .headers_mut()
         .append("Authorization", basic_token);
-    let Ok(response) = service.call(auth_request).await else {
-        todo!("Handle error");
-    };
+    let response = service.call(auth_request).await?;
     if response.status() != StatusCode::OK {
-        return Err(response);
+        return Err(AuthError::AuthResponse(response));
     }
     let auth = response
         .json::<AuthResponse>()
         .await
-        .expect("Failed to parse auth response");
+        .context("Failed to parse authentication response")?;
     let mut token = http::HeaderValue::try_from(format!("Bearer {}", auth.token))
-        .expect("Failed to create bearer token header");
+        .context("Failed to create bearer token header")?;
     token.set_sensitive(true);
     Ok(token)
 }

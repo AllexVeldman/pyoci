@@ -214,7 +214,7 @@ where
 
     fn on_close(&self, id: tracing_core::span::Id, ctx: Context<'_, S>) {
         let span = ctx.span(&id).expect("span not found");
-        if !span.parent().is_none() {
+        if span.parent().is_some() {
             // This is a sub-span, we'll flush all messages when the root span is closed
             return;
         }
