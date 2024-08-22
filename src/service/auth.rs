@@ -77,7 +77,7 @@ where
 {
     type Response = S::Response;
     type Error = S::Error;
-    type Future = AuthFuture<S>;
+    type Future = AuthFuture<S, reqwest::Request>;
 
     fn poll_ready(&mut self, cx: &mut Context<'_>) -> Poll<Result<(), Self::Error>> {
         self.service.poll_ready(cx)
@@ -98,46 +98,43 @@ where
     }
 }
 
+/// The Future returned by AuthService
+/// Implements the actual authentication logic
+#[pin_project]
+pub struct AuthFuture<S, Req>
+where
+    S: Service<Req>,
+{
+    // Clone of the original request to retry after authentication
+    request: Option<Req>,
+    // Clone of the original service, used to do the authentication request and retry
+    // the original request
+    auth: AuthService<S>,
+    // State of this Future
+    #[pin]
+    state: AuthState<S::Future>,
+}
+
+/// State machine for AuthFuture
 #[pin_project(project = AuthStateProj)]
-enum AuthState<F, A> {
+enum AuthState<F> {
+    // Polling the original request or the retry after authentication
     Called {
         #[pin]
         future: F,
     },
+    // Polling the authentication request
     Authenticating {
         #[pin]
-        future: A,
+        future: Pin<Box<dyn Future<Output = Result<http::HeaderValue, reqwest::Response>> + Send>>,
     },
 }
 
-#[pin_project]
-pub struct AuthFuture<S>
+impl<S, Req> AuthFuture<S, Req>
 where
-    S: Service<reqwest::Request, Response = reqwest::Response> + Clone + 'static,
-    <S as Service<reqwest::Request>>::Future: Send,
+    S: Service<Req>,
 {
-    // Clone of the original request to retry after authentication
-    request: Option<reqwest::Request>,
-    // inner service to call after authenticating
-    auth: AuthService<S>,
-    // State of this Future
-    #[pin]
-    state: AuthState<
-        S::Future,
-        Pin<Box<dyn Future<Output = Result<http::HeaderValue, reqwest::Response>> + Send>>,
-    >,
-}
-
-impl<S> AuthFuture<S>
-where
-    S: Service<reqwest::Request, Response = reqwest::Response> + Clone + 'static,
-    <S as Service<reqwest::Request>>::Future: Send,
-{
-    pub fn new(
-        request: Option<reqwest::Request>,
-        inner: AuthService<S>,
-        future: S::Future,
-    ) -> Self {
+    fn new(request: Option<Req>, inner: AuthService<S>, future: S::Future) -> Self {
         Self {
             request,
             auth: inner,
@@ -146,7 +143,7 @@ where
     }
 }
 
-impl<S> Future for AuthFuture<S>
+impl<S> Future for AuthFuture<S, reqwest::Request>
 where
     // Service being called that we might need to authenticate for
     S: Service<reqwest::Request, Response = reqwest::Response> + Clone + Send + 'static,
@@ -234,11 +231,11 @@ where
 async fn authenticate<S>(
     basic_token: http::HeaderValue,
     www_auth: WwwAuth,
-    mut service: AuthService<S>,
+    mut service: S,
     // TODO: Figure out how to do error propagation
 ) -> Result<http::HeaderValue, reqwest::Response>
 where
-    S: Service<reqwest::Request, Response = reqwest::Response> + Clone + Send + 'static,
+    S: Service<reqwest::Request, Response = reqwest::Response>,
     <S as Service<reqwest::Request>>::Future: Send,
 {
     let mut auth_url = Url::parse(&www_auth.realm).expect("Failed to parse realm URL");
