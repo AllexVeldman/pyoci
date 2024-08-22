@@ -164,7 +164,7 @@ mod tests {
         ];
 
         let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string())).unwrap();
-        let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
+        let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
             mock.assert_async().await;
@@ -173,6 +173,72 @@ mod tests {
         assert_eq!(response.text().await.unwrap(), "Hello, world!");
     }
 
+    /// Test happy-flow, with authentication, multiple requests
+    /// Subsequent requests should have their bearer token set without authenticating again
+    #[tokio::test]
+    async fn http_transport_send_auth_multiple_requests() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+            // Token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice",
+                )
+                .match_header("Authorization", "Basic mybasicauth")
+                .with_status(200)
+                .with_body(r#"{"token":"mytoken"}"#)
+                .create_async()
+                .await,
+            // Re-submitted request, with bearer auth
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer mytoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+            // Second call to Send, should contain Bearer auth from last request
+            server
+                .mock("GET", "/bazqaz")
+                .match_header("Authorization", "Bearer mytoken")
+                .with_status(200)
+                .with_body("Hello, again!")
+                .create_async()
+                .await,
+        ];
+
+        let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string())).unwrap();
+        // clone the transport to check if they share the bearer token state
+        let mut transport2 = transport.clone();
+
+        // First request, initiating authentication
+        let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
+        let response = transport.send(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+
+        // Second request, reusing the previous authentication
+        let request = transport2.get(Url::parse(&format!("{url}/bazqaz")).unwrap());
+        let response = transport2.send(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, again!");
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+    }
     /// Test missing authentication
     #[tokio::test]
     async fn http_transport_send_missing_auth() {
@@ -192,7 +258,7 @@ mod tests {
         ];
 
         let mut transport = HttpTransport::new(None).unwrap();
-        let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
+        let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
             mock.assert_async().await;
@@ -227,7 +293,7 @@ mod tests {
         ];
 
         let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string())).unwrap();
-        let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
+        let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
             mock.assert_async().await;
@@ -273,7 +339,7 @@ mod tests {
         ];
 
         let mut transport = HttpTransport::new(Some("Basic mybasicauth".to_string())).unwrap();
-        let request = transport.get(Url::parse(&format!("{}/foobar", &server.url())).unwrap());
+        let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
             mock.assert_async().await;

@@ -156,7 +156,7 @@ pub struct AuthResponse {
 /// WWW-Authenticate header
 /// ref: <https://datatracker.ietf.org/doc/html/rfc6750#section-3>
 pub struct WwwAuth {
-    pub realm: String,
+    pub realm: Url,
     pub service: String,
     // scope: String,
 }
@@ -175,15 +175,16 @@ impl WwwAuth {
             .unwrap()
             .captures(value)
         {
-            Some(value) => value.name("realm").unwrap().as_str().to_string(),
-            None => bail!("`realm` key missing from WWW-Authenticate header"),
+            Some(value) => value.name("realm").unwrap().as_str(),
+            None => bail!("`realm` key missing"),
         };
+        let realm = Url::parse(realm).context("Failed to parse realm URL")?;
         let service = match Regex::new(r#"service="(?P<service>[^"\s]*)"#)
             .expect("valid regex")
             .captures(value)
         {
             Some(value) => value.name("service").unwrap().as_str().to_string(),
-            None => bail!("`service` key missing from WWW-Authenticate header"),
+            None => bail!("`service` key missing"),
         };
         // let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
         //     .expect("valid regex")

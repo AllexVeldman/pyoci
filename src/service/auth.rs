@@ -9,7 +9,7 @@ use std::task::{Context, Poll};
 use tower::{Layer, Service};
 use url::Url;
 
-use crate::pyoci::{AuthResponse, WwwAuth};
+use crate::pyoci::{AuthResponse, PyOciError, WwwAuth};
 
 /// Authentication layer for the OCI registry
 /// This layer will handle [token authentication](https://distribution.github.io/distribution/spec/auth/token/)
@@ -180,16 +180,24 @@ where
 
                     let www_auth = match response.headers().get("WWW-Authenticate") {
                         None => {
-                            tracing::debug!("No WWW-Authenticate header, skipping authentication");
-                            return Poll::Ready(Ok(response));
+                            return Poll::Ready(Err(PyOciError::from((
+                                StatusCode::BAD_GATEWAY,
+                                "Registry did not provide a WWW-Authenticate header",
+                            ))
+                            .into()));
                         }
-                        Some(value) => match WwwAuth::parse(value) {
-                            Ok(value) => value,
-                            Err(err) => {
-                                tracing::error!("Failed to parse WWW-Authenticate header: {}", err);
-                                return Poll::Ready(Ok(response));
+                        Some(value) => {
+                            match WwwAuth::parse(value) {
+                                Ok(value) => value,
+                                Err(err) => {
+                                    return Poll::Ready(Err(PyOciError::from((
+                                    StatusCode::BAD_GATEWAY,
+                                    format!("Registry returned invalid WWW-Authenticate header: {err}"),
+                                ))
+                                .into()));
+                                }
                             }
-                        },
+                        }
                     };
                     let srv = this.auth.clone();
                     this.state.set(AuthState::Authenticating {
@@ -262,7 +270,7 @@ where
     <S as Service<reqwest::Request>>::Future: Send,
     <S as Service<reqwest::Request>>::Error: Into<anyhow::Error>,
 {
-    let mut auth_url = Url::parse(&www_auth.realm).context("Failed to parse realm URL")?;
+    let mut auth_url = www_auth.realm;
     auth_url
         .query_pairs_mut()
         .append_pair("grant_type", "password")
@@ -275,12 +283,289 @@ where
     if response.status() != StatusCode::OK {
         return Err(AuthError::AuthResponse(response));
     }
-    let auth = response
-        .json::<AuthResponse>()
-        .await
-        .context("Failed to parse authentication response")?;
+    let auth = response.json::<AuthResponse>().await.map_err(|err| {
+        PyOciError::from((
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to parse authentication response: {err}"),
+        ))
+    })?;
     let mut token = http::HeaderValue::try_from(format!("Bearer {}", auth.token))
         .context("Failed to create bearer token header")?;
     token.set_sensitive(true);
     Ok(token)
+}
+
+/// The high-level tests for this Service are part of `src/transport.rs`.
+/// This module tests some of the error cases
+#[cfg(test)]
+mod test {
+    use super::*;
+    use mockito::Server;
+    use reqwest::{Body, Client};
+    use tower::ServiceBuilder;
+
+    // Happy-flow
+    #[tokio::test]
+    async fn auth_service() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+            // Token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice",
+                )
+                .match_header("Authorization", "Basic mybasicauth")
+                .with_status(200)
+                .with_body(r#"{"token":"mytoken"}"#)
+                .create_async()
+                .await,
+            // Re-submitted request, with bearer auth
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer mytoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .service(Client::default());
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+    }
+
+    // The if the original response it returned if the request can't be cloned.
+    // Without a clone we can't retry after authentication.
+    #[tokio::test]
+    async fn auth_service_missing_clone() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .service(Client::default());
+
+        // Construct a request that can't be cloned
+        let mut request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+        let chunks: Vec<Result<_, ::std::io::Error>> = vec![Ok("hello"), Ok("world")];
+        let stream = futures_util::stream::iter(chunks);
+        let body = Body::wrap_stream(stream);
+        *request.body_mut() = Some(body);
+
+        let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // Test if the original response is returned if there is no basic token to exchange.
+    #[tokio::test]
+    async fn auth_service_missing_basic_token() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(None).unwrap())
+            .service(Client::default());
+
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+    }
+
+    // Test if BAD_GATEWAY is returned on response of the upsteam server without a
+    // WWW-Authenticate header.
+    #[tokio::test]
+    async fn auth_service_missing_www_auth_header() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // invalid response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some("Basic mybasictoken".into())).unwrap())
+            .service(Client::default());
+
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let error = service
+            .call(request)
+            .await
+            .unwrap_err()
+            .downcast::<PyOciError>()
+            .unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(error.status, StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            error.message,
+            "Registry did not provide a WWW-Authenticate header".to_string()
+        );
+    }
+
+    // Test if BAD_GATEWAY is returned when the server responds with an invalid
+    // WWW-authenticate header
+    #[tokio::test]
+    async fn auth_service_invalid_www_auth_header() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer unknown=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some("Basic mybasictoken".into())).unwrap())
+            .service(Client::default());
+
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let error = service
+            .call(request)
+            .await
+            .unwrap_err()
+            .downcast::<PyOciError>()
+            .unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(error.status, StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            error.message,
+            "Registry returned invalid WWW-Authenticate header: `realm` key missing".to_string()
+        );
+    }
+
+    // Test if we return BAD_GATEWAY if the server responds with a malformed token response
+    #[tokio::test]
+    async fn auth_service_malformed_auth_response() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+            // Token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice",
+                )
+                .match_header("Authorization", "Basic mybasictoken")
+                .with_status(200)
+                .with_body(r#"{"notatoken":"mytoken"}"#)
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some("Basic mybasictoken".into())).unwrap())
+            .service(Client::default());
+
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let error = service
+            .call(request)
+            .await
+            .unwrap_err()
+            .downcast::<PyOciError>()
+            .unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(error.status, StatusCode::BAD_GATEWAY);
+        assert_eq!(
+            error.message,
+            "Failed to parse authentication response: error decoding response body".to_string()
+        );
+    }
 }

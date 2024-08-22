@@ -1432,6 +1432,7 @@ dependencies = [
  "console_error_panic_hook",
  "exitcode",
  "futures",
+ "futures-util",
  "http 1.1.0",
  "mockito",
  "oci-spec",
