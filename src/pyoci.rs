@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Error, Result};
 use base16ct::lower::encode_string as hex_encode;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use http::HeaderValue;
 use oci_spec::image::Arch;
 use oci_spec::image::DescriptorBuilder;
 use oci_spec::image::ImageIndexBuilder;
@@ -155,14 +156,17 @@ pub struct AuthResponse {
 /// WWW-Authenticate header
 /// ref: <https://datatracker.ietf.org/doc/html/rfc6750#section-3>
 pub struct WwwAuth {
-    pub realm: String,
+    pub realm: Url,
     pub service: String,
     // scope: String,
 }
 
 impl WwwAuth {
     /// Parse a WWW-Authenticate header
-    pub fn parse(value: &str) -> Result<Self> {
+    pub fn parse(header: &HeaderValue) -> Result<Self> {
+        let value = header
+            .to_str()
+            .context("Failed to parse WWW-Authenticate header")?;
         let value = match value.strip_prefix("Bearer ") {
             None => bail!("Not a Bearer token"),
             Some(value) => value,
@@ -171,15 +175,16 @@ impl WwwAuth {
             .unwrap()
             .captures(value)
         {
-            Some(value) => value.name("realm").unwrap().as_str().to_string(),
-            None => bail!("`realm` key missing from WWW-Authenticate header"),
+            Some(value) => value.name("realm").unwrap().as_str(),
+            None => bail!("`realm` key missing"),
         };
+        let realm = Url::parse(realm).context("Failed to parse realm URL")?;
         let service = match Regex::new(r#"service="(?P<service>[^"\s]*)"#)
             .expect("valid regex")
             .captures(value)
         {
             Some(value) => value.name("service").unwrap().as_str().to_string(),
-            None => bail!("`service` key missing from WWW-Authenticate header"),
+            None => bail!("`service` key missing"),
         };
         // let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
         //     .expect("valid regex")
@@ -201,7 +206,7 @@ impl WwwAuth {
 }
 
 /// Client to communicate with the OCI v2 registry
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct PyOci {
     registry: Url,
     transport: HttpTransport,
@@ -209,11 +214,11 @@ pub struct PyOci {
 
 impl PyOci {
     /// Create a new Client
-    pub fn new(registry: Url, auth: Option<String>) -> Self {
-        PyOci {
+    pub fn new(registry: Url, auth: Option<String>) -> Result<Self> {
+        Ok(PyOci {
             registry,
-            transport: HttpTransport::new(auth),
-        }
+            transport: HttpTransport::new(auth)?,
+        })
     }
 
     /// List all files for the given package
@@ -221,7 +226,7 @@ impl PyOci {
     /// Limits the number of files to `n`
     /// ref: https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
     pub async fn list_package_files(
-        &self,
+        &mut self,
         package: &package::Info,
         n: usize,
     ) -> Result<Vec<package::Info>> {
@@ -239,7 +244,8 @@ impl PyOci {
         // Even for non-spec registries the last-added seems to be at the end of the list
         // so this will result in the wanted list of tags in most cases.
         for tag in tags.iter().rev().take(n) {
-            futures.push(self.package_info_for_ref(package, &name, tag));
+            let pyoci = self.clone();
+            futures.push(pyoci.package_info_for_ref(package, &name, tag));
         }
         for result in futures
             .collect::<Vec<Result<Vec<package::Info>, Error>>>()
@@ -251,7 +257,7 @@ impl PyOci {
     }
 
     async fn package_info_for_ref(
-        &self,
+        mut self,
         package: &package::Info,
         name: &str,
         reference: &str,
@@ -290,7 +296,10 @@ impl PyOci {
         Ok(files)
     }
 
-    pub async fn download_package_file(&self, package: &crate::package::Info) -> Result<Response> {
+    pub async fn download_package_file(
+        &mut self,
+        package: &crate::package::Info,
+    ) -> Result<Response> {
         // Pull index
         let index = match self
             .pull_manifest(&package.oci_name()?, &package.oci_tag()?)
@@ -349,7 +358,7 @@ impl PyOci {
     }
 
     pub async fn publish_package_file(
-        &self,
+        &mut self,
         package: &crate::package::Info,
         file: Vec<u8>,
     ) -> Result<()> {
@@ -430,7 +439,7 @@ impl PyOci {
     ///
     /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#post-then-put
     async fn push_blob(
-        &self,
+        &mut self,
         // Name of the package, including namespace. e.g. "library/alpine"
         name: &str,
         blob: Blob,
@@ -442,8 +451,7 @@ impl PyOci {
                 self.transport
                     .head(build_url!(&self, "/v2/{}/blobs/{}", name, digest)),
             )
-            .await
-            .expect("valid response");
+            .await?;
 
         match response.status() {
             StatusCode::OK => {
@@ -461,7 +469,7 @@ impl PyOci {
             .transport
             .post(url)
             .header("Content-Type", "application/octet-stream");
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         let location = match response.status() {
             StatusCode::CREATED => return Ok(()),
             StatusCode::ACCEPTED => response
@@ -486,7 +494,7 @@ impl PyOci {
             .header("Content-Type", "application/octet-stream")
             .header("Content-Length", blob.data.len().to_string())
             .body(blob.data);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::CREATED => {}
             status => {
@@ -509,7 +517,7 @@ impl PyOci {
     ///
     /// This returns the raw response so the caller can handle the blob as needed
     async fn pull_blob(
-        &self,
+        &mut self,
         // Name of the package, including namespace. e.g. "library/alpine"
         name: String,
         // Descriptor of the blob to pull
@@ -518,7 +526,7 @@ impl PyOci {
         let digest = descriptor.digest();
         let url = build_url!(&self, "/v2/{}/blobs/{}", &name, digest);
         let request = self.transport.get(url);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
 
         match response.status() {
             StatusCode::OK => Ok(response),
@@ -527,10 +535,10 @@ impl PyOci {
     }
 
     /// List the available tags for a package
-    async fn list_tags(&self, name: &str) -> anyhow::Result<TagList> {
+    async fn list_tags(&mut self, name: &str) -> anyhow::Result<TagList> {
         let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::OK => {}
             status => return Err(PyOciError::from((status, response.text().await?)).into()),
@@ -547,7 +555,7 @@ impl PyOci {
     /// ImageIndex will be pushed with a version tag if version is set
     /// ImageManifest will always be pushed with a digest reference
     async fn push_manifest(
-        &self,
+        &mut self,
         name: &str,
         manifest: Manifest,
         version: Option<&str>,
@@ -573,7 +581,7 @@ impl PyOci {
             .put(url)
             .header("Content-Type", content_type)
             .body(data);
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::CREATED => {}
             status => return Err(PyOciError::from((status, response.text().await?)).into()),
@@ -585,13 +593,13 @@ impl PyOci {
     ///
     /// If the manifest does not exist, Ok<None> is returned
     /// If any other error happens, an Err is returned
-    async fn pull_manifest(&self, name: &str, reference: &str) -> Result<Option<Manifest>> {
+    async fn pull_manifest(&mut self, name: &str, reference: &str) -> Result<Option<Manifest>> {
         let url = build_url!(&self, "/v2/{}/manifests/{}", name, reference);
         let request = self.transport.get(url).header(
             "Accept",
             "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json",
         );
-        let response = self.transport.send(request).await.expect("valid response");
+        let response = self.transport.send(request).await?;
         match response.status() {
             StatusCode::NOT_FOUND => return Ok(None),
             StatusCode::OK => {}
@@ -634,7 +642,7 @@ mod tests {
     fn test_build_url() -> Result<()> {
         let client = PyOci {
             registry: Url::parse("https://example.com").expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let url = build_url!(&client, "/foo/{}/", "latest");
         assert_eq!(url.as_str(), "https://example.com/foo/latest/");
@@ -645,7 +653,7 @@ mod tests {
     fn test_build_url_absolute() -> Result<()> {
         let client = PyOci {
             registry: Url::parse("https://example.com").expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let url = build_url!(&client, "{}/foo?bar=baz&qaz=sha:123", "http://pyoci.nl");
         assert_eq!(url.as_str(), "http://pyoci.nl/foo?bar=baz&qaz=sha:123");
@@ -656,7 +664,7 @@ mod tests {
     fn test_build_url_double_period() {
         let client = PyOci {
             registry: Url::parse("https://example.com").expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let x = || -> Result<Url> { Ok(build_url!(&client, "/foo/{}/", "..")) }();
         assert!(x.is_err());
@@ -706,9 +714,9 @@ mod tests {
                 .await,
         );
 
-        let client = PyOci {
+        let mut client = PyOci {
             registry: Url::parse(&url).expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let blob = Blob::new("hello".into(), "application/octet-stream");
         assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());
@@ -761,9 +769,9 @@ mod tests {
                 .await,
         );
 
-        let client = PyOci {
+        let mut client = PyOci {
             registry: Url::parse(&url).expect("valid url"),
-            transport: HttpTransport::new(None),
+            transport: HttpTransport::new(None).unwrap(),
         };
         let blob = Blob::new("hello".into(), "application/octet-stream");
         assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());

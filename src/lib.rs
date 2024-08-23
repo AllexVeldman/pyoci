@@ -14,6 +14,8 @@ mod pyoci;
 mod templates;
 // HTTP Transport
 mod transport;
+// Services
+mod service;
 // Re-export the PyOci client
 pub use pyoci::PyOci;
 
