@@ -7,7 +7,6 @@ use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
-use url::Url;
 
 use crate::pyoci::{AuthResponse, PyOciError, WwwAuth};
 
@@ -303,6 +302,7 @@ mod test {
     use mockito::Server;
     use reqwest::{Body, Client};
     use tower::ServiceBuilder;
+    use url::Url;
 
     // Happy-flow
     #[tokio::test]
