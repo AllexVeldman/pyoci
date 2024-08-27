@@ -23,7 +23,7 @@ bytes = "1.7.1"
 exitcode = "1.1.2"
 oci-spec = { version = "0.6.4", default-features = false, features = ["image", "distribution"] }
 url = "2.3.1"
-regex = "1.10.2"
+regex = "1.10.6"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["time", "env-filter", "fmt", "json"] }
 reqwest = { version = "0.12.7", features = ["json", "stream"] }
