@@ -1,14 +1,12 @@
 use std::collections::HashMap;
 use std::fmt::{self, Write};
-use std::sync::RwLock;
+use std::sync::{Arc, RwLock};
 
-use anyhow::Result;
 use prost::Message;
 use time::OffsetDateTime;
 use tracing::Subscriber;
 use tracing_core::Event;
 use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
-use worker::console_log;
 
 use tracing::field::{Field, Visit};
 
@@ -20,11 +18,19 @@ use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use crate::USER_AGENT;
 
+/// Log a message without sending it to the OTLP collector.
+/// Mainly used to log things around the OtlpLogLayer itself.
+macro_rules! log {
+    ($($expression:expr),+) => {
+        tracing::info!(skip_otlp = true, $($expression),+);
+    };
+}
+
 /// Convert a batch of log records into a ExportLogsServiceRequest
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
 fn build_logs_export_body(
     logs: Vec<LogRecord>,
-    attributes: &HashMap<String, Option<String>>,
+    attributes: &HashMap<&str, Option<String>>,
 ) -> ExportLogsServiceRequest {
     let scope_logs = ScopeLogs {
         scope: None,
@@ -38,7 +44,7 @@ fn build_logs_export_body(
             continue;
         };
         attrs.push(KeyValue {
-            key: key.into(),
+            key: (*key).into(),
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(value.into())),
             }),
@@ -57,91 +63,65 @@ fn build_logs_export_body(
     }
 }
 
+/// Tracing Layer for pushing logs to an OTLP consumer.
+#[derive(Debug, Clone)]
 pub struct OtlpLogLayer {
-    records: RwLock<Vec<LogRecord>>,
-    sender: async_channel::Sender<Vec<LogRecord>>,
+    otlp_endpoint: String,
+    otlp_auth: String,
+    /// Buffer of LogRecords, each (log) event during a request will be added to this buffer
+    records: Arc<RwLock<Vec<LogRecord>>>,
 }
 
 // Public methods
 impl OtlpLogLayer {
-    pub fn new() -> (Self, async_channel::Receiver<Vec<LogRecord>>) {
-        let (sender, receiver) = async_channel::bounded(10);
-        (
-            Self {
-                records: RwLock::new(vec![]),
-                sender,
-            },
-            receiver,
-        )
-    }
-}
-
-/// Flush all messages from the queue
-/// In normal operation this will be called after every request and should only every consume 1
-/// message
-pub async fn flush(
-    receiver: &async_channel::Receiver<Vec<LogRecord>>,
-    otlp_endpoint: String,
-    otlp_auth: String,
-    attributes: &HashMap<String, Option<String>>,
-) {
-    console_log!("Flushing logs to OTLP");
-    let client = reqwest::Client::builder()
-        .user_agent(USER_AGENT)
-        .build()
-        .unwrap();
-    loop {
-        // Wait for messages from the OtlpLogLayer
-        // These are send at the end of every request
-        let log_records = match receiver.recv().await {
-            Ok(request) => request,
-            // Channel is empty and closed, so we're done here
-            Err(_) => {
-                console_log!("Channel is empty and closed");
-                break;
-            }
-        };
-        let body = build_logs_export_body(log_records, attributes).encode_to_vec();
-        let mut url = url::Url::parse(&otlp_endpoint).unwrap();
-        url.path_segments_mut().unwrap().extend(&["v1", "logs"]);
-        // send to OTLP Collector
-        match client
-            .post(url)
-            .header("Content-Type", "application/x-protobuf")
-            .header("Authorization", &otlp_auth)
-            .body(body)
-            .send()
-            .await
-        {
-            Ok(response) => {
-                if !response.status().is_success() {
-                    console_log!("Failed to send logs to OTLP: {:?}", response);
-                    console_log!("Response body: {:?}", response.text().await.unwrap());
-                } else {
-                    console_log!("Logs sent to OTLP: {:?}", response);
-                };
-            }
-            Err(err) => {
-                console_log!("Error sending logs to OTLP: {:?}", err);
-            }
-        };
-        // If the channel is empty, we're done
-        // New messages will be handled by the next request
-        if receiver.is_empty() {
-            break;
+    pub fn new(otlp_endpoint: String, otlp_auth: String) -> Self {
+        Self {
+            otlp_endpoint,
+            otlp_auth,
+            records: Arc::new(RwLock::new(vec![])),
         }
     }
 }
 
 // Private methods
 impl OtlpLogLayer {
-    /// Push all recorded log messages onto the channel
-    /// This is called at the end of every request
-    fn flush(&self) -> Result<()> {
+    /// Push all recorded log messages to the OTLP collector
+    /// This should be called at the end of every request, after the span is closed
+    pub async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
         let records: Vec<LogRecord> = self.records.write().unwrap().drain(..).collect();
-        console_log!("Sending {} log records to OTLP", records.len());
-        self.sender.try_send(records)?;
-        Ok(())
+        if records.is_empty() {
+            return;
+        }
+        log!("Sending {} log records to OTLP", records.len());
+        let client = reqwest::Client::builder()
+            .user_agent(USER_AGENT)
+            .build()
+            .unwrap();
+
+        let body = build_logs_export_body(records, attributes).encode_to_vec();
+        let mut url = url::Url::parse(&self.otlp_endpoint).unwrap();
+        url.path_segments_mut().unwrap().extend(&["v1", "logs"]);
+        // send to OTLP Collector
+        match client
+            .post(url)
+            .header("Content-Type", "application/x-protobuf")
+            .header("Authorization", &self.otlp_auth)
+            .body(body)
+            .send()
+            .await
+        {
+            Ok(response) => {
+                if !response.status().is_success() {
+                    log!("Failed to send logs to OTLP: {:?}", response);
+                    log!("Response body: {:?}", response.text().await.unwrap());
+                } else {
+                    log!("Logs sent to OTLP: {:?}", response);
+                };
+            }
+            Err(err) => {
+                log!("Error sending logs to OTLP: {:?}", err);
+            }
+        };
     }
 }
 
@@ -158,6 +138,10 @@ where
         let level = event.metadata().level();
         let mut visitor = LogVisitor::default();
         event.record(&mut visitor);
+
+        if visitor.skip {
+            return;
+        }
 
         // Extract the span and trace IDs
         // we'll consider the current span ID as the trace ID when there is no parent span
@@ -211,24 +195,13 @@ where
 
         self.records.write().unwrap().push(log_record);
     }
-
-    fn on_close(&self, id: tracing_core::span::Id, ctx: Context<'_, S>) {
-        let span = ctx.span(&id).expect("span not found");
-        if span.parent().is_some() {
-            // This is a sub-span, we'll flush all messages when the root span is closed
-            return;
-        }
-        if let Err(err) = self.flush() {
-            console_log!("Failed to flush log records: {:?}", err);
-        }
-    }
 }
 
 fn time_unix_ns() -> Option<u64> {
     match OffsetDateTime::now_utc().unix_timestamp_nanos().try_into() {
         Ok(value) => Some(value),
         Err(_) => {
-            console_log!("SystemTime out of range for conversion to u64!");
+            log!("SystemTime out of range for conversion to u64!");
             None
         }
     }
@@ -246,11 +219,98 @@ fn severity_number(level: &tracing::Level) -> i32 {
 
 #[derive(Default)]
 pub struct LogVisitor {
+    // If set, this record should not be sent to the OTLP collector
+    skip: bool,
+    // The log message
     string: String,
 }
 
 impl Visit for LogVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        write!(self.string, "{}={:?} ", field.name(), value).unwrap();
+        if field.name() == "skip_otlp" {
+            self.skip = true;
+        }
+        if !self.skip {
+            write!(self.string, "{}={:?} ", field.name(), value).unwrap();
+        }
+    }
+}
+
+#[cfg(test)]
+mod test {
+    use super::*;
+    use tracing::dispatcher;
+    use tracing_core::LevelFilter;
+    use tracing_subscriber::prelude::*;
+
+    #[tokio::test]
+    async fn otlp_log_layer() {
+        // init the mock server
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mock = server
+            .mock("POST", "/v1/logs")
+            .match_header("Authorization", "unittest_auth")
+            .match_header("Content-Type", "application/x-protobuf")
+            .with_status(200)
+            .create_async()
+            .await;
+
+        // init tracing with the otlp layer
+        let otlp_layer = OtlpLogLayer::new(url, "unittest_auth".to_string());
+        let otlp_clone = otlp_layer.clone();
+        let subscriber =
+            tracing_subscriber::registry().with(otlp_layer.with_filter(LevelFilter::INFO));
+        // Set the subscriber as the default within the scope of the logs
+        // This allows us to run tests in parallel, all setting their own subscriber
+        let dispatch = dispatcher::Dispatch::new(subscriber);
+        dispatcher::with_default(&dispatch, || {
+            let span = tracing::info_span!("unittest").entered();
+            tracing::info!("unittest log 1");
+            tracing::info!("unittest log 2");
+            tracing::info!("unittest log 3");
+            tracing::info!("unittest log 4");
+            span.exit();
+        });
+
+        // I would like to validate the body here but since mockito requires an exact match for
+        // Vec[u8], there are timestamps in the body, and I have no way of stopping time during
+        // tests, I don't (yet) know how to do that.
+        assert_eq!(otlp_clone.records.read().unwrap().len(), 4);
+        otlp_clone
+            .flush(&HashMap::from([("unittest", Some("test1".into()))]))
+            .await;
+
+        mock.assert_async().await;
+    }
+
+    #[tokio::test]
+    async fn otlp_log_layer_no_records() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mock = server
+            .mock("POST", mockito::Matcher::Any)
+            // Expect no requests
+            .expect(0)
+            .create_async()
+            .await;
+
+        // init tracing with the otlp layer
+        let otlp_layer = OtlpLogLayer::new(url, "".into());
+        let otlp_clone = otlp_layer.clone();
+        let subscriber =
+            tracing_subscriber::registry().with(otlp_layer.with_filter(LevelFilter::INFO));
+        let dispatch = dispatcher::Dispatch::new(subscriber);
+        dispatcher::with_default(&dispatch, || {
+            // create a span and exit it without any logs happening
+            let span = tracing::info_span!("unittest").entered();
+            tracing::warn!(skip_otlp = true, "Warning not for OTLP!");
+            span.exit();
+        });
+
+        assert_eq!(otlp_clone.records.read().unwrap().len(), 0);
+        otlp_clone.flush(&HashMap::new()).await;
+
+        mock.assert_async().await;
     }
 }

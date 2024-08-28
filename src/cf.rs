@@ -1,5 +1,4 @@
 use http::{Request, Response};
-use opentelemetry_proto::tonic::logs::v1::LogRecord;
 use std::collections::HashMap;
 use std::sync::OnceLock;
 use tower::Service;
@@ -17,8 +16,8 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-fn init(env: &Env) -> &'static Option<async_channel::Receiver<Vec<LogRecord>>> {
-    static INIT: OnceLock<Option<async_channel::Receiver<Vec<LogRecord>>>> = OnceLock::new();
+fn init(env: &Env) -> &'static Option<crate::otlp::OtlpLogLayer> {
+    static INIT: OnceLock<Option<crate::otlp::OtlpLogLayer>> = OnceLock::new();
     INIT.get_or_init(|| {
         let rust_log = match env.var("RUST_LOG") {
             Ok(log) => log.to_string(),
@@ -33,20 +32,23 @@ fn init(env: &Env) -> &'static Option<async_channel::Receiver<Vec<LogRecord>>> {
             .with_filter(EnvFilter::new(&rust_log));
 
         let registry = tracing_subscriber::registry().with(fmt_layer);
-        // OTLP exporter
-        let (otlp_layer, receiver) = if env.secret("OTLP_ENDPOINT").is_err() {
-            (None, None)
+
+        let otlp_layer = if let (Ok(otlp_endpoint), Ok(otlp_auth)) =
+            (env.secret("OTLP_ENDPOINT"), env.secret("OTLP_AUTH"))
+        {
+            Some(crate::otlp::OtlpLogLayer::new(
+                otlp_endpoint.to_string(),
+                otlp_auth.to_string(),
+            ))
         } else {
-            let (otlp_layer, receiver) = crate::otlp::OtlpLogLayer::new();
-            (
-                Some(otlp_layer.with_filter(EnvFilter::new(rust_log))),
-                Some(receiver),
-            )
+            None
         };
 
-        registry.with(otlp_layer).init();
+        registry
+            .with(otlp_layer.clone().with_filter(EnvFilter::new(rust_log)))
+            .init();
         console_log!("Worker initialized");
-        receiver
+        otlp_layer
     })
 }
 
@@ -57,28 +59,19 @@ async fn fetch(
     env: Env,
     ctx: Context,
 ) -> worker::Result<Response<axum::body::Body>> {
-    let receiver = init(&env);
+    let otlp_layer = init(&env);
     let cf = req.extensions().get::<Cf>().unwrap().to_owned();
-    let otlp_endpoint = match env.secret("OTLP_ENDPOINT") {
-        Ok(endpoint) => endpoint.to_string(),
-        Err(_) => "".to_string(),
-    };
-    let otlp_auth = match env.secret("OTLP_AUTH") {
-        Ok(auth) => auth.to_string(),
-        Err(_) => "".to_string(),
-    };
 
     let span = info_span!("fetch", path = %req.uri().path(), method = %req.method());
     let result = crate::app::router().call(req).instrument(span).await;
-
-    if let Some(receiver) = receiver {
+    if let Some(otlp_layer) = otlp_layer {
         let attributes = HashMap::from([
-            ("service.name".to_string(), Some("pyoci".to_string())),
-            ("cloud.region".to_string(), cf.region()),
-            ("cloud.availability_zone".to_string(), Some(cf.colo())),
+            ("service.name", Some("pyoci".to_string())),
+            ("cloud.region", cf.region()),
+            ("cloud.availability_zone", Some(cf.colo())),
         ]);
         ctx.wait_until(async move {
-            crate::otlp::flush(receiver, otlp_endpoint, otlp_auth, &attributes).await;
+            otlp_layer.flush(&attributes).await;
         });
     }
     Ok(result?)
