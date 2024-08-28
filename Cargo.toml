@@ -49,7 +49,7 @@ futures = "0.3.30"
 # OTLP dependencies
 opentelemetry-proto = { version ="0.6.0", features = ["gen-tonic-messages", "logs"] }
 tracing-core = "0.1.32"
-prost = "0.12.6"
+prost = "0.13.1"
 tower = "0.4.13"
 async-trait = "0.1.81"
 pin-project = "1.1.5"
