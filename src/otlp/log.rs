@@ -10,6 +10,7 @@ use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
 
 use tracing::field::{Field, Visit};
 
+use opentelemetry::trace::{SpanId, TraceId};
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::common::v1::any_value;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
@@ -25,6 +26,7 @@ macro_rules! log {
         tracing::info!(skip_otlp = true, $($expression),+);
     };
 }
+pub(crate) use log;
 
 /// Convert a batch of log records into a ExportLogsServiceRequest
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
@@ -143,39 +145,20 @@ where
             return;
         }
 
-        // Extract the span and trace IDs
-        // we'll consider the current span ID as the trace ID when there is no parent span
-        let (trace_id, span_id) = match ctx.event_span(event) {
-            Some(mut span) => {
-                let mut span_id = span.id().into_u64().to_be_bytes().to_vec();
-                span_id.resize(8, 0);
-                let mut trace_id = loop {
-                    match span.parent() {
-                        Some(parent) => {
-                            span = parent;
-                        }
-                        None => {
-                            break span.id().into_u64().to_be_bytes().to_vec();
-                        }
-                    }
-                };
-                trace_id.resize(16, 0);
-                (Some(trace_id), Some(span_id))
-            }
-            None => {
-                let mut span_id = ctx
-                    .current_span()
-                    .id()
-                    .map(|id| id.into_u64().to_be_bytes().to_vec());
-                let mut trace_id = span_id.clone();
-                if let Some(id) = span_id.as_mut() {
-                    id.resize(8, 0)
-                }
-                if let Some(id) = trace_id.as_mut() {
-                    id.resize(16, 0)
-                }
-                (span_id, trace_id)
-            }
+        let Some(span) = ctx.event_span(event) else {
+            log!("Currently not in a span");
+            return;
+        };
+
+        let extensions = span.extensions();
+        let Some(trace_id) = extensions.get::<TraceId>() else {
+            log!("Could not find Trace ID for Span {:?}", span.id());
+            return;
+        };
+
+        let Some(span_id) = extensions.get::<SpanId>() else {
+            log!("Could not find Span ID for Span {:?}", span.id());
+            return;
         };
 
         let log_record = LogRecord {
@@ -188,8 +171,8 @@ where
             }),
             attributes: vec![],
             dropped_attributes_count: 0,
-            trace_id: trace_id.unwrap_or_default(),
-            span_id: span_id.unwrap_or_default(),
+            trace_id: trace_id.to_bytes().into(),
+            span_id: span_id.to_bytes().into(),
             flags: 0,
         };
 

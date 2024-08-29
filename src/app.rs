@@ -87,6 +87,7 @@ async fn accesslog_middleware(
 //  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
 //  https://docs.rs/worker/latest/worker/index.html#send-helpers
 #[cfg_attr(target_arch = "wasm32", worker::send)]
+#[tracing::instrument(skip_all)]
 async fn list_package(
     headers: HeaderMap,
     Host(host): Host,
@@ -116,6 +117,7 @@ async fn list_package(
 //  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
 //  https://docs.rs/worker/latest/worker/index.html#send-helpers
 #[cfg_attr(target_arch = "wasm32", worker::send)]
+#[tracing::instrument(skip_all)]
 async fn download_package(
     path_params: Path<(String, String, Option<String>, String)>,
     headers: HeaderMap,
@@ -152,6 +154,7 @@ async fn download_package(
 //  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
 //  https://docs.rs/worker/latest/worker/index.html#send-helpers
 #[cfg_attr(target_arch = "wasm32", worker::send)]
+#[tracing::instrument(skip_all)]
 async fn publish_package(
     Path((registry, namespace)): Path<(String, String)>,
     headers: HeaderMap,
