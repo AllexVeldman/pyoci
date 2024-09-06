@@ -9,6 +9,9 @@ use tracing_subscriber::EnvFilter;
 use tracing_web::MakeWebConsoleWriter;
 use worker::{console_log, event, Body, Cf, Context, Env};
 
+use crate::otlp::otlp;
+use crate::otlp::Toilet;
+
 /// Called once when the worker is started
 #[event(start)]
 fn start() {
@@ -30,29 +33,21 @@ fn init(env: &Env) -> &'static crate::otlp::OtlpLayer {
             .with_timer(UtcTime::rfc_3339())
             .with_writer(MakeWebConsoleWriter::new());
 
-        let (log_layer, trace_layer) = if let (Ok(otlp_endpoint), Ok(otlp_auth)) =
-            (env.secret("OTLP_ENDPOINT"), env.secret("OTLP_AUTH"))
-        {
-            let log_layer =
-                crate::otlp::OtlpLogLayer::new(otlp_endpoint.to_string(), otlp_auth.to_string());
-            let trace_layer =
-                crate::otlp::OtlpTraceLayer::new(otlp_endpoint.to_string(), otlp_auth.to_string());
-            (Some(log_layer), Some(trace_layer))
-        } else {
-            (None, None)
-        };
+        let otlp_endpoint = env
+            .secret("OTLP_ENDPOINT")
+            .map_or(None, |value| Some(value.to_string()));
+        let otlp_auth = env
+            .secret("OTLP_AUTH")
+            .map_or(None, |value| Some(value.to_string()));
 
-        tracing_subscriber::registry()
+        let el_reg = tracing_subscriber::registry()
             .with(EnvFilter::new(rust_log))
-            .with(fmt_layer)
-            .with(crate::otlp::SpanTimeLayer::default())
-            .with(crate::otlp::SpanIdLayer::default())
-            .with(trace_layer.clone())
-            .with(log_layer.clone())
-            .init();
+            .with(fmt_layer);
+        let (el_reg, otlp_layer) = otlp(el_reg, otlp_endpoint, otlp_auth);
+
+        el_reg.init();
         console_log!("Worker initialized");
-        // TODO: combine otlp layer so we can flush as one.
-        (log_layer, trace_layer)
+        otlp_layer
     })
 }
 
@@ -68,16 +63,13 @@ async fn fetch(
 
     let span = info_span!("fetch", path = %req.uri().path(), method = %req.method());
     let result = crate::app::router().call(req).instrument(span).await;
-    if let (Some(log_layer), Some(trace_layer)) = otlp_layer {
-        let attributes = HashMap::from([
-            ("service.name", Some("pyoci".to_string())),
-            ("cloud.region", cf.region()),
-            ("cloud.availability_zone", Some(cf.colo())),
-        ]);
-        ctx.wait_until(async move {
-            log_layer.flush(&attributes).await;
-            trace_layer.flush(&attributes).await;
-        });
-    }
+    let attributes = HashMap::from([
+        ("service.name", Some("pyoci".to_string())),
+        ("cloud.region", cf.region()),
+        ("cloud.availability_zone", Some(cf.colo())),
+    ]);
+    ctx.wait_until(async move {
+        otlp_layer.flush(&attributes).await;
+    });
     Ok(result?)
 }

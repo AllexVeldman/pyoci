@@ -18,6 +18,7 @@ use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
 
+use crate::otlp::Toilet;
 use crate::USER_AGENT;
 
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
@@ -79,10 +80,10 @@ impl OtlpTraceLayer {
 }
 
 // Private methods
-impl OtlpTraceLayer {
+impl Toilet for OtlpTraceLayer {
     /// Push all recorded log messages to the OTLP collector
     /// This should be called at the end of every request, after the span is closed
-    pub async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
+    async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
         let spans: Vec<Span> = self.spans.write().unwrap().drain(..).collect();
         if spans.is_empty() {
             tracing::info!("No spans to send");

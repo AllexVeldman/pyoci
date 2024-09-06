@@ -17,6 +17,7 @@ use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
 use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
+use crate::otlp::Toilet;
 use crate::USER_AGENT;
 
 /// Convert a batch of log records into a ExportLogsServiceRequest
@@ -77,11 +78,10 @@ impl OtlpLogLayer {
     }
 }
 
-// Private methods
-impl OtlpLogLayer {
+impl Toilet for OtlpLogLayer {
     /// Push all recorded log messages to the OTLP collector
     /// This should be called at the end of every request, after the span is closed
-    pub async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
+    async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
         let records: Vec<LogRecord> = self.records.write().unwrap().drain(..).collect();
         if records.is_empty() {
             return;
