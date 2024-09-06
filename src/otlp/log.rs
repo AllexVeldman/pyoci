@@ -19,15 +19,6 @@ use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use crate::USER_AGENT;
 
-/// Log a message without sending it to the OTLP collector.
-/// Mainly used to log things around the OtlpLogLayer itself.
-macro_rules! log {
-    ($($expression:expr),+) => {
-        tracing::info!(skip_otlp = true, $($expression),+);
-    };
-}
-pub(crate) use log;
-
 /// Convert a batch of log records into a ExportLogsServiceRequest
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
 fn build_logs_export_body(
@@ -66,6 +57,7 @@ fn build_logs_export_body(
 }
 
 /// Tracing Layer for pushing logs to an OTLP consumer.
+/// Relies on [TraceId] and [SpanId] to be available in the Event's Span, see [crate::otlp::trace::SpanIdLayer]
 #[derive(Debug, Clone)]
 pub struct OtlpLogLayer {
     otlp_endpoint: String,
@@ -94,7 +86,7 @@ impl OtlpLogLayer {
         if records.is_empty() {
             return;
         }
-        log!("Sending {} log records to OTLP", records.len());
+        tracing::info!("Sending {} log records to OTLP", records.len());
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .build()
@@ -114,14 +106,14 @@ impl OtlpLogLayer {
         {
             Ok(response) => {
                 if !response.status().is_success() {
-                    log!("Failed to send logs to OTLP: {:?}", response);
-                    log!("Response body: {:?}", response.text().await.unwrap());
+                    tracing::info!("Failed to send logs to OTLP: {:?}", response);
+                    tracing::info!("Response body: {:?}", response.text().await.unwrap());
                 } else {
-                    log!("Logs sent to OTLP: {:?}", response);
+                    tracing::info!("Logs sent to OTLP: {:?}", response);
                 };
             }
             Err(err) => {
-                log!("Error sending logs to OTLP: {:?}", err);
+                tracing::info!("Error sending logs to OTLP: {:?}", err);
             }
         };
     }
@@ -136,28 +128,29 @@ where
             return;
         };
 
+        let metadata = event.metadata();
+        // Drop any logs generated as part of the otlp module
+        if metadata.target().contains("otlp") {
+            return;
+        }
         // Get the log level and message
-        let level = event.metadata().level();
+        let level = metadata.level();
         let mut visitor = LogVisitor::default();
         event.record(&mut visitor);
 
-        if visitor.skip {
-            return;
-        }
-
         let Some(span) = ctx.event_span(event) else {
-            log!("Currently not in a span");
+            tracing::info!("Currently not in a span");
             return;
         };
 
         let extensions = span.extensions();
         let Some(trace_id) = extensions.get::<TraceId>() else {
-            log!("Could not find Trace ID for Span {:?}", span.id());
+            tracing::info!("Could not find Trace ID for Span {:?}", span.id());
             return;
         };
 
         let Some(span_id) = extensions.get::<SpanId>() else {
-            log!("Could not find Span ID for Span {:?}", span.id());
+            tracing::info!("Could not find Span ID for Span {:?}", span.id());
             return;
         };
 
@@ -184,7 +177,7 @@ fn time_unix_ns() -> Option<u64> {
     match OffsetDateTime::now_utc().unix_timestamp_nanos().try_into() {
         Ok(value) => Some(value),
         Err(_) => {
-            log!("SystemTime out of range for conversion to u64!");
+            tracing::info!("SystemTime out of range for conversion to u64!");
             None
         }
     }
@@ -202,25 +195,20 @@ fn severity_number(level: &tracing::Level) -> i32 {
 
 #[derive(Default)]
 pub struct LogVisitor {
-    // If set, this record should not be sent to the OTLP collector
-    skip: bool,
     // The log message
     string: String,
 }
 
 impl Visit for LogVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        if field.name() == "skip_otlp" {
-            self.skip = true;
-        }
-        if !self.skip {
-            write!(self.string, "{}={:?} ", field.name(), value).unwrap();
-        }
+        write!(self.string, "{}={:?} ", field.name(), value).unwrap();
     }
 }
 
 #[cfg(test)]
 mod test {
+    use crate::otlp::SpanIdLayer;
+
     use super::*;
     use tracing::dispatcher;
     use tracing_core::LevelFilter;
@@ -242,17 +230,18 @@ mod test {
         // init tracing with the otlp layer
         let otlp_layer = OtlpLogLayer::new(url, "unittest_auth".to_string());
         let otlp_clone = otlp_layer.clone();
-        let subscriber =
-            tracing_subscriber::registry().with(otlp_layer.with_filter(LevelFilter::INFO));
+        let subscriber = tracing_subscriber::registry()
+            .with(SpanIdLayer::default())
+            .with(otlp_layer.with_filter(LevelFilter::INFO));
         // Set the subscriber as the default within the scope of the logs
         // This allows us to run tests in parallel, all setting their own subscriber
         let dispatch = dispatcher::Dispatch::new(subscriber);
         dispatcher::with_default(&dispatch, || {
             let span = tracing::info_span!("unittest").entered();
-            tracing::info!("unittest log 1");
-            tracing::info!("unittest log 2");
-            tracing::info!("unittest log 3");
-            tracing::info!("unittest log 4");
+            tracing::info!(target: "unittest", "unittest log 1");
+            tracing::info!(target: "unittest", "unittest log 2");
+            tracing::info!(target: "unittest", "unittest log 3");
+            tracing::info!(target: "unittest", "unittest log 4");
             span.exit();
         });
 
@@ -287,7 +276,7 @@ mod test {
         dispatcher::with_default(&dispatch, || {
             // create a span and exit it without any logs happening
             let span = tracing::info_span!("unittest").entered();
-            tracing::warn!(skip_otlp = true, "Warning not for OTLP!");
+            tracing::info!("Warning not for OTLP!");
             span.exit();
         });
 

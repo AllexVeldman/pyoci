@@ -28,10 +28,7 @@ fn init(env: &Env) -> &'static crate::otlp::OtlpLayer {
         let fmt_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_timer(UtcTime::rfc_3339())
-            .with_writer(MakeWebConsoleWriter::new())
-            .with_filter(EnvFilter::new(&rust_log));
-
-        let registry = tracing_subscriber::registry().with(fmt_layer);
+            .with_writer(MakeWebConsoleWriter::new());
 
         let (log_layer, trace_layer) = if let (Ok(otlp_endpoint), Ok(otlp_auth)) =
             (env.secret("OTLP_ENDPOINT"), env.secret("OTLP_AUTH"))
@@ -45,14 +42,13 @@ fn init(env: &Env) -> &'static crate::otlp::OtlpLayer {
             (None, None)
         };
 
-        registry
-            .with(crate::otlp::SpanTimeLayer::new())
-            .with(
-                trace_layer
-                    .clone()
-                    .with_filter(EnvFilter::new(rust_log.clone())),
-            )
-            .with(log_layer.clone().with_filter(EnvFilter::new(rust_log)))
+        tracing_subscriber::registry()
+            .with(EnvFilter::new(rust_log))
+            .with(fmt_layer)
+            .with(crate::otlp::SpanTimeLayer::default())
+            .with(crate::otlp::SpanIdLayer::default())
+            .with(trace_layer.clone())
+            .with(log_layer.clone())
             .init();
         console_log!("Worker initialized");
         // TODO: combine otlp layer so we can flush as one.
