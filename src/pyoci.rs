@@ -568,11 +568,11 @@ impl PyOci {
             Manifest::Index(index) => {
                 let version = version.context("`version` required for pushing an ImageIndex")?;
                 let url = build_url!(&self, "v2/{}/manifests/{}", name, version);
-                let data = index.to_string();
+                let data = serde_json::to_string(&index)?;
                 (url, data, "application/vnd.oci.image.index.v1+json")
             }
             Manifest::Manifest(manifest) => {
-                let data = manifest.to_string();
+                let data = serde_json::to_string(&manifest)?;
                 let sha = <Sha256 as Digest>::digest(&data);
                 let digest = format!("sha256:{}", hex_encode(&sha));
                 let url = build_url!(&self, "/v2/{}/manifests/{}", name, &digest);
