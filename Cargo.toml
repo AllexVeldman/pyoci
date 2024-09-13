@@ -50,7 +50,7 @@ futures = "0.3.30"
 opentelemetry = { version = "*", default-features = false, features = ["trace"] }
 opentelemetry-proto = { version = "0.7.0", default-features = false, features = ["gen-tonic-messages", "logs", "trace"] }
 tracing-core = "0.1.32"
-prost = "0.12.6"
+prost = "0.13.2"
 tower = {version = "0.5.0", features = ["util"]}
 async-trait = "0.1.81"
 pin-project = "1.1.5"
