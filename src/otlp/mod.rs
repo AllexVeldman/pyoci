@@ -3,16 +3,22 @@ mod trace;
 
 use std::collections::HashMap;
 
-pub use log::OtlpLogLayer;
-pub use trace::OtlpTraceLayer;
-pub use trace::SpanIdLayer;
-pub use trace::SpanTimeLayer;
+use log::OtlpLogLayer;
+use trace::OtlpTraceLayer;
+use trace::SpanIdLayer;
+use trace::SpanTimeLayer;
 use tracing::Subscriber;
 use tracing_subscriber::layer::SubscriberExt;
 use tracing_subscriber::registry::LookupSpan;
 
 pub type OtlpLayer = (Option<OtlpLogLayer>, Option<OtlpTraceLayer>);
 
+/// Wrap `subscriber` with OTLP tracing.
+/// Note that this adds 4 types to every trace's extensions:
+/// - [TraceId](opentelemetry::trace::TraceId) - ID shared by all nested spans
+/// - [SpanId](opentelemetry::trace::SpanId) - ID of this span
+/// - [SpanStart](trace::SpanStart) - Unix timestamp [ns] when the span was first entered
+/// - [SpanEnd](trace::SpanEnd) - Unix timestamp [ns] when the span was last exited
 pub fn otlp<S>(
     subscriber: S,
     otlp_endpoint: Option<String>,

@@ -163,10 +163,9 @@ where
                 value: Some(any_value::Value::StringValue(visitor.string)),
             }),
             attributes: vec![],
-            dropped_attributes_count: 0,
             trace_id: trace_id.to_bytes().into(),
             span_id: span_id.to_bytes().into(),
-            flags: 0,
+            ..LogRecord::default()
         };
 
         self.records.write().unwrap().push(log_record);
@@ -270,8 +269,9 @@ mod test {
         // init tracing with the otlp layer
         let otlp_layer = OtlpLogLayer::new(url, "".into());
         let otlp_clone = otlp_layer.clone();
-        let subscriber =
-            tracing_subscriber::registry().with(otlp_layer.with_filter(LevelFilter::INFO));
+        let subscriber = tracing_subscriber::registry()
+            .with(SpanIdLayer::default())
+            .with(otlp_layer.with_filter(LevelFilter::INFO));
         let dispatch = dispatcher::Dispatch::new(subscriber);
         dispatcher::with_default(&dispatch, || {
             // create a span and exit it without any logs happening
@@ -281,7 +281,7 @@ mod test {
         });
 
         assert_eq!(otlp_clone.records.read().unwrap().len(), 0);
-        otlp_clone.flush(&HashMap::new()).await;
+        otlp_clone.flush(&HashMap::from([("unittest", None)])).await;
 
         mock.assert_async().await;
     }
