@@ -157,7 +157,6 @@ where
         let log_record = LogRecord {
             time_unix_nano: time_ns,
             observed_time_unix_nano: time_ns,
-            severity_number: severity_number(level),
             severity_text: level.to_string().to_uppercase(),
             body: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(visitor.string)),
@@ -179,16 +178,6 @@ fn time_unix_ns() -> Option<u64> {
             tracing::info!("SystemTime out of range for conversion to u64!");
             None
         }
-    }
-}
-
-fn severity_number(level: &tracing::Level) -> i32 {
-    match *level {
-        tracing::Level::ERROR => 17,
-        tracing::Level::WARN => 13,
-        tracing::Level::INFO => 9,
-        tracing::Level::DEBUG => 5,
-        tracing::Level::TRACE => 1,
     }
 }
 
