@@ -1,6 +1,7 @@
 
 
 # Publish using the `poetry` package manager
+[group("poetry")]
 poetry-publish version username="" token="" repository="https://pyoci.allexveldman.nl/ghcr.io/allexveldman/":
     #!/usr/bin/env bash
     set -exuo pipefail
@@ -11,6 +12,7 @@ poetry-publish version username="" token="" repository="https://pyoci.allexveldm
     poetry build
     poetry publish -n -r pyoci -u "{{username}}" -p "{{token}}"
 
+[group("poetry")]
 poetry-install version username="" token="" repository="https://pyoci.allexveldman.nl/ghcr.io/allexveldman/":
     #!/usr/bin/env bash
     set -exuo pipefail
@@ -25,7 +27,7 @@ poetry-install version username="" token="" repository="https://pyoci.allexveldm
     poetry add "hello-world@{{version}}" --source pyoci --no-cache
     poetry run python -m hello_world
 
-
+[group("curl")]
 curl-publish version username token repository="http://localhost:8090/ghcr.io/allexveldman/":
     #!/usr/bin/env bash
     set -exuo pipefail
@@ -44,9 +46,11 @@ curl-publish version username token repository="http://localhost:8090/ghcr.io/al
     -F version={{version}} \
     -F content=@dist/hello_world-{{version}}.tar.gz
 
+[group("curl")]
 curl-list username token repository="http://localhost:8090/ghcr.io/allexveldman/":
     curl -v -u {{username}}:{{token}} {{repository}}hello-world/
 
+[group("curl")]
 curl-download version username token repository="http://localhost:8090/ghcr.io/allexveldman/":
     curl -vOJ -u {{username}}:{{token}} {{repository}}hello_world/hello_world-{{version}}.tar.gz
     rm hello_world-{{version}}.tar.gz

@@ -28,5 +28,7 @@ refresh-registry:
 # Run a smoketest on a local pyoci instance and a local OCI registry
 [group("test")]
 test-smoke: refresh-registry
+    @lsof -i -P | grep "5000 (LISTEN)" || { echo "docker registry is not listening on port 5000"; exit 1; }
+    @lsof -i -P | grep "8090 (LISTEN)" || { echo "pyoci is not listening on port 8090"; exit 1; }
     just examples::poetry-publish "0.1.0+1234" "" "" "http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/pyoci/"
     just examples::poetry-install "0.1.0+1234" "" "" "http://localhost:8090/http%3A%2F%2Flocalhost%3A5000/pyoci/"

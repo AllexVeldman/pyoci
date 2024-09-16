@@ -10,21 +10,15 @@ use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
 
 use tracing::field::{Field, Visit};
 
+use opentelemetry::trace::{SpanId, TraceId};
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::common::v1::any_value;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
 use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
+use crate::otlp::Toilet;
 use crate::USER_AGENT;
-
-/// Log a message without sending it to the OTLP collector.
-/// Mainly used to log things around the OtlpLogLayer itself.
-macro_rules! log {
-    ($($expression:expr),+) => {
-        tracing::info!(skip_otlp = true, $($expression),+);
-    };
-}
 
 /// Convert a batch of log records into a ExportLogsServiceRequest
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
@@ -64,6 +58,7 @@ fn build_logs_export_body(
 }
 
 /// Tracing Layer for pushing logs to an OTLP consumer.
+/// Relies on [TraceId] and [SpanId] to be available in the Event's Span, see [crate::otlp::trace::SpanIdLayer]
 #[derive(Debug, Clone)]
 pub struct OtlpLogLayer {
     otlp_endpoint: String,
@@ -83,16 +78,15 @@ impl OtlpLogLayer {
     }
 }
 
-// Private methods
-impl OtlpLogLayer {
+impl Toilet for OtlpLogLayer {
     /// Push all recorded log messages to the OTLP collector
     /// This should be called at the end of every request, after the span is closed
-    pub async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
+    async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
         let records: Vec<LogRecord> = self.records.write().unwrap().drain(..).collect();
         if records.is_empty() {
             return;
         }
-        log!("Sending {} log records to OTLP", records.len());
+        tracing::info!("Sending {} log records to OTLP", records.len());
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .build()
@@ -112,14 +106,14 @@ impl OtlpLogLayer {
         {
             Ok(response) => {
                 if !response.status().is_success() {
-                    log!("Failed to send logs to OTLP: {:?}", response);
-                    log!("Response body: {:?}", response.text().await.unwrap());
+                    tracing::info!("Failed to send logs to OTLP: {:?}", response);
+                    tracing::info!("Response body: {:?}", response.text().await.unwrap());
                 } else {
-                    log!("Logs sent to OTLP: {:?}", response);
+                    tracing::info!("Logs sent to OTLP: {:?}", response);
                 };
             }
             Err(err) => {
-                log!("Error sending logs to OTLP: {:?}", err);
+                tracing::info!("Error sending logs to OTLP: {:?}", err);
             }
         };
     }
@@ -134,63 +128,43 @@ where
             return;
         };
 
+        let metadata = event.metadata();
+        // Drop any logs generated as part of the otlp module
+        if metadata.target().contains("otlp") {
+            return;
+        }
         // Get the log level and message
-        let level = event.metadata().level();
+        let level = metadata.level();
         let mut visitor = LogVisitor::default();
         event.record(&mut visitor);
 
-        if visitor.skip {
+        let Some(span) = ctx.event_span(event) else {
+            tracing::info!("Currently not in a span");
             return;
-        }
+        };
 
-        // Extract the span and trace IDs
-        // we'll consider the current span ID as the trace ID when there is no parent span
-        let (trace_id, span_id) = match ctx.event_span(event) {
-            Some(mut span) => {
-                let mut span_id = span.id().into_u64().to_be_bytes().to_vec();
-                span_id.resize(8, 0);
-                let mut trace_id = loop {
-                    match span.parent() {
-                        Some(parent) => {
-                            span = parent;
-                        }
-                        None => {
-                            break span.id().into_u64().to_be_bytes().to_vec();
-                        }
-                    }
-                };
-                trace_id.resize(16, 0);
-                (Some(trace_id), Some(span_id))
-            }
-            None => {
-                let mut span_id = ctx
-                    .current_span()
-                    .id()
-                    .map(|id| id.into_u64().to_be_bytes().to_vec());
-                let mut trace_id = span_id.clone();
-                if let Some(id) = span_id.as_mut() {
-                    id.resize(8, 0)
-                }
-                if let Some(id) = trace_id.as_mut() {
-                    id.resize(16, 0)
-                }
-                (span_id, trace_id)
-            }
+        let extensions = span.extensions();
+        let Some(trace_id) = extensions.get::<TraceId>() else {
+            tracing::info!("Could not find Trace ID for Span {:?}", span.id());
+            return;
+        };
+
+        let Some(span_id) = extensions.get::<SpanId>() else {
+            tracing::info!("Could not find Span ID for Span {:?}", span.id());
+            return;
         };
 
         let log_record = LogRecord {
             time_unix_nano: time_ns,
             observed_time_unix_nano: time_ns,
-            severity_number: severity_number(level),
             severity_text: level.to_string().to_uppercase(),
             body: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(visitor.string)),
             }),
             attributes: vec![],
-            dropped_attributes_count: 0,
-            trace_id: trace_id.unwrap_or_default(),
-            span_id: span_id.unwrap_or_default(),
-            flags: 0,
+            trace_id: trace_id.to_bytes().into(),
+            span_id: span_id.to_bytes().into(),
+            ..LogRecord::default()
         };
 
         self.records.write().unwrap().push(log_record);
@@ -201,43 +175,28 @@ fn time_unix_ns() -> Option<u64> {
     match OffsetDateTime::now_utc().unix_timestamp_nanos().try_into() {
         Ok(value) => Some(value),
         Err(_) => {
-            log!("SystemTime out of range for conversion to u64!");
+            tracing::info!("SystemTime out of range for conversion to u64!");
             None
         }
     }
 }
 
-fn severity_number(level: &tracing::Level) -> i32 {
-    match *level {
-        tracing::Level::ERROR => 17,
-        tracing::Level::WARN => 13,
-        tracing::Level::INFO => 9,
-        tracing::Level::DEBUG => 5,
-        tracing::Level::TRACE => 1,
-    }
-}
-
 #[derive(Default)]
 pub struct LogVisitor {
-    // If set, this record should not be sent to the OTLP collector
-    skip: bool,
     // The log message
     string: String,
 }
 
 impl Visit for LogVisitor {
     fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        if field.name() == "skip_otlp" {
-            self.skip = true;
-        }
-        if !self.skip {
-            write!(self.string, "{}={:?} ", field.name(), value).unwrap();
-        }
+        write!(self.string, "{}={:?} ", field.name(), value).unwrap();
     }
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
+    use crate::otlp::SpanIdLayer;
+
     use super::*;
     use tracing::dispatcher;
     use tracing_core::LevelFilter;
@@ -259,17 +218,18 @@ mod test {
         // init tracing with the otlp layer
         let otlp_layer = OtlpLogLayer::new(url, "unittest_auth".to_string());
         let otlp_clone = otlp_layer.clone();
-        let subscriber =
-            tracing_subscriber::registry().with(otlp_layer.with_filter(LevelFilter::INFO));
+        let subscriber = tracing_subscriber::registry()
+            .with(SpanIdLayer::default())
+            .with(otlp_layer.with_filter(LevelFilter::INFO));
         // Set the subscriber as the default within the scope of the logs
         // This allows us to run tests in parallel, all setting their own subscriber
         let dispatch = dispatcher::Dispatch::new(subscriber);
         dispatcher::with_default(&dispatch, || {
             let span = tracing::info_span!("unittest").entered();
-            tracing::info!("unittest log 1");
-            tracing::info!("unittest log 2");
-            tracing::info!("unittest log 3");
-            tracing::info!("unittest log 4");
+            tracing::info!(target: "unittest", "unittest log 1");
+            tracing::info!(target: "unittest", "unittest log 2");
+            tracing::info!(target: "unittest", "unittest log 3");
+            tracing::info!(target: "unittest", "unittest log 4");
             span.exit();
         });
 
@@ -298,18 +258,19 @@ mod test {
         // init tracing with the otlp layer
         let otlp_layer = OtlpLogLayer::new(url, "".into());
         let otlp_clone = otlp_layer.clone();
-        let subscriber =
-            tracing_subscriber::registry().with(otlp_layer.with_filter(LevelFilter::INFO));
+        let subscriber = tracing_subscriber::registry()
+            .with(SpanIdLayer::default())
+            .with(otlp_layer.with_filter(LevelFilter::INFO));
         let dispatch = dispatcher::Dispatch::new(subscriber);
         dispatcher::with_default(&dispatch, || {
             // create a span and exit it without any logs happening
             let span = tracing::info_span!("unittest").entered();
-            tracing::warn!(skip_otlp = true, "Warning not for OTLP!");
+            tracing::info!("Warning not for OTLP!");
             span.exit();
         });
 
         assert_eq!(otlp_clone.records.read().unwrap().len(), 0);
-        otlp_clone.flush(&HashMap::new()).await;
+        otlp_clone.flush(&HashMap::from([("unittest", None)])).await;
 
         mock.assert_async().await;
     }

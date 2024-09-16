@@ -259,6 +259,7 @@ where
 // Returns the bearer token if successful.
 // Returns the upstream response of not.
 #[cfg_attr(target_arch = "wasm32", worker::send)]
+#[tracing::instrument(skip_all)]
 async fn authenticate<S>(
     basic_token: http::HeaderValue,
     www_auth: WwwAuth,
@@ -297,7 +298,7 @@ where
 /// The high-level tests for this Service are part of `src/transport.rs`.
 /// This module tests some of the error cases
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use mockito::Server;
     use reqwest::{Body, Client};

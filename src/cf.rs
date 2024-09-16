@@ -9,6 +9,9 @@ use tracing_subscriber::EnvFilter;
 use tracing_web::MakeWebConsoleWriter;
 use worker::{console_log, event, Body, Cf, Context, Env};
 
+use crate::otlp::otlp;
+use crate::otlp::Toilet;
+
 /// Called once when the worker is started
 #[event(start)]
 fn start() {
@@ -16,8 +19,8 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-fn init(env: &Env) -> &'static Option<crate::otlp::OtlpLogLayer> {
-    static INIT: OnceLock<Option<crate::otlp::OtlpLogLayer>> = OnceLock::new();
+fn init(env: &Env) -> &'static crate::otlp::OtlpLayer {
+    static INIT: OnceLock<crate::otlp::OtlpLayer> = OnceLock::new();
     INIT.get_or_init(|| {
         let rust_log = match env.var("RUST_LOG") {
             Ok(log) => log.to_string(),
@@ -28,25 +31,21 @@ fn init(env: &Env) -> &'static Option<crate::otlp::OtlpLogLayer> {
         let fmt_layer = tracing_subscriber::fmt::layer()
             .with_ansi(false)
             .with_timer(UtcTime::rfc_3339())
-            .with_writer(MakeWebConsoleWriter::new())
-            .with_filter(EnvFilter::new(&rust_log));
+            .with_writer(MakeWebConsoleWriter::new());
 
-        let registry = tracing_subscriber::registry().with(fmt_layer);
+        let otlp_endpoint = env
+            .secret("OTLP_ENDPOINT")
+            .map_or(None, |value| Some(value.to_string()));
+        let otlp_auth = env
+            .secret("OTLP_AUTH")
+            .map_or(None, |value| Some(value.to_string()));
 
-        let otlp_layer = if let (Ok(otlp_endpoint), Ok(otlp_auth)) =
-            (env.secret("OTLP_ENDPOINT"), env.secret("OTLP_AUTH"))
-        {
-            Some(crate::otlp::OtlpLogLayer::new(
-                otlp_endpoint.to_string(),
-                otlp_auth.to_string(),
-            ))
-        } else {
-            None
-        };
+        let el_reg = tracing_subscriber::registry()
+            .with(EnvFilter::new(rust_log))
+            .with(fmt_layer);
+        let (el_reg, otlp_layer) = otlp(el_reg, otlp_endpoint, otlp_auth);
 
-        registry
-            .with(otlp_layer.clone().with_filter(EnvFilter::new(rust_log)))
-            .init();
+        el_reg.init();
         console_log!("Worker initialized");
         otlp_layer
     })
@@ -64,15 +63,13 @@ async fn fetch(
 
     let span = info_span!("fetch", path = %req.uri().path(), method = %req.method());
     let result = crate::app::router().call(req).instrument(span).await;
-    if let Some(otlp_layer) = otlp_layer {
-        let attributes = HashMap::from([
-            ("service.name", Some("pyoci".to_string())),
-            ("cloud.region", cf.region()),
-            ("cloud.availability_zone", Some(cf.colo())),
-        ]);
-        ctx.wait_until(async move {
-            otlp_layer.flush(&attributes).await;
-        });
-    }
+    let attributes = HashMap::from([
+        ("service.name", Some("pyoci".to_string())),
+        ("cloud.region", cf.region()),
+        ("cloud.availability_zone", Some(cf.colo())),
+    ]);
+    ctx.wait_until(async move {
+        otlp_layer.flush(&attributes).await;
+    });
     Ok(result?)
 }

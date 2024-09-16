@@ -7,8 +7,8 @@ services:
       - 5000:5000
     restart: always
     volumes:
-      - ./config/config.yaml:/etc/docker/registry/config.yml
-      - ./config/tls:/etc/docker/registry/certs
+      - ./config/config.yaml:/etc/docker/registry/config.yml:Z
+      - ./config/tls:/etc/docker/registry/certs:Z
 
   registry-ui:
     image: joxit/docker-registry-ui:latest

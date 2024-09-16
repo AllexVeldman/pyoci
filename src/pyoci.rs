@@ -438,6 +438,7 @@ impl PyOci {
     /// Push a blob to the registry using POST then PUT method
     ///
     /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#post-then-put
+    #[tracing::instrument(skip_all)]
     async fn push_blob(
         &mut self,
         // Name of the package, including namespace. e.g. "library/alpine"
@@ -516,6 +517,7 @@ impl PyOci {
     /// Pull a blob from the registry
     ///
     /// This returns the raw response so the caller can handle the blob as needed
+    #[tracing::instrument(skip_all)]
     async fn pull_blob(
         &mut self,
         // Name of the package, including namespace. e.g. "library/alpine"
@@ -535,6 +537,7 @@ impl PyOci {
     }
 
     /// List the available tags for a package
+    #[tracing::instrument(skip_all)]
     async fn list_tags(&mut self, name: &str) -> anyhow::Result<TagList> {
         let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
@@ -554,6 +557,7 @@ impl PyOci {
     ///
     /// ImageIndex will be pushed with a version tag if version is set
     /// ImageManifest will always be pushed with a digest reference
+    #[tracing::instrument(skip_all)]
     async fn push_manifest(
         &mut self,
         name: &str,
@@ -564,11 +568,11 @@ impl PyOci {
             Manifest::Index(index) => {
                 let version = version.context("`version` required for pushing an ImageIndex")?;
                 let url = build_url!(&self, "v2/{}/manifests/{}", name, version);
-                let data = index.to_string().expect("valid json");
+                let data = serde_json::to_string(&index)?;
                 (url, data, "application/vnd.oci.image.index.v1+json")
             }
             Manifest::Manifest(manifest) => {
-                let data = manifest.to_string().expect("valid json");
+                let data = serde_json::to_string(&manifest)?;
                 let sha = <Sha256 as Digest>::digest(&data);
                 let digest = format!("sha256:{}", hex_encode(&sha));
                 let url = build_url!(&self, "/v2/{}/manifests/{}", name, &digest);
@@ -593,6 +597,7 @@ impl PyOci {
     ///
     /// If the manifest does not exist, Ok<None> is returned
     /// If any other error happens, an Err is returned
+    #[tracing::instrument(skip_all)]
     async fn pull_manifest(&mut self, name: &str, reference: &str) -> Result<Option<Manifest>> {
         let url = build_url!(&self, "/v2/{}/manifests/{}", name, reference);
         let request = self.transport.get(url).header(

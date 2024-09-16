@@ -4,6 +4,7 @@ use std::future::poll_fn;
 use std::future::Future;
 use std::pin::Pin;
 use tower::{Service, ServiceBuilder};
+use tracing::Instrument;
 
 use crate::service::AuthLayer;
 use crate::service::RequestLogLayer;
@@ -39,9 +40,16 @@ impl Service<reqwest::Request> for HttpTransport {
 
     fn call(&mut self, request: reqwest::Request) -> Self::Future {
         #[cfg(target_arch = "wasm32")]
-        let fut = Box::pin(worker::send::SendFuture::new(self.client.execute(request)));
+        let fut = Box::pin(
+            worker::send::SendFuture::new(self.client.execute(request))
+                .instrument(tracing::info_span!("send")),
+        );
         #[cfg(not(target_arch = "wasm32"))]
-        let fut = Box::pin(self.client.execute(request));
+        let fut = Box::pin(
+            self.client
+                .execute(request)
+                .instrument(tracing::info_span!("send")),
+        );
         fut
     }
 }
