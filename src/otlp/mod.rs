@@ -48,7 +48,7 @@ where
 }
 
 pub trait Toilet {
-    async fn flush(&self, _attributes: &HashMap<&str, Option<String>>) {}
+    async fn flush(&self, _attributes: &HashMap<&str, Option<String>>);
 }
 
 impl<T> Toilet for Option<T>
