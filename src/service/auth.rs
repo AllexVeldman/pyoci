@@ -298,7 +298,7 @@ where
 /// The high-level tests for this Service are part of `src/transport.rs`.
 /// This module tests some of the error cases
 #[cfg(test)]
-mod test {
+mod tests {
     use super::*;
     use mockito::Server;
     use reqwest::{Body, Client};

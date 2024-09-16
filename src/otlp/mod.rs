@@ -69,3 +69,80 @@ impl Toilet for OtlpLayer {
         self.1.flush(attributes).await;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use tracing::dispatcher;
+    use tracing_subscriber::EnvFilter;
+
+    use super::*;
+
+    #[tokio::test]
+    async fn otlp_layer_flush() {
+        // init the mock server
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mocks = Vec::from([
+            server
+                .mock("POST", "/v1/logs")
+                .match_header("Authorization", "unittest_auth")
+                .match_header("Content-Type", "application/x-protobuf")
+                .with_status(200)
+                .create_async()
+                .await,
+            server
+                .mock("POST", "/v1/traces")
+                .match_header("Authorization", "unittest_auth")
+                .match_header("Content-Type", "application/x-protobuf")
+                .with_status(200)
+                .create_async()
+                .await,
+        ]);
+
+        let subscriber = tracing_subscriber::registry().with(EnvFilter::new("info"));
+        let (subscriber, otlp_layer) =
+            otlp(subscriber, Some(url), Some("unittest_auth".to_string()));
+
+        let dispatch = dispatcher::Dispatch::new(subscriber);
+        dispatcher::with_default(&dispatch, || {
+            let span = tracing::info_span!("unittest").entered();
+            tracing::info!(target: "unittest", "unittest log 1");
+            tracing::info!(target: "unittest", "unittest log 2");
+            span.exit();
+        });
+        otlp_layer.flush(&HashMap::default()).await;
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+    }
+
+    // Tests if nothing happens when OTLP layers are None
+    #[tokio::test]
+    async fn otlp_layer_none_flush() {
+        // init the mock server
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mock = server
+            .mock("POST", mockito::Matcher::Any)
+            // Expect no requests
+            .expect(0)
+            .create_async()
+            .await;
+
+        let subscriber = tracing_subscriber::registry().with(EnvFilter::new("info"));
+        // Don't pass the auth, no OTLP requests should be made
+        let (subscriber, otlp_layer) = otlp(subscriber, Some(url), None);
+
+        let dispatch = dispatcher::Dispatch::new(subscriber);
+        dispatcher::with_default(&dispatch, || {
+            let span = tracing::info_span!("unittest").entered();
+            tracing::info!(target: "unittest", "unittest log 1");
+            tracing::info!(target: "unittest", "unittest log 2");
+            span.exit();
+        });
+        otlp_layer.flush(&HashMap::default()).await;
+
+        mock.assert_async().await;
+    }
+}

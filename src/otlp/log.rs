@@ -194,7 +194,7 @@ impl Visit for LogVisitor {
 }
 
 #[cfg(test)]
-mod test {
+mod tests {
     use crate::otlp::SpanIdLayer;
 
     use super::*;
