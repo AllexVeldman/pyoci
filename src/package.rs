@@ -225,14 +225,16 @@ impl TryFrom<(String, String, String)> for Info {
     type Error = Error;
 
     fn try_from((registry, namespace, distribution): (String, String, String)) -> Result<Self> {
-        Ok(Info {
+        let info = Info {
             registry: registry_url(&registry)?,
             namespace,
             file: File {
                 name: distribution.replace('-', "_"),
                 ..File::default()
             },
-        })
+        };
+        tracing::debug!("{:?}", info);
+        Ok(info)
     }
 }
 

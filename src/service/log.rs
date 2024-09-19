@@ -1,5 +1,6 @@
 use futures::ready;
 use pin_project::pin_project;
+use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
@@ -42,7 +43,7 @@ impl<S> RequestLog<S> {
 
 impl<S> Service<reqwest::Request> for RequestLog<S>
 where
-    S: Service<reqwest::Request, Response = reqwest::Response>,
+    S: Service<reqwest::Request, Response = reqwest::Response, Error = reqwest::Error>,
 {
     type Response = S::Response;
     type Error = S::Error;
@@ -73,24 +74,33 @@ pub struct LogFuture<F> {
     start: OffsetDateTime,
 }
 
-impl<F, Error> Future for LogFuture<F>
+impl<F> Future for LogFuture<F>
 where
-    F: Future<Output = Result<reqwest::Response, Error>>,
+    F: Future<Output = Result<reqwest::Response, reqwest::Error>>,
 {
-    type Output = Result<reqwest::Response, Error>;
+    type Output = Result<reqwest::Response, reqwest::Error>;
 
     fn poll(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<Self::Output> {
         let this = self.project();
         let result = ready!(this.inner_fut.poll(cx));
-        if let Ok(response) = &result {
-            let status: u16 = response.status().into();
-            tracing::info!(
-                elapsed_ms = (OffsetDateTime::now_utc() - *this.start).whole_milliseconds(),
-                method = this.method,
-                status,
-                url = this.url,
-                "type" = this.request_type,
-            );
+        match &result {
+            Ok(response) => {
+                let status: u16 = response.status().into();
+                tracing::info!(
+                    elapsed_ms = (OffsetDateTime::now_utc() - *this.start).whole_milliseconds(),
+                    method = this.method,
+                    status,
+                    url = this.url,
+                    "type" = this.request_type,
+                );
+            }
+            Err(error) => {
+                if let Some(source) = error.source() {
+                    tracing::error!("{source}");
+                } else {
+                    tracing::debug!("{error:?}");
+                }
+            }
         }
         Poll::Ready(result)
     }

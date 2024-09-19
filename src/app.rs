@@ -97,7 +97,6 @@ async fn list_package(
         Some(auth) => Some(auth.to_str()?.to_owned()),
         None => None,
     };
-
     let package: package::Info = path_params.0.try_into()?;
 
     let mut client = PyOci::new(package.registry.clone(), auth)?;
@@ -310,7 +309,15 @@ where
 mod tests {
     use super::*;
 
-    use axum::{body::to_bytes, http::Request};
+    use axum::{
+        body::{to_bytes, Body},
+        http::Request,
+    };
+    use indoc::formatdoc;
+    use oci_spec::{
+        distribution::{TagList, TagListBuilder},
+        image::{Arch, DescriptorBuilder, ImageIndex, ImageIndexBuilder, Os, PlatformBuilder},
+    };
     use tower::ServiceExt;
 
     #[tokio::test]
@@ -641,6 +648,11 @@ mod tests {
                 .with_status(201) // CREATED
                 .create_async()
                 .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
         ];
 
         let router = router();
@@ -680,5 +692,136 @@ mod tests {
         }
         assert_eq!(&body, "Published");
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn list_package() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let tags_list = TagListBuilder::default()
+            .name("test-package")
+            .tags(vec!["0.1.0".to_string(), "1.2.3".to_string()])
+            .build()
+            .unwrap();
+
+        let index_010 = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest("FooBar")
+                .size(6)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".tar.gz".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let index_123 = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest("FooBar")
+                .size(6)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".tar.gz".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // List tags
+            server
+                .mock("GET", "/v2/mockserver/test_package/tags/list")
+                .with_status(200)
+                .with_body(serde_json::to_string::<TagList>(&tags_list).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index_010).unwrap())
+                .create_async()
+                .await,
+            // Pull 1.2.3 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/1.2.3")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index_123).unwrap())
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "http://localhost.unittest/{encoded_url}/mockserver/test-package/"
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            formatdoc!(
+                r#"
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>PyOCI</title>
+                </head>
+                <body>
+                    <a href="http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
+                    <a href="http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
+                </body>
+                </html>"#
+            )
+        );
     }
 }
