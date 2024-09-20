@@ -6,7 +6,11 @@ Publish and download (private) python packages using an OCI registry for storage
 [![Deploy](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml)
 [![codecov](https://codecov.io/github/AllexVeldman/pyoci/graph/badge.svg?token=SXFCPX8M22)](https://codecov.io/github/AllexVeldman/pyoci)
 
-## Introduction
+## Why PyOCI
+As part of my job we create private python packages used in the main application.
+To not have to rely on yet-another-cloud-provider, instead I built PyOCI, making `ghcr.io` act like a python index.
+This also completely removed the need for separate access management as now GitHub Packages access control applies.
+
 Most subscriptions with cloud providers include an [OCI](https://opencontainers.org/) (docker image) registry where private containers can be published and distributed from.
 
 PyOCI allows using any (private) OCI registry as a python package index, as long as it implements the [OCI distribution specification](https://github.com/opencontainers/distribution-spec/blob/main/spec.md).
@@ -17,7 +21,6 @@ An instance of PyOCI is available at https://pyoci.allexveldman.nl, to use this 
 Tested registries:
 - [ghcr.io](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
 
-Packages published through PyOCI use the `application/pyoci.package.v1` [artifactType](https://github.com/opencontainers/image-spec/blob/v1.1.0/manifest.md#guidelines-for-artifact-usage).
 
 Published packages will show up in the OCI registry UI:
 
@@ -31,24 +34,24 @@ Distinct distributions will show up as separate architectures for the same versi
 ## Authentication
 Basic authentication is forwarded to the target registry.
 
-For PyOCI to resolve to the correct package, the following parts are needed as part of the index-url:
-- OCI registry url, https is assumed.
-- namespace, for most registries this is the username or organization name.
-- name of the python package.
-
 Currently only Basic authentication is supported.
 This is due to pip [only supporting basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
 and [not all OCI registries supporting OAuth](https://distribution.github.io/distribution/spec/auth/oauth/),
 instead the [token authentication](https://distribution.github.io/distribution/spec/auth/token/) is used.
 
-## Examples
+## Getting started
+To let pip resolve to our private registry, we need to supply some into into the `--extra-index-url`:
+- URL of the OCI registry to use.
+- namespace within the registry, for most registries this is the username or organization name.
+
+### Examples
 To install a package with pip using PyOCI:
 ```commandline
-pip install --extra-index-url=http://<username>:<password>@<pyoci url>/<OCI registry url>/<namespace>/<package name>
+pip install --extra-index-url="http://<username>:<password>@<pyoci url>/<OCI registry url>/<namespace>/" <package name>
 ```
-Example installing package `bar` from user `Foo` using `ghcr.io` as the registry:
+Example installing package `bar` from organization `Foo` using `ghcr.io` as the registry:
 ```commandline
-pip install --extra-index-url=https://Foo:$GH_TOKEN@pyoci.allexveldman.nl/ghcr.io/foo/bar
+pip install --extra-index-url="https://Foo:$GH_TOKEN@pyoci.allexveldman.nl/ghcr.io/foo/" bar
 ```
 
 For more examples, including how to publish a package, see the [examples](/docs/examples)
