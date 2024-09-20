@@ -829,6 +829,99 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_package_missing_manifest() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let tags_list = TagListBuilder::default()
+            .name("test-package")
+            .tags(vec!["0.1.0".to_string(), "1.2.3".to_string()])
+            .build()
+            .unwrap();
+
+        let index_010 = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest("FooBar")
+                .size(6)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".tar.gz".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // List tags
+            server
+                .mock("GET", "/v2/mockserver/test_package/tags/list")
+                .with_status(200)
+                .with_body(serde_json::to_string::<TagList>(&tags_list).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index_010).unwrap())
+                .create_async()
+                .await,
+            // Pull 1.2.3 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/1.2.3")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(404)
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "http://localhost.unittest/{encoded_url}/mockserver/test-package/"
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body, "ImageIndex does not exist");
+    }
+
+    #[tokio::test]
     async fn download_package() {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
@@ -947,5 +1040,223 @@ mod tests {
         }
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, blob);
+    }
+
+    #[tokio::test]
+    async fn download_package_missing_manifest() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest("FooBar")
+                    .size(6)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".whl".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest("sha256:manifest-digest")
+                    .size(6)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".tar.gz".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+            ])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // Pull 0.1.0 index
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0.tar.gz manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:manifest-digest")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(404)
+                .create_async()
+                .await,
+
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz"
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body, "ImageManifest does not exist");
+    }
+
+    #[tokio::test]
+    async fn download_package_missing_architecture() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest("FooBar")
+                .size(6)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".whl".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // Pull 0.1.0 index
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index).unwrap())
+                .create_async()
+                .await,
+
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz"
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body, "Requested architecture '.tar.gz' not available");
+    }
+
+    #[tokio::test]
+    async fn download_package_missing_index() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let mocks = vec![
+            // Pull 0.1.0 index
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(404)
+                .create_async()
+                .await,
+
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz"
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body, "ImageIndex does not exist");
     }
 }
