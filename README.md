@@ -7,8 +7,8 @@ Publish and download (private) python packages using an OCI registry for storage
 [![codecov](https://codecov.io/github/AllexVeldman/pyoci/graph/badge.svg?token=SXFCPX8M22)](https://codecov.io/github/AllexVeldman/pyoci)
 
 ## Why PyOCI
-As part of my job we create private python packages used in the main application.
-To not have to rely on yet-another-cloud-provider, instead I built PyOCI, making `ghcr.io` act like a python index.
+As part of my job we create private python packages used in the main application.  
+To not have to rely on `yet-another-cloud-provider`, instead I built PyOCI, making `ghcr.io` act like a python index.  
 This also completely removed the need for separate access management as now GitHub Packages access control applies.
 
 Most subscriptions with cloud providers include an [OCI](https://opencontainers.org/) (docker image) registry where private containers can be published and distributed from.
@@ -25,11 +25,7 @@ Tested registries:
 Published packages will show up in the OCI registry UI:
 
 <img width="500" alt="ghcr.io hello-world package versions" src="https://github.com/user-attachments/assets/c3595da9-91e7-4ee6-b890-2ed9baca3c9d">
-
-
-Distinct distributions will show up as separate architectures for the same version:
-
-<img width="500" alt="ghcr.io hello-world distinct architectures" src="https://github.com/user-attachments/assets/63d130cf-5551-4131-b48b-a6e8f259cbc5">
+<img width="500" alt="ghcr.io Distinct distributions will show up as separate architectures for the same versions" src="https://github.com/user-attachments/assets/63d130cf-5551-4131-b48b-a6e8f259cbc5">
 
 ## Authentication
 Basic authentication is forwarded to the target registry.
