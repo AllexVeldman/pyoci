@@ -5,6 +5,7 @@ edition = "2021"
 authors = ["Allex Veldman"]
 description = "Let any OCI compliant registry act as a PyPi index"
 repository = "https://github.com/allexveldman/pyoci"
+homepage = "https://github.com/AllexVeldman/pyoci/blob/main/README.md"
 license = "MIT"
 
 [lib]

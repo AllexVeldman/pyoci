@@ -4,7 +4,7 @@ use axum::{
     debug_handler,
     extract::{DefaultBodyLimit, FromRequestParts, Multipart, Path},
     http::{header, request::Parts, HeaderMap},
-    response::{Html, IntoResponse},
+    response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Router,
 };
@@ -42,6 +42,10 @@ where
 pub fn router() -> Router {
     // TODO: Validate HOST header against a list of allowed hosts
     Router::new()
+        .route(
+            "/",
+            get(|| async { Redirect::to(env!("CARGO_PKG_HOMEPAGE")) }),
+        )
         .route("/:registry/:namespace/:package/", get(list_package))
         .route(
             "/:registry/:namespace/:package/:filename",
