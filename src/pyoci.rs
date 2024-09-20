@@ -3,6 +3,7 @@ use base16ct::lower::encode_string as hex_encode;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use http::HeaderValue;
+use http::StatusCode;
 use oci_spec::image::Arch;
 use oci_spec::image::DescriptorBuilder;
 use oci_spec::image::ImageIndexBuilder;
@@ -17,7 +18,6 @@ use oci_spec::{
 };
 use regex::Regex;
 use reqwest::Response;
-use reqwest::StatusCode;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
 use url::Url;
@@ -268,7 +268,11 @@ impl PyOci {
             Some(Manifest::Manifest(_)) => {
                 bail!("Expected ImageIndex, got ImageManifest");
             }
-            None => bail!("Manifest does not exist"),
+            None => {
+                return Err(
+                    PyOciError::from((StatusCode::NOT_FOUND, "ImageIndex does not exist")).into(),
+                )
+            }
         };
 
         let artifact_type = index.artifact_type();
@@ -309,7 +313,11 @@ impl PyOci {
             Some(Manifest::Manifest(_)) => {
                 bail!("Expected ImageIndex, got ImageManifest");
             }
-            None => bail!("Manifest does not exist"),
+            None => {
+                return Err(
+                    PyOciError::from((StatusCode::NOT_FOUND, "ImageIndex does not exist")).into(),
+                )
+            }
         };
         // Check artifact type
         match index.artifact_type() {
@@ -333,12 +341,20 @@ impl PyOci {
                 }
             }
         }
-        let manifest_descriptor = platform_manifest.with_context(|| {
-            format!(
-                "Requested architecture '{}' not available",
-                package.oci_architecture()
-            )
-        })?;
+        let manifest_descriptor = match platform_manifest {
+            Some(descriptor) => descriptor,
+            None => {
+                return Err(PyOciError::from((
+                    StatusCode::NOT_FOUND,
+                    format!(
+                        "Requested architecture '{}' not available",
+                        package.oci_architecture()
+                    ),
+                ))
+                .into())
+            }
+        };
+
         let manifest = match self
             .pull_manifest(&package.oci_name()?, manifest_descriptor.digest())
             .await?
@@ -347,7 +363,13 @@ impl PyOci {
             Some(Manifest::Index(_)) => {
                 bail!("Expected ImageManifest, got ImageIndex");
             }
-            None => bail!("Manifest does not exist"),
+            None => {
+                return Err(PyOciError::from((
+                    StatusCode::NOT_FOUND,
+                    "ImageManifest does not exist",
+                ))
+                .into())
+            }
         };
         // pull blob in first layer of manifest
         let [blob_descriptor] = &manifest.layers()[..] else {
@@ -546,10 +568,7 @@ impl PyOci {
             StatusCode::OK => {}
             status => return Err(PyOciError::from((status, response.text().await?)).into()),
         };
-        let tags = response
-            .json::<TagList>()
-            .await
-            .expect("valid TagList json");
+        let tags = response.json::<TagList>().await?;
         Ok(tags)
     }
 

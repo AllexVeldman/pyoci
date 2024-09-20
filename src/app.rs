@@ -132,8 +132,7 @@ async fn download_package(
         .download_package_file(&package)
         .await?
         .bytes()
-        .await
-        .expect("valid bytes");
+        .await?;
 
     Ok((
         [(
@@ -313,10 +312,14 @@ mod tests {
         body::{to_bytes, Body},
         http::Request,
     };
+    use bytes::Bytes;
     use indoc::formatdoc;
     use oci_spec::{
         distribution::{TagList, TagListBuilder},
-        image::{Arch, DescriptorBuilder, ImageIndex, ImageIndexBuilder, Os, PlatformBuilder},
+        image::{
+            Arch, DescriptorBuilder, ImageIndex, ImageIndexBuilder, ImageManifest,
+            ImageManifestBuilder, Os, PlatformBuilder,
+        },
     };
     use tower::ServiceExt;
 
@@ -823,5 +826,126 @@ mod tests {
                 </html>"#
             )
         );
+    }
+
+    #[tokio::test]
+    async fn download_package() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest("FooBar")
+                    .size(6)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".whl".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest("sha256:manifest-digest")
+                    .size(6)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".tar.gz".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+            ])
+            .build()
+            .unwrap();
+
+        let manifest = ImageManifestBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .config(
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.empty.v1+json")
+                    .digest("sha256:config-digest")
+                    .size(0)
+                    .build()
+                    .unwrap(),
+            )
+            .layers(vec![DescriptorBuilder::default()
+                .media_type("application/pyoci.package.v1")
+                .digest("sha256:layer-digest")
+                .size(42)
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let blob = Bytes::from(vec![1, 2, 3]);
+
+        let mocks = vec![
+            // Pull 0.1.0 index
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0.tar.gz manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:manifest-digest")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.manifest.v1+json")
+                .with_body(serde_json::to_string::<ImageManifest>(&manifest).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0.tar.gz blob
+            server
+                .mock("GET", "/v2/mockserver/test_package/blobs/sha256:layer-digest")
+                .with_status(200)
+                .with_body(blob.clone())
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz"
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, blob);
     }
 }
