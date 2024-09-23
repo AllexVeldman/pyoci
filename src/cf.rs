@@ -9,8 +9,7 @@ use tracing_subscriber::EnvFilter;
 use tracing_web::MakeWebConsoleWriter;
 use worker::{console_log, event, Body, Cf, Context, Env};
 
-use crate::otlp::otlp;
-use crate::otlp::Toilet;
+use crate::otlp::{otlp, OtlpLayer, Toilet};
 
 /// Called once when the worker is started
 #[event(start)]
@@ -19,8 +18,8 @@ fn start() {
     console_error_panic_hook::set_once();
 }
 
-fn init(env: &Env) -> &'static crate::otlp::OtlpLayer {
-    static INIT: OnceLock<crate::otlp::OtlpLayer> = OnceLock::new();
+fn init(env: &Env) -> &'static OtlpLayer {
+    static INIT: OnceLock<OtlpLayer> = OnceLock::new();
     INIT.get_or_init(|| {
         let rust_log = match env.var("RUST_LOG") {
             Ok(log) => log.to_string(),

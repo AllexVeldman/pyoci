@@ -9,7 +9,8 @@ homepage = "https://github.com/AllexVeldman/pyoci/blob/main/README.md"
 license = "MIT"
 
 [lib]
-crate-type = ["cdylib"]
+# https://doc.rust-lang.org/reference/linkage.html
+crate-type = ["cdylib", "lib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
@@ -18,6 +19,17 @@ opt-level = "s"
 lto = true
 strip = true
 codegen-units = 1
+
+[features]
+default = ["otlp"]
+otlp = [
+    "dep:opentelemetry-proto",
+    "dep:opentelemetry",
+    "dep:opentelemetry_sdk",
+    "dep:tracing-core",
+    "dep:prost",
+]
+
 
 [dependencies]
 bytes = "1.7.2"
@@ -38,38 +50,36 @@ urlencoding = "2.1.3"
 anyhow = "1.0.89"
 http = "1.1.0"
 axum = { version = "0.7.5", default-features = false, features = ["multipart","macros"] }
-
-# wasm dependencies
-time = { version = "0.3.36", features = ["wasm-bindgen"] }
-console_error_panic_hook = "0.1.7"
-wasm-bindgen = "0.2.93"
-worker = { version = "0.4.0", features = ["http"] }
-tracing-web = "0.1.3"
-futures = "0.3.30"
-getrandom = { version = "*", features = ["js"] }
-
-# OTLP dependencies
-opentelemetry-proto = { version = "0.7.0", default-features = false, features = ["gen-tonic-messages", "logs", "trace"] }
-# sub-dependencies of opentelemetry-proto, here to disable the default features
-opentelemetry = { version = "*", default-features = false, features = ["trace"] }
-opentelemetry_sdk = { version = "*", default-features = false, features = ["trace"] }
-
-tracing-core = "0.1.32"
-prost = "0.13.2"
-tower = {version = "0.5.0", features = ["util"]}
+tower = { version = "0.5.0", features = ["util"] }
 async-trait = "0.1.81"
 pin-project = "1.1.5"
+futures = "0.3.30"
+time = "0.3.36"
+
+# OTLP dependencies
+opentelemetry-proto = { version = "0.7.0", default-features = false, features = ["gen-tonic-messages", "logs", "trace"], optional = true }
+tracing-core = {version = "0.1.32", optional = true }
+prost = {version = "0.13.2", optional = true }
+# sub-dependencies of opentelemetry-proto, here to disable the default features
+opentelemetry = { version = "*", default-features = false, features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "*", default-features = false, features = ["trace"], optional = true }
 
 
-[dependencies.web-sys]
-version = "0.3.63"
-features = [
-  'Headers',
-  'Request',
-  'RequestInit',
-  'Response',
-  'WorkerGlobalScope',
-]
+[target.'cfg(target_arch = "wasm32")'.dependencies]
+worker = { version = "0.4.0", features = ["http"] }
+console_error_panic_hook = "0.1.7"
+tracing-web = "0.1.3"
+# (sub)dependencies that need additional features for wasm
+wasm-bindgen = "*"
+web-sys = { version = "*", features = [
+    'Headers',
+    'Request',
+    'RequestInit',
+    'Response',
+    'WorkerGlobalScope',
+]}
+time = { version = "*", features = ["wasm-bindgen"] }
+getrandom = { version = "*", features = ["js"] }
 
 [dev-dependencies]
 futures-util = "0.3.30"

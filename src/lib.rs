@@ -3,8 +3,10 @@
 // Webserver request handlers
 mod app;
 // Request handlers for the cloudflare worker
+#[cfg(target_arch = "wasm32")]
 mod cf;
 // OTLP handlers
+#[cfg(feature = "otlp")]
 mod otlp;
 // Helper for parsing and managing Python/OCI packages
 mod package;
