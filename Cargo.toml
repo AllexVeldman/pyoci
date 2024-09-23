@@ -20,7 +20,7 @@ strip = true
 codegen-units = 1
 
 [dependencies]
-bytes = "1.7.1"
+bytes = "1.7.2"
 exitcode = "1.1.2"
 oci-spec = { version = "0.6.8", default-features = false, features = ["image", "distribution"] }
 url = "2.5.2"
