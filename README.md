@@ -16,7 +16,7 @@ Most subscriptions with cloud providers include an [OCI](https://opencontainers.
 PyOCI allows using any (private) OCI registry as a python package index, as long as it implements the [OCI distribution specification](https://github.com/opencontainers/distribution-spec/blob/main/spec.md).
 It acts as a proxy between pip and the OCI registry.
 
-An instance of PyOCI is available at https://pyoci.allexveldman.nl, to use this proxy, please see the [Examples](#Examples).
+An instance of PyOCI is available at https://pyoci.allexveldman.nl, to use this proxy, please see the [Getting started](#getting-started).
 
 Tested registries:
 - [ghcr.io](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
@@ -27,30 +27,30 @@ Published packages will show up in the OCI registry UI:
 <img width="500" alt="ghcr.io hello-world package versions" src="https://github.com/user-attachments/assets/c3595da9-91e7-4ee6-b890-2ed9baca3c9d">
 <img width="500" alt="ghcr.io Distinct distributions will show up as separate architectures for the same versions" src="https://github.com/user-attachments/assets/63d130cf-5551-4131-b48b-a6e8f259cbc5">
 
-## Authentication
-Basic authentication is forwarded to the target registry.
-
-Currently only Basic authentication is supported.
-This is due to pip [only supporting basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
-and [not all OCI registries supporting OAuth](https://distribution.github.io/distribution/spec/auth/oauth/),
-instead the [token authentication](https://distribution.github.io/distribution/spec/auth/token/) is used.
-
 ## Getting started
-To let pip resolve to our private registry, we need to supply some into into the `--extra-index-url`:
-- URL of the OCI registry to use.
-- namespace within the registry, for most registries this is the username or organization name.
-
-### Examples
 To install a package with pip using PyOCI:
 ```commandline
-pip install --extra-index-url="http://<username>:<password>@<pyoci url>/<OCI registry url>/<namespace>/" <package name>
+pip install --index-url="http://<username>:<password>@<pyoci-url>/<OCI-registry-url>/<namespace>/" <package-name>
 ```
-Example installing package `bar` from organization `Foo` using `ghcr.io` as the registry:
-```commandline
-pip install --extra-index-url="https://Foo:$GH_TOKEN@pyoci.allexveldman.nl/ghcr.io/foo/" bar
-```
+- `<pyoci-url>`: https://pyoci.allexveldman.nl
+- `<OCI-registry-url>`: URL of the OCI registry to use.
+- `<namespace>`: namespace within the registry, for most registries this is the username or organization name.
 
-For more examples, including how to publish a package, see the [examples](/docs/examples)
+Example installing package `hello-world` from organization `allexveldman` using `ghcr.io` as the registry:
+```commandline
+pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.allexveldman.nl/ghcr.io/allexveldman/" hello-world
+```
+> [!Warning]
+> If the package contains dependencies from regular pypi, these will not resolve.
+> 
+> Pip does not have a proper way of indicating you only want to resolve `<package-name>` through PyOCI and it's dependencies through pypi.
+> Poetry does provide you with [a way](https://python-poetry.org/docs/repositories/#package-source-constraint) to do this.
+
+For more examples, including how to publish a package, see the [examples](/docs/examples).
+
+## Authentication
+Pip's [Basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
+is forwarded as-is to the target registry as part of the [token authentication](https://distribution.github.io/distribution/spec/auth/token/) flow.
 
 ## Changing a package
 PyOCI will refuse to upload a package file if the package name, version and architecture already exist.
