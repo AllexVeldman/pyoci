@@ -10,7 +10,7 @@ license = "MIT"
 
 [lib]
 # https://doc.rust-lang.org/reference/linkage.html
-crate-type = ["cdylib", "lib"]
+crate-type = ["cdylib"]
 
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
