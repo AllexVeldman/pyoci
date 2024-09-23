@@ -4,7 +4,6 @@ use std::error::Error;
 use std::future::Future;
 use std::pin::Pin;
 use std::task::{Context, Poll};
-use time::OffsetDateTime;
 use tower::{Layer, Service};
 
 #[derive(Debug, Default, Clone)]
@@ -59,7 +58,6 @@ where
             url: request.url().to_string(),
             inner_fut: self.inner.call(request),
             request_type: self.request_type,
-            start: OffsetDateTime::now_utc(),
         }
     }
 }
@@ -71,7 +69,6 @@ pub struct LogFuture<F> {
     method: String,
     url: String,
     request_type: &'static str,
-    start: OffsetDateTime,
 }
 
 impl<F> Future for LogFuture<F>
@@ -87,7 +84,6 @@ where
             Ok(response) => {
                 let status: u16 = response.status().into();
                 tracing::info!(
-                    elapsed_ms = (OffsetDateTime::now_utc() - *this.start).whole_milliseconds(),
                     method = this.method,
                     status,
                     url = this.url,

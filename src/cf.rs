@@ -61,7 +61,12 @@ async fn fetch(
     let otlp_layer = init(&env);
     let cf = req.extensions().get::<Cf>().unwrap().to_owned();
 
-    let span = info_span!("fetch", path = %req.uri().path(), method = %req.method());
+    let span = info_span!(
+        "fetch",
+        otel.path = req.uri().path(),
+        otel.method = req.method().as_str(),
+        otel.span_kind = "server"
+    );
     let result = crate::app::router().call(req).instrument(span).await;
     let attributes = HashMap::from([
         ("service.name", Some("pyoci".to_string())),

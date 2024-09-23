@@ -159,7 +159,9 @@ where
             observed_time_unix_nano: time_ns,
             severity_text: level.to_string().to_uppercase(),
             body: Some(AnyValue {
-                value: Some(any_value::Value::StringValue(visitor.string)),
+                value: Some(any_value::Value::StringValue(
+                    visitor.string.trim().to_string(),
+                )),
             }),
             attributes: vec![],
             trace_id: trace_id.to_bytes().into(),
@@ -188,8 +190,16 @@ pub struct LogVisitor {
 }
 
 impl Visit for LogVisitor {
-    fn record_debug(&mut self, field: &Field, value: &dyn fmt::Debug) {
-        write!(self.string, "{}={:?} ", field.name(), value).unwrap();
+    fn record_debug(&mut self, _field: &Field, value: &dyn fmt::Debug) {
+        write!(self.string, "{value:?} ").unwrap();
+    }
+
+    fn record_str(&mut self, field: &Field, value: &str) {
+        write!(self.string, "{}=\"{}\" ", field.name(), value).unwrap();
+    }
+
+    fn record_u64(&mut self, field: &Field, value: u64) {
+        write!(self.string, "{}={} ", field.name(), value).unwrap();
     }
 }
 
@@ -226,7 +236,7 @@ mod tests {
         let dispatch = dispatcher::Dispatch::new(subscriber);
         dispatcher::with_default(&dispatch, || {
             let span = tracing::info_span!("unittest").entered();
-            tracing::info!(target: "unittest", "unittest log 1");
+            tracing::info!(target: "unittest", status=200_u16, path="/", "unittest log 1");
             tracing::info!(target: "unittest", "unittest log 2");
             tracing::info!(target: "unittest", "unittest log 3");
             tracing::info!(target: "unittest", "unittest log 4");
@@ -237,6 +247,14 @@ mod tests {
         // Vec[u8], there are timestamps in the body, and I have no way of stopping time during
         // tests, I don't (yet) know how to do that.
         assert_eq!(otlp_clone.records.read().unwrap().len(), 4);
+        assert_eq!(
+            otlp_clone.records.read().unwrap()[0].body.as_ref().unwrap(),
+            &AnyValue {
+                value: Some(any_value::Value::StringValue(
+                    "unittest log 1 status=200 path=\"/\"".into()
+                )),
+            }
+        );
         otlp_clone
             .flush(&HashMap::from([("unittest", Some("test1".into()))]))
             .await;

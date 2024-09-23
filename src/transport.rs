@@ -42,13 +42,13 @@ impl Service<reqwest::Request> for HttpTransport {
         #[cfg(target_arch = "wasm32")]
         let fut = Box::pin(
             worker::send::SendFuture::new(self.client.execute(request))
-                .instrument(tracing::info_span!("send")),
+                .instrument(tracing::info_span!("send", otel.span_kind = "client")),
         );
         #[cfg(not(target_arch = "wasm32"))]
         let fut = Box::pin(
             self.client
                 .execute(request)
-                .instrument(tracing::info_span!("send")),
+                .instrument(tracing::info_span!("send", otel.span_kind = "client")),
         );
         fut
     }
