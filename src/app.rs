@@ -1,16 +1,14 @@
 use askama::Template;
-use async_trait::async_trait;
 use axum::{
     debug_handler,
-    extract::{DefaultBodyLimit, FromRequestParts, Multipart, Path},
-    http::{header, request::Parts, HeaderMap},
+    extract::{DefaultBodyLimit, Multipart, Path},
+    http::{header, HeaderMap},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
     Router,
 };
 use http::StatusCode;
-use time::OffsetDateTime;
-use url::Url;
+use tracing::{info_span, Instrument};
 
 use crate::{package, pyoci::PyOciError, templates, PyOci};
 
@@ -56,6 +54,7 @@ pub fn router() -> Router {
             post(publish_package).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
         )
         .layer(axum::middleware::from_fn(accesslog_middleware))
+        .layer(axum::middleware::from_fn(trace_middleware))
 }
 
 /// Log incoming requests
@@ -66,7 +65,6 @@ async fn accesslog_middleware(
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
-    let start = OffsetDateTime::now_utc();
     let response = next.run(request).await;
 
     let status: u16 = response.status().into();
@@ -74,7 +72,6 @@ async fn accesslog_middleware(
         .get("user-agent")
         .map(|ua| ua.to_str().unwrap_or(""));
     tracing::info!(
-        elapsed_ms = (OffsetDateTime::now_utc() - start).whole_milliseconds(),
         method = method.to_string(),
         status,
         path = uri.path(),
@@ -84,17 +81,27 @@ async fn accesslog_middleware(
     response
 }
 
+/// Wrap all incoming requests in a fetch trace
+async fn trace_middleware(
+    method: axum::http::Method,
+    uri: axum::http::Uri,
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let span = info_span!(
+        "fetch",
+        otel.path = uri.path(),
+        otel.method = method.as_str(),
+        otel.span_kind = "server"
+    );
+    next.run(request).instrument(span).await
+}
+
 /// List package request handler
 #[debug_handler]
-// Mark the handler as Send when building a wasm target
-//  JsFuture, and most other JS objects are !Send
-//  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
-//  https://docs.rs/worker/latest/worker/index.html#send-helpers
-#[cfg_attr(target_arch = "wasm32", worker::send)]
 #[tracing::instrument(skip_all)]
 async fn list_package(
     headers: HeaderMap,
-    Host(host): Host,
     path_params: Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
     let auth = match headers.get("Authorization") {
@@ -104,22 +111,16 @@ async fn list_package(
     let package: package::Info = path_params.0.try_into()?;
 
     let mut client = PyOci::new(package.registry.clone(), auth)?;
-    // Fetch at most 45 packages
-    // https://developers.cloudflare.com/workers/platform/limits/#account-plan-limits
-    let files = client.list_package_files(&package, 45).await?;
+    // Fetch at most 100 package versions
+    let files = client.list_package_files(&package, 100).await?;
 
     // TODO: swap to application/vnd.pypi.simple.v1+json
-    let template = templates::ListPackageTemplate { host, files };
+    let template = templates::ListPackageTemplate { files };
     Ok(Html(template.render().expect("valid template")))
 }
 
 /// Download package request handler
 #[debug_handler]
-// Mark the handler as Send when building a wasm target
-//  JsFuture, and most other JS objects are !Send
-//  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
-//  https://docs.rs/worker/latest/worker/index.html#send-helpers
-#[cfg_attr(target_arch = "wasm32", worker::send)]
 #[tracing::instrument(skip_all)]
 async fn download_package(
     path_params: Path<(String, String, Option<String>, String)>,
@@ -151,11 +152,6 @@ async fn download_package(
 ///
 /// ref: https://warehouse.pypa.io/api-reference/legacy.html#upload-api
 #[debug_handler]
-// Mark the handler as Send when building a wasm target
-//  JsFuture, and most other JS objects are !Send
-//  Because the cloudflare worker runtime is single-threaded, we can safely mark this as Send
-//  https://docs.rs/worker/latest/worker/index.html#send-helpers
-#[cfg_attr(target_arch = "wasm32", worker::send)]
 #[tracing::instrument(skip_all)]
 async fn publish_package(
     Path((registry, namespace)): Path<(String, String)>,
@@ -279,32 +275,6 @@ impl UploadForm {
             filename,
             content: content.into(),
         })
-    }
-}
-
-/// Extract the host from the request as a URL
-/// includes the scheme and port, the path, query, username and password are removed if present
-struct Host(Url);
-
-#[async_trait]
-impl<S> FromRequestParts<S> for Host
-where
-    S: Send + Sync,
-{
-    type Rejection = (StatusCode, &'static str);
-
-    async fn from_request_parts(parts: &mut Parts, _state: &S) -> Result<Self, Self::Rejection> {
-        let uri = &parts.uri;
-        let mut url =
-            Url::parse(&uri.to_string()).map_err(|_| (StatusCode::BAD_REQUEST, "Invalid URL"))?;
-
-        url.set_path("");
-        url.set_query(None);
-        url.set_username("")
-            .map_err(|_| (StatusCode::BAD_REQUEST, "Failed to clear URL username"))?;
-        url.set_password(None)
-            .map_err(|_| (StatusCode::BAD_REQUEST, "Failed to clear URL password"))?;
-        Ok(Host(url))
     }
 }
 
@@ -793,9 +763,7 @@ mod tests {
         let router = router();
         let req = Request::builder()
             .method("GET")
-            .uri(format!(
-                "http://localhost.unittest/{encoded_url}/mockserver/test-package/"
-            ))
+            .uri(format!("/{encoded_url}/mockserver/test-package/"))
             .body(Body::empty())
             .unwrap();
         let response = router.oneshot(req).await.unwrap();
@@ -824,8 +792,8 @@ mod tests {
                     <title>PyOCI</title>
                 </head>
                 <body>
-                    <a href="http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
-                    <a href="http://localhost.unittest/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
+                    <a href="/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
+                    <a href="/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
                 </body>
                 </html>"#
             )
@@ -902,9 +870,7 @@ mod tests {
         let router = router();
         let req = Request::builder()
             .method("GET")
-            .uri(format!(
-                "http://localhost.unittest/{encoded_url}/mockserver/test-package/"
-            ))
+            .uri(format!("/{encoded_url}/mockserver/test-package/"))
             .body(Body::empty())
             .unwrap();
         let response = router.oneshot(req).await.unwrap();

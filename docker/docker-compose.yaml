@@ -1,6 +1,14 @@
 name: pyoci
 
 services:
+  pyoci:
+    image: ghcr.io/allexveldman/pyoci:latest
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    ports:
+      - 8080:8080
+
   registry:
     image: docker.io/library/registry:2
     ports:
@@ -16,7 +24,7 @@ services:
     depends_on:
       - registry
     ports:
-      - 8080:80
+      - 8091:80
     environment:
       - SINGLE_REGISTRY=true
       - REGISTRY_TITLE=Docker Registry UI

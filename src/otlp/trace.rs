@@ -1,5 +1,6 @@
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use opentelemetry_proto::tonic::trace::v1::span::SpanKind;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
@@ -87,12 +88,13 @@ impl Toilet for OtlpTraceLayer {
     async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
         let spans: Vec<Span> = self.spans.write().unwrap().drain(..).collect();
         if spans.is_empty() {
-            tracing::info!("No spans to send");
+            tracing::debug!("No spans to send");
             return;
         }
         tracing::info!("Sending {} spans to OTLP", spans.len());
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
+            .timeout(Duration::from_secs(10))
             .build()
             .unwrap();
 

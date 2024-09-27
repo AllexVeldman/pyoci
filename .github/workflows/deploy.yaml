@@ -1,14 +1,17 @@
 name: Deploy
 
 on:
-  push:
-    branches:
-      - main
+  workflow_call:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        type: string
 
 # Prevent parallel deployments
 concurrency:
-  group: ${{ github.workflow }}-pyoci.allexveldman.nl
+  group: ${{ github.workflow }}-pyoci.com
   cancel-in-progress: false
+
 
 jobs:
   deploy:
@@ -16,28 +19,33 @@ jobs:
     name: Deploy
     timeout-minutes: 10
 
+    permissions:
+      id-token: write
+
     environment:
-      name: pyoci
-      url: https://pyoci.allexveldman.nl
+      name: pyoci.com
+      url: https://pyoci.com
 
     steps:
-      - uses: extractions/setup-just@v2
-      - uses: actions/checkout@v4
-      - uses: actions/cache@v4
+      - name: Azure login
+        uses: azure/login@v2
         with:
-          path: |
-            ~/.cargo
-            target/
-          key: ${{ runner.os }}-cargo-${{ hashFiles('**/Cargo.lock') }}
+          client-id: ${{ secrets.AZURE_CLIENT_ID }}
+          tenant-id: ${{ secrets.AZURE_TENANT_ID }}
+          subscription-id: ${{ secrets.AZURE_SUBSCRIPTION_ID }}
 
-      - name: Install wasm-pack
-        run: curl https://rustwasm.github.io/wasm-pack/installer/init.sh -sSf | sh
-
-      - name: Deploy
-        uses: cloudflare/wrangler-action@v3
+      - name: Azure CLI script
+        uses: azure/cli@v2
         with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          azcliversion: latest
+          inlineScript: >
+            az containerapp revision copy
+            --name pyoci
+            --resource-group PyOCI
+            --image ghcr.io/allexveldman/pyoci:${{ inputs.version }}
+            --tags version=${{ inputs.version }} sha=${{ github.sha }}
+            --revision-suffix=${{ inputs.version }}-${{ github.run_number }}-${{ github.run_attempt }}
+
 
   examples:
     name: Examples
