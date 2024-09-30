@@ -57,7 +57,7 @@ futures = "0.3.30"
 time = "0.3.36"
 
 # OTLP dependencies
-opentelemetry-proto = { version = "0.7.0", default-features = false, features = ["gen-tonic-messages", "logs", "trace"], optional = true }
+opentelemetry-proto = { version = "0.25.0", default-features = false, features = ["gen-tonic-messages", "logs", "trace"], optional = true }
 tracing-core = {version = "0.1.32", optional = true }
 prost = {version = "0.13.2", optional = true }
 # sub-dependencies of opentelemetry-proto, here to disable the default features
