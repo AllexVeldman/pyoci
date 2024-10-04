@@ -6,6 +6,11 @@ on:
       version:
         description: 'Version to deploy'
         type: string
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to deploy'
+        type: string
 
 # Prevent parallel deployments
 concurrency:
