@@ -16,7 +16,7 @@ Most subscriptions with cloud providers include an [OCI](https://opencontainers.
 PyOCI allows using any (private) OCI registry as a python package index, as long as it implements the [OCI distribution specification](https://github.com/opencontainers/distribution-spec/blob/main/spec.md).
 It acts as a proxy between pip and the OCI registry.
 
-An instance of PyOCI is available at https://pyoci.allexveldman.nl, to use this proxy, please see the [Getting started](#getting-started).
+An instance of PyOCI is available at https://pyoci.com, to use this proxy, please see the [Getting started](#getting-started).
 
 Tested registries:
 - [ghcr.io](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
@@ -32,13 +32,13 @@ To install a package with pip using PyOCI:
 ```commandline
 pip install --index-url="http://<username>:<password>@<pyoci-url>/<OCI-registry-url>/<namespace>/" <package-name>
 ```
-- `<pyoci-url>`: https://pyoci.allexveldman.nl
+- `<pyoci-url>`: https://pyoci.com
 - `<OCI-registry-url>`: URL of the OCI registry to use.
 - `<namespace>`: namespace within the registry, for most registries this is the username or organization name.
 
 Example installing package `hello-world` from organization `allexveldman` using `ghcr.io` as the registry:
 ```commandline
-pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.allexveldman.nl/ghcr.io/allexveldman/" hello-world
+pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.com/ghcr.io/allexveldman/" hello-world
 ```
 > [!Warning]
 > If the package contains dependencies from regular pypi, these will not resolve.
@@ -103,7 +103,7 @@ module.exports = {
   ...
   hostRules: [
     {
-      matchHost: "pyoci.allexveldman.nl",
+      matchHost: "pyoci.com",
       hostType: "pypi",
       username: process.env.RENOVATE_PYOCI_USER,
       password: process.env.RENOVATE_PYOCI_TOKEN
