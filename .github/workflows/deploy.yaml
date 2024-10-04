@@ -44,7 +44,6 @@ jobs:
             --resource-group PyOCI
             --image ghcr.io/allexveldman/pyoci:${{ inputs.version }}
             --tags version=${{ inputs.version }} sha=${{ github.sha }}
-            --revision-suffix=${{ inputs.version }}-${{ github.run_number }}-${{ github.run_attempt }}
 
 
   examples:
