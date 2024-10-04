@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use std::fmt::{self, Write};
 use std::sync::{Arc, RwLock};
+use std::time::Duration;
 
 use prost::Message;
 use time::OffsetDateTime;
@@ -84,11 +85,13 @@ impl Toilet for OtlpLogLayer {
     async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
         let records: Vec<LogRecord> = self.records.write().unwrap().drain(..).collect();
         if records.is_empty() {
+            tracing::debug!("No logs to send");
             return;
         }
         tracing::info!("Sending {} log records to OTLP", records.len());
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
+            .timeout(Duration::from_secs(10))
             .build()
             .unwrap();
 
@@ -139,18 +142,18 @@ where
         event.record(&mut visitor);
 
         let Some(span) = ctx.event_span(event) else {
-            tracing::info!("Currently not in a span");
+            tracing::debug!("Currently not in a span");
             return;
         };
 
         let extensions = span.extensions();
         let Some(trace_id) = extensions.get::<TraceId>() else {
-            tracing::info!("Could not find Trace ID for Span {:?}", span.id());
+            tracing::error!("Could not find Trace ID for Span {:?}", span.id());
             return;
         };
 
         let Some(span_id) = extensions.get::<SpanId>() else {
-            tracing::info!("Could not find Span ID for Span {:?}", span.id());
+            tracing::error!("Could not find Span ID for Span {:?}", span.id());
             return;
         };
 
@@ -177,7 +180,7 @@ fn time_unix_ns() -> Option<u64> {
     match OffsetDateTime::now_utc().unix_timestamp_nanos().try_into() {
         Ok(value) => Some(value),
         Err(_) => {
-            tracing::info!("SystemTime out of range for conversion to u64!");
+            tracing::error!("SystemTime out of range for conversion to u64!");
             None
         }
     }

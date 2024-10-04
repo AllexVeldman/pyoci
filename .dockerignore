@@ -1,0 +1,4 @@
+target/
+.envrc
+.github/
+docs/

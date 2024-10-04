@@ -323,7 +323,14 @@ impl Info {
         // url::Url adds a trailing slash to an empty path
         // which we don't want to url-encode
         let registry = self.registry.as_str();
-        let registry = urlencoding::encode(registry.strip_suffix('/').unwrap_or(registry));
+        let registry = registry.strip_suffix('/').unwrap_or(registry);
+        // We assume https on all endpoints if the scheme is not provided
+        // This prevents url encoding the scheme in the default case
+        // It also makes the default work when running behind proxies that
+        // decode the URL before hitting the server, like azure.
+        // https://learn.microsoft.com/en-us/answers/questions/1160320/azure-is-decoding-characters-in-the-url-before-rea
+        let registry = registry.strip_prefix("https://").unwrap_or(registry);
+        let registry = urlencoding::encode(registry);
         match self.file.name() {
             Ok(name) => format!("/{}/{}/{}/{}", registry, self.namespace, name, self.file),
             Err(_) => format!("/{registry}/"),
@@ -472,7 +479,7 @@ mod tests {
         };
         assert_eq!(
             info.py_uri(),
-            "/https%3A%2F%2Ffoo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
+            "/foo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
         );
     }
 
@@ -492,7 +499,7 @@ mod tests {
         assert_eq!(
             info.py_url(&url::Url::parse("https://example.com").unwrap())
                 .as_str(),
-            "https://example.com/https%3A%2F%2Ffoo.example/bar/baz/baz-1.tar.gz"
+            "https://example.com/foo.example/bar/baz/baz-1.tar.gz"
         );
     }
 
@@ -509,7 +516,7 @@ mod tests {
                 ..File::default()
             },
         };
-        assert_eq!(into.py_uri(), "/https%3A%2F%2Ffoo.example/".to_string());
+        assert_eq!(into.py_uri(), "/foo.example/".to_string());
     }
 
     #[test]

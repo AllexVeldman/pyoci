@@ -28,7 +28,7 @@ jobs:
       - name: Version
         id: version
         run: |
-          echo "VERSION=0.0.1+example-poetry-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+          echo "VERSION=0.0.1+example-${{ github.run_attempt }}-poetry-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
 
       - name: Publish
         run: |

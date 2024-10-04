@@ -9,3 +9,4 @@ build/
 node_modules/
 .venv/
 lcov.info
+.envrc
