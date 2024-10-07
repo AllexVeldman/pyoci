@@ -16,7 +16,7 @@ When published successfully, the package should show up in the registry with 2 a
 
 To install the package:
 ```bash
-poetry source add --priority=explicit pyoci https://pyoci.allexveldman.nl/ghcr.io/allexveldman/
+poetry source add --priority=explicit pyoci https://pyoci.com/ghcr.io/allexveldman/
 poetry config http-basic.pyoci <username> <password>
 poetry add hello-world --source pyoci-ghcr-allexveldman
 ```
