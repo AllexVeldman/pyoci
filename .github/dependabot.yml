@@ -6,4 +6,5 @@ updates:
       interval: "weekly"
     groups:
       opentelemetry:
-        patterns: "opentelemetry*"
+        patterns: 
+        - "opentelemetry*"
