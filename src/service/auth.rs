@@ -167,13 +167,13 @@ where
                     tracing::debug!("Received 401 response, authenticating");
                     if this.request.is_none() {
                         // No clone of the original request, can't retry after authentication
-                        tracing::debug!("No request to retry, skipping authentication");
+                        tracing::info!("No request to retry, skipping authentication");
                         return Poll::Ready(Ok(response));
                     }
                     // Take the basic token, we are only expected to trade it once
                     let Some(basic_token) = this.auth.basic.take() else {
                         // No basic token to trade for a bearer token
-                        tracing::debug!("No basic token, skipping authentication");
+                        tracing::info!("No basic token, skipping authentication");
                         return Poll::Ready(Ok(response));
                     };
 
@@ -357,7 +357,7 @@ mod tests {
         assert_eq!(response.text().await.unwrap(), "Hello, world!");
     }
 
-    // The if the original response it returned if the request can't be cloned.
+    // Test if the original response it returned if the request can't be cloned.
     // Without a clone we can't retry after authentication.
     #[tokio::test]
     async fn auth_service_missing_clone() {

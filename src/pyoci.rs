@@ -115,7 +115,7 @@ impl Blob {
     }
 }
 
-fn digest(data: &[u8]) -> String {
+fn digest(data: impl AsRef<[u8]>) -> String {
     let sha = <Sha256 as Digest>::digest(data);
     format!("sha256:{}", hex_encode(&sha))
 }
@@ -592,9 +592,8 @@ impl PyOci {
             }
             Manifest::Manifest(manifest) => {
                 let data = serde_json::to_string(&manifest)?;
-                let sha = <Sha256 as Digest>::digest(&data);
-                let digest = format!("sha256:{}", hex_encode(&sha));
-                let url = build_url!(&self, "/v2/{}/manifests/{}", name, &digest);
+                let data_digest = digest(&data);
+                let url = build_url!(&self, "/v2/{}/manifests/{}", name, &data_digest);
                 (url, data, "application/vnd.oci.image.manifest.v1+json")
             }
         };
