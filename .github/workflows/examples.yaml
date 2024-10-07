@@ -18,6 +18,11 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 2
 
+    env:
+      # pyoci.com scales down to 0 replicas
+      # allow a longer request time if a cold start is needed
+      POETRY_REQUESTS_TIMEOUT: 30
+
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-python@v5

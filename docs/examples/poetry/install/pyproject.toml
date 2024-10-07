@@ -10,7 +10,7 @@ hello-world = {version = "^0.0.1", source = "pyoci"}
 
 [[tool.poetry.source]]
 name = "pyoci"
-url = "https://pyoci.allexveldman.nl/ghcr.io/allexveldman/"
+url = "https://pyoci.com/ghcr.io/allexveldman/"
 priority = "explicit"
 
 [build-system]
