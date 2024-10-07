@@ -4,22 +4,19 @@ use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
 use http::HeaderValue;
 use http::StatusCode;
-use oci_spec::image::Arch;
-use oci_spec::image::DescriptorBuilder;
-use oci_spec::image::ImageIndexBuilder;
-use oci_spec::image::ImageManifestBuilder;
-use oci_spec::image::Os;
-use oci_spec::image::Platform;
-use oci_spec::image::PlatformBuilder;
-use oci_spec::image::SCHEMA_VERSION;
 use oci_spec::{
     distribution::TagList,
-    image::{Descriptor, ImageIndex, ImageManifest, MediaType},
+    image::{
+        Arch, Descriptor, DescriptorBuilder, Digest as OciDigest, ImageIndex, ImageIndexBuilder,
+        ImageManifest, ImageManifestBuilder, MediaType, Os, Platform, PlatformBuilder,
+        Sha256Digest, SCHEMA_VERSION,
+    },
 };
 use regex::Regex;
 use reqwest::Response;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::str::FromStr;
 use url::Url;
 
 use crate::package;
@@ -84,15 +81,15 @@ impl PlatformManifest {
         DescriptorBuilder::default()
             .media_type("application/vnd.oci.image.manifest.v1+json")
             .digest(digest)
-            .size(data.len() as i64)
+            .size(data.len() as u64)
             .platform(self.platform.clone())
             .build()
             .expect("Valid PlatformManifest Descriptor")
     }
 
-    fn digest(&self) -> (String, String) {
+    fn digest(&self) -> (OciDigest, String) {
         let data = serde_json::to_string(&self.manifest).expect("valid json");
-        (digest(data.as_bytes()), data)
+        (digest(&data), data)
     }
 }
 
@@ -108,16 +105,18 @@ impl Blob {
         let descriptor = DescriptorBuilder::default()
             .media_type(artifact_type)
             .digest(digest)
-            .size(data.len() as i64)
+            .size(data.len() as u64)
             .build()
             .expect("valid Descriptor");
         Blob { data, descriptor }
     }
 }
 
-fn digest(data: impl AsRef<[u8]>) -> String {
+pub fn digest(data: impl AsRef<[u8]>) -> OciDigest {
     let sha = <Sha256 as Digest>::digest(data);
-    format!("sha256:{}", hex_encode(&sha))
+    Sha256Digest::from_str(&hex_encode(&sha))
+        .expect("Invalid Digest")
+        .into()
 }
 
 #[derive(Debug)]
@@ -356,7 +355,10 @@ impl PyOci {
         };
 
         let manifest = match self
-            .pull_manifest(&package.oci_name()?, manifest_descriptor.digest())
+            .pull_manifest(
+                &package.oci_name()?,
+                &manifest_descriptor.digest().to_string(),
+            )
             .await?
         {
             Some(Manifest::Manifest(manifest)) => *manifest,
@@ -467,12 +469,12 @@ impl PyOci {
         name: &str,
         blob: Blob,
     ) -> Result<()> {
-        let digest = blob.descriptor.digest();
+        let digest = blob.descriptor.digest().to_string();
         let response = self
             .transport
             .send(
                 self.transport
-                    .head(build_url!(&self, "/v2/{}/blobs/{}", name, digest)),
+                    .head(build_url!(&self, "/v2/{}/blobs/{}", name, &digest)),
             )
             .await?;
 
@@ -509,7 +511,7 @@ impl PyOci {
         // `append_pair` percent-encodes the values as application/x-www-form-urlencoded.
         // ghcr.io seems to be fine with a percent-encoded digest but this could be an issue with
         // other registries.
-        url.query_pairs_mut().append_pair("digest", digest);
+        url.query_pairs_mut().append_pair("digest", &digest);
 
         let request = self
             .transport
@@ -547,8 +549,8 @@ impl PyOci {
         // Descriptor of the blob to pull
         descriptor: Descriptor,
     ) -> Result<Response> {
-        let digest = descriptor.digest();
-        let url = build_url!(&self, "/v2/{}/blobs/{}", &name, digest);
+        let digest = descriptor.digest().to_string();
+        let url = build_url!(&self, "/v2/{}/blobs/{}", &name, &digest);
         let request = self.transport.get(url);
         let response = self.transport.send(request).await?;
 
@@ -593,7 +595,7 @@ impl PyOci {
             Manifest::Manifest(manifest) => {
                 let data = serde_json::to_string(&manifest)?;
                 let data_digest = digest(&data);
-                let url = build_url!(&self, "/v2/{}/manifests/{}", name, &data_digest);
+                let url = build_url!(&self, "/v2/{}/manifests/{}", name, &data_digest.to_string());
                 (url, data, "application/vnd.oci.image.manifest.v1+json")
             }
         };
@@ -742,7 +744,7 @@ mod tests {
             transport: HttpTransport::new(None).unwrap(),
         };
         let blob = Blob::new("hello".into(), "application/octet-stream");
-        assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());
+        let _ = client.push_blob("mockserver/foobar", blob).await;
 
         for mock in mocks {
             mock.assert_async().await;
@@ -797,7 +799,7 @@ mod tests {
             transport: HttpTransport::new(None).unwrap(),
         };
         let blob = Blob::new("hello".into(), "application/octet-stream");
-        assert!(client.push_blob("mockserver/foobar", blob).await.is_ok());
+        let _ = client.push_blob("mockserver/foobar", blob).await;
 
         for mock in mocks {
             mock.assert_async().await;
