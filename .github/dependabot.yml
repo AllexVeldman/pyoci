@@ -4,6 +4,6 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
-groups:
-  opentelemetry:
-    patterns: "opentelemetry*"
+    groups:
+      opentelemetry:
+        patterns: "opentelemetry*"
