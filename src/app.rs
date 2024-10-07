@@ -281,6 +281,8 @@ impl UploadForm {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::pyoci::digest;
+    use std::str::FromStr;
 
     use axum::{
         body::{to_bytes, Body},
@@ -292,7 +294,7 @@ mod tests {
         distribution::{TagList, TagListBuilder},
         image::{
             Arch, DescriptorBuilder, ImageIndex, ImageIndexBuilder, ImageManifest,
-            ImageManifestBuilder, Os, PlatformBuilder,
+            ImageManifestBuilder, Os, PlatformBuilder, Sha256Digest,
         },
     };
     use tower::ServiceExt;
@@ -689,8 +691,8 @@ mod tests {
             .artifact_type("application/pyoci.package.v1")
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
-                .digest("FooBar")
-                .size(6)
+                .digest(digest("FooBar"))
+                .size(6_u64)
                 .platform(
                     PlatformBuilder::default()
                         .architecture(Arch::Other(".tar.gz".to_string()))
@@ -709,8 +711,8 @@ mod tests {
             .artifact_type("application/pyoci.package.v1")
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
-                .digest("FooBar")
-                .size(6)
+                .digest(digest("FooBar"))
+                .size(6_u64)
                 .platform(
                     PlatformBuilder::default()
                         .architecture(Arch::Other(".tar.gz".to_string()))
@@ -818,8 +820,8 @@ mod tests {
             .artifact_type("application/pyoci.package.v1")
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
-                .digest("FooBar")
-                .size(6)
+                .digest(digest("FooBar"))
+                .size(6_u64)
                 .platform(
                     PlatformBuilder::default()
                         .architecture(Arch::Other(".tar.gz".to_string()))
@@ -904,8 +906,8 @@ mod tests {
             .manifests(vec![
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
-                    .digest("FooBar")
-                    .size(6)
+                    .digest(digest("FooBar"))
+                    .size(6_u64)
                     .platform(
                         PlatformBuilder::default()
                             .architecture(Arch::Other(".whl".to_string()))
@@ -917,8 +919,8 @@ mod tests {
                     .unwrap(),
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
-                    .digest("sha256:manifest-digest")
-                    .size(6)
+                    .digest(digest("manifest-digest")) // sha256:bc669544845542470042912a0f61b90499ffc2320b45ea66b0be50439c5aab19
+                    .size(6_u64)
                     .platform(
                         PlatformBuilder::default()
                             .architecture(Arch::Other(".tar.gz".to_string()))
@@ -939,15 +941,15 @@ mod tests {
             .config(
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.empty.v1+json")
-                    .digest("sha256:config-digest")
-                    .size(0)
+                    .digest(digest("config-digest")) // sha:7b6a7aed8c63f4480a863fa046048c4bfb77d4514212ad646a5fcadcf8f5da47
+                    .size(0_u64)
                     .build()
                     .unwrap(),
             )
             .layers(vec![DescriptorBuilder::default()
                 .media_type("application/pyoci.package.v1")
-                .digest("sha256:layer-digest")
-                .size(42)
+                .digest(digest("layer-digest")) // sha:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969
+                .size(42_u64)
                 .build()
                 .unwrap()])
             .build()
@@ -969,7 +971,7 @@ mod tests {
                 .await,
             // Pull 0.1.0.tar.gz manifest
             server
-                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:manifest-digest")
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:bc669544845542470042912a0f61b90499ffc2320b45ea66b0be50439c5aab19")
                 .match_header(
                     "accept",
                     "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
@@ -980,7 +982,7 @@ mod tests {
                 .await,
             // Pull 0.1.0.tar.gz blob
             server
-                .mock("GET", "/v2/mockserver/test_package/blobs/sha256:layer-digest")
+                .mock("GET", "/v2/mockserver/test_package/blobs/sha256:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969")
                 .with_status(200)
                 .with_body(blob.clone())
                 .create_async()
@@ -1025,8 +1027,8 @@ mod tests {
             .manifests(vec![
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
-                    .digest("FooBar")
-                    .size(6)
+                    .digest(digest("FooBar"))
+                    .size(6_u64)
                     .platform(
                         PlatformBuilder::default()
                             .architecture(Arch::Other(".whl".to_string()))
@@ -1038,8 +1040,8 @@ mod tests {
                     .unwrap(),
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
-                    .digest("sha256:manifest-digest")
-                    .size(6)
+                    .digest(digest("manifest-digest")) // sha256:bc669544845542470042912a0f61b90499ffc2320b45ea66b0be50439c5aab19
+                    .size(6_u64)
                     .platform(
                         PlatformBuilder::default()
                             .architecture(Arch::Other(".tar.gz".to_string()))
@@ -1067,7 +1069,7 @@ mod tests {
                 .await,
             // Pull 0.1.0.tar.gz manifest
             server
-                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:manifest-digest")
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:bc669544845542470042912a0f61b90499ffc2320b45ea66b0be50439c5aab19")
                 .match_header(
                     "accept",
                     "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
@@ -1120,8 +1122,8 @@ mod tests {
             .artifact_type("application/pyoci.package.v1")
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
-                .digest("FooBar")
-                .size(6)
+                .digest(digest("FooBar"))
+                .size(6_u64)
                 .platform(
                     PlatformBuilder::default()
                         .architecture(Arch::Other(".whl".to_string()))
