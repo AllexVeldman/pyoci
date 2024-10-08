@@ -674,6 +674,106 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn publish_package_already_exists() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("FooBar"))
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".whl".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("manifest-digest")) // sha256:bc669544845542470042912a0f61b90499ffc2320b45ea66b0be50439c5aab19
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".tar.gz".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+            ])
+            .build()
+            .unwrap();
+
+        // Mock the server, in order of expected requests
+        let mocks = vec![
+            // IndexManifest exists
+            server
+                .mock("GET", "/v2/mockserver/foobar/manifests/1.0.0")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index).unwrap())
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+
+        let form = "--foobar\r\n\
+            Content-Disposition: form-data; name=\":action\"\r\n\
+            \r\n\
+            file_upload\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"protocol_version\"\r\n\
+            \r\n\
+            1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
+            \r\n\
+            someawesomepackagedata\r\n\
+            --foobar--\r\n";
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/{encoded_url}/mockserver/"))
+            .header("Content-Type", "multipart/form-data; boundary=foobar")
+            .body(form.to_string())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(
+            &body,
+            "Platform '.tar.gz' already exists for version '1.0.0'"
+        );
+        assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
     async fn list_package() {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
