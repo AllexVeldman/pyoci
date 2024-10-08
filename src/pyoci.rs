@@ -431,11 +431,15 @@ impl PyOci {
                 for existing in index.manifests() {
                     match existing.platform() {
                         Some(platform) if *platform == manifest.platform => {
-                            bail!(
-                                "Platform '{}' already exists for version '{}'",
-                                package.oci_architecture(),
-                                tag
-                            );
+                            return Err(PyOciError::from((
+                                StatusCode::CONFLICT,
+                                format!(
+                                    "Platform '{}' already exists for version '{}'",
+                                    package.oci_architecture(),
+                                    tag
+                                ),
+                            ))
+                            .into())
                         }
                         _ => {}
                     }
