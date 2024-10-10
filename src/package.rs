@@ -1,261 +1,109 @@
-use std::{
-    fmt::{self, Display},
-    str::FromStr,
-};
+use std::marker::PhantomData;
 
-use anyhow::{bail, Error, Result};
+use anyhow::{bail, Result};
 use http::StatusCode;
 
 use crate::pyoci::PyOciError;
 
+pub trait FileState {}
+
+pub struct WithFile;
+pub struct WithoutFile;
+
+impl FileState for WithFile {}
+impl FileState for WithoutFile {}
+
 #[derive(Debug, PartialEq, Eq, Clone)]
-enum DistType {
-    Sdist,
-    Wheel,
-    Unknown(String),
-}
-
-impl Default for DistType {
-    fn default() -> Self {
-        DistType::Unknown(String::new())
-    }
-}
-
-impl From<&str> for DistType {
-    fn from(s: &str) -> Self {
-        match s {
-            ".whl" => DistType::Wheel,
-            ".tar.gz" => DistType::Sdist,
-            unknown => DistType::Unknown(unknown.to_string()),
-        }
-    }
-}
-
-/// Container for a python package filename
-/// Supports wheel and sdist filenames
-#[derive(Debug, PartialEq, Eq, Default, Clone)]
-struct File {
-    /// Python package name
+pub struct Package<'a, T: FileState> {
+    registry: &'a str,
+    namespace: &'a str,
     name: String,
-    /// Python package version
-    version: String,
-    /// Python package architecture
-    /// only applicable for dist_type: DistType::Wheel
-    /// TODO: move architecture to DistType::Wheel(String)
-    architecture: Option<String>,
-    /// Python package distribution type
-    dist_type: DistType,
+    version: Option<String>,
+    arch: Option<String>,
+    _phantom: PhantomData<T>,
 }
 
-impl File {
-    /// Replace the version, consumes self
-    fn with_version(self, version: &str) -> Self {
-        File {
-            version: version.to_string(),
-            ..self
-        }
+/// Create a Package without version or file information.
+pub fn new<'a>(registry: &'a str, namespace: &'a str, name: &'a str) -> Package<'a, WithoutFile> {
+    let name = name.replace('-', "_");
+    Package {
+        registry,
+        namespace,
+        name,
+        version: None,
+        arch: None,
+        _phantom: PhantomData,
     }
+}
 
-    /// Add/replace the `architecture` and `dist_type`
-    /// returns a new File instance, consuming self.
-    /// accepts the remainder of a python package filename after the version part
-    fn with_architecture(self, architecture: &str) -> Result<Self> {
-        match DistType::from(architecture) {
-            DistType::Sdist => Ok(File {
-                name: self.name,
-                version: self.version,
-                dist_type: DistType::Sdist,
-                ..File::default()
-            }),
-            _ => File::from_str(&format!(
-                "{}-{}-{}",
-                &self.name, &self.version, architecture
-            )),
-        }
+/// Create a Package parsing a filename into it's components
+///
+/// The filename is expected to be normalized, specifically there should be no '-' in any of
+/// it's components.
+/// ref: https://packaging.python.org/en/latest/specifications/binary-distribution-format/#escaping-and-unicode
+pub fn from_filename<'a>(
+    registry: &'a str,
+    namespace: &'a str,
+    filename: &str,
+) -> Result<Package<'a, WithFile>> {
+    if filename.is_empty() {
+        bail!("Empty filename")
     }
-
-    /// Return the architecture string as used on the OCI side
-    fn architecture(&self) -> String {
-        match &self.dist_type {
-            DistType::Sdist => ".tar.gz".to_string(),
-            DistType::Wheel => {
-                format!("{}.whl", &self.architecture.as_ref().unwrap())
-            }
-            DistType::Unknown(unknown) => unknown.to_string(),
-        }
+    if filename == "json" {
+        Err(PyOciError::from((
+            StatusCode::NOT_FOUND,
+            format!("Unkown filetype '{}'", filename),
+        )))?;
     }
+    let (name, version, arch) = match filename.strip_suffix(".tar.gz") {
+        Some(rest) => match rest.splitn(2, '-').collect::<Vec<_>>()[..] {
+            [name, version] => (name, version, ".tar.gz"),
+            _ => bail!("Invalid source distribution filename '{}'", filename),
+        },
+        None => match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
+            [name, version, arch] => (name, version, arch),
+            _ => bail!("Invalid binary distribution filename '{}'", filename),
+        },
+    };
+    Ok(Package {
+        registry,
+        namespace,
+        name: name.to_string(),
+        version: Some(version.to_string()),
+        arch: Some(arch.to_string()),
+        _phantom: PhantomData,
+    })
+}
 
-    /// Name of the package
+impl<T: FileState> Package<'_, T> {
+    /// Add/replace the version and architecture of the package for OCI provided values
     ///
+    /// Replaces '-' by '+' to get back to the python definition of the version
+    ///
+    /// <reference> as a tag MUST be at most 128 characters in length and MUST match the following regular expression:
+    /// [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}
+    /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests>
+    pub fn with_oci_file(&self, tag: &str, arch: &str) -> Package<WithFile> {
+        Package {
+            registry: self.registry,
+            namespace: self.namespace,
+            name: self.name.to_owned(),
+            version: Some(tag.replace('-', "+")),
+            arch: Some(arch.to_string()),
+            _phantom: PhantomData,
+        }
+    }
+
+    /// Name of the package as used for the OCI registry
+    ///
+    /// The package is in the format `<namespace>/<name>`
     /// Returns an error when the package name is not set
-    fn name(&self) -> Result<String> {
-        if self.name.is_empty() {
-            bail!("File '{}' does not define a package name", self);
-        }
-        Ok(self.name.to_string())
+    pub fn oci_name(&self) -> String {
+        format!("{}/{}", self.namespace, self.name).to_lowercase()
     }
 
-    /// Version of the package
-    ///
-    /// Returns an error when the package version is not set
-    fn version(&self) -> Result<String> {
-        if self.version.is_empty() {
-            bail!("File '{}' does not define a package version", self);
-        }
-        Ok(self.version.to_string())
-    }
-
-    /// OCI tag for the file
-    ///
-    /// Returns an error when the package version is not set
-    fn tag(&self) -> Result<String> {
-        self.version()
-    }
-}
-
-impl FromStr for File {
-    type Err = Error;
-
-    /// Parse a filename into the package name, version and architecture
-    fn from_str(value: &str) -> Result<Self> {
-        // TODO: No need to identify wheel vs sdist, only extract name and version
-        if value.is_empty() {
-            bail!("empty string");
-        };
-        if let Some(value) = value.strip_suffix(".whl") {
-            // Select the str without the extension and split on "-" 3 times
-            match value.splitn(3, '-').collect::<Vec<&str>>()[..] {
-                [name, version, architecture] => Ok(File {
-                    name: name.to_string(),
-                    version: version.to_string(),
-                    architecture: Some(architecture.to_string()),
-                    dist_type: DistType::Wheel,
-                }),
-                _ => bail!(
-                    "Expected '<name>-<version>-<arch>.whl', got '{}.whl'",
-                    value
-                ),
-            }
-        } else if let Some(value) = value.strip_suffix(".tar.gz") {
-            // Select the str without the extension and split on "-" 2 times
-            match value.splitn(2, '-').collect::<Vec<&str>>()[..] {
-                [name, version] => Ok(File {
-                    name: name.to_string(),
-                    version: version.to_string(),
-                    architecture: None,
-                    dist_type: DistType::Sdist,
-                }),
-                _ => bail!("Expected '<name>-<version>.tar.gz', got '{}.tar.gz'", value),
-            }
-        } else {
-            Err(PyOciError::from((
-                StatusCode::NOT_FOUND,
-                format!("Unkown filetype '{}'", value),
-            )))?
-        }
-    }
-}
-
-impl fmt::Display for File {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self.dist_type {
-            DistType::Sdist => {
-                write!(f, "{}-{}.tar.gz", self.name, self.version)
-            }
-            DistType::Wheel => {
-                write!(
-                    f,
-                    "{}-{}-{}.whl",
-                    self.name,
-                    self.version,
-                    self.architecture.as_ref().unwrap()
-                )
-            }
-            DistType::Unknown(_) => Err(fmt::Error),
-        }
-    }
-}
-
-#[derive(Debug, PartialEq, Eq, Clone)]
-pub struct Info {
-    /// The OCI registry url
-    pub registry: url::Url,
-    /// The package namespace in the OCI registry
-    pub namespace: String,
-    /// Python package file attributes
-    file: File,
-}
-
-impl FromStr for Info {
-    type Err = Error;
-
-    /// Parse a string into Info
-    ///
-    /// The `filename` and `distribution` parts of the string are expected to already have gone through normalisation
-    /// as described by the python packaging standard.
-    ///
-    /// refs:
-    /// - <https://packaging.python.org/en/latest/specifications/name-normalization/#name-normalization>
-    /// - <https://packaging.python.org/en/latest/specifications/source-distribution-format/#source-distribution-file-name>
-    /// - <https://packaging.python.org/en/latest/specifications/binary-distribution-format/#file-name-convention>
-    /// - <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests>
-    ///
-    /// Supported formats:
-    /// - `<registry>/<namespace>/<distribution>`
-    /// - `<registry>/<namespace>/<distribution>/<filename>`
-    fn from_str(value: &str) -> Result<Self> {
-        tracing::debug!("Parsing package info from: {}", value);
-        let value = value.trim().strip_prefix('/').unwrap_or(value);
-        let value = value.strip_suffix('/').unwrap_or(value);
-
-        let parts: Vec<&str> = value.split('/').collect();
-        match parts[..] {
-            [registry, namespace, distribution] => {
-                Ok((registry.into(), namespace.into(), distribution.into()).try_into()?)
-            }
-            [registry, namespace, distribution, filename] => {
-                Ok((registry.into(), namespace.into(), Some(distribution.into()), filename.into()).try_into()?)
-            }
-            _ => bail!("Expected '<registry>/<namespace>/<distribution>' or '<registry>/<namespace>/<distribution>/<filename>', got '{}'", value),
-        }
-    }
-}
-
-impl TryFrom<(String, String, String)> for Info {
-    type Error = Error;
-
-    fn try_from((registry, namespace, distribution): (String, String, String)) -> Result<Self> {
-        let info = Info {
-            registry: registry_url(&registry)?,
-            namespace,
-            file: File {
-                name: distribution.replace('-', "_"),
-                ..File::default()
-            },
-        };
-        tracing::debug!("{:?}", info);
-        Ok(info)
-    }
-}
-
-impl TryFrom<(String, String, Option<String>, String)> for Info {
-    type Error = Error;
-
-    fn try_from(
-        (registry, namespace, distribution, filename): (String, String, Option<String>, String),
-    ) -> Result<Self> {
-        let file = File::from_str(&filename)?;
-        if let Some(distribution) = distribution {
-            if distribution != file.name {
-                bail!("Filename does not match distribution name");
-            }
-        }
-
-        Ok(Info {
-            registry: registry_url(&registry)?,
-            namespace,
-            file,
-        })
+    pub fn registry(&self) -> Result<url::Url> {
+        registry_url(self.registry)
     }
 }
 
@@ -276,89 +124,55 @@ fn registry_url(registry: &str) -> Result<url::Url> {
     Ok(url)
 }
 
-impl Info {
-    /// Replace the version of the package for an OCI tag
-    ///
-    /// <reference> as a tag MUST be at most 128 characters in length and MUST match the following regular expression:
-    /// [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}
-    /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests>
-    pub fn with_oci_tag(self, tag: &str) -> Result<Self> {
-        // OCI tags are not allowed to contain a "+" character
-        // python versions can't contain a "-" character
-        // Info stores the version in the python format
-        let file = self.file.with_version(&tag.replace('-', "+"));
-        Ok(Info { file, ..self })
-    }
-
-    pub fn with_oci_architecture(self, architecture: &str) -> Result<Self> {
-        let file = self.file.with_architecture(architecture)?;
-        Ok(Info { file, ..self })
-    }
-
-    /// Name of the package as used for the OCI registry
-    ///
-    /// The package is in the format `<namespace>/<name>`
-    /// Returns an error when the package name is not set
-    pub fn oci_name(&self) -> Result<String> {
-        Ok(format!("{}/{}", self.namespace, self.file.name()?).to_lowercase())
-    }
-
+impl Package<'_, WithFile> {
     /// Tag of the package as used for the OCI registry
-    ///
-    /// Returns an error when the package version is not set
-    pub fn oci_tag(&self) -> Result<String> {
+    pub fn oci_tag(&self) -> String {
         // OCI tags are not allowed to contain a "+" character
         // python versions can't contain a "-" character
         // Replace the "+" from the python version with a "-" in the OCI version
-        Ok(self.file.tag()?.replace('+', "-"))
+        self.version.as_ref().unwrap().replace('+', "-")
     }
 
     /// Architecture of the package as used for the OCI registry
-    pub fn oci_architecture(&self) -> String {
-        self.file.architecture()
+    pub fn oci_architecture(&self) -> &str {
+        self.arch.as_ref().unwrap()
     }
 
     /// Relative uri for this package
     pub fn py_uri(&self) -> String {
-        // url::Url adds a trailing slash to an empty path
-        // which we don't want to url-encode
-        let registry = self.registry.as_str();
-        let registry = registry.strip_suffix('/').unwrap_or(registry);
         // We assume https on all endpoints if the scheme is not provided
         // This prevents url encoding the scheme in the default case
         // It also makes the default work when running behind proxies that
         // decode the URL before hitting the server, like azure.
         // https://learn.microsoft.com/en-us/answers/questions/1160320/azure-is-decoding-characters-in-the-url-before-rea
-        let registry = registry.strip_prefix("https://").unwrap_or(registry);
+        let registry = self
+            .registry
+            .strip_prefix("https://")
+            .unwrap_or(self.registry);
         let registry = urlencoding::encode(registry);
-        match self.file.name() {
-            Ok(name) => format!("/{}/{}/{}/{}", registry, self.namespace, name, self.file),
-            Err(_) => format!("/{registry}/"),
-        }
-    }
-
-    /// Return the full URL for this package
-    pub fn py_url(&self, host: &url::Url) -> url::Url {
-        let mut url = host.clone();
-        url.set_path(&self.py_uri());
-        url
+        format!(
+            "/{}/{}/{}/{}",
+            registry,
+            self.namespace,
+            self.name,
+            self.filename()
+        )
     }
 
     /// Return the filename of this package
+    /// Returns an empty string if we have no file information
     pub fn filename(&self) -> String {
-        self.file.to_string()
-    }
-}
-
-impl Display for Info {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        write!(f, "{}", self.py_uri())
+        let version = self.version.as_ref().unwrap();
+        let arch = self.arch.as_ref().unwrap();
+        match arch.ends_with(".whl") {
+            true => format!("{}-{}-{}", self.name, version, arch),
+            false => format!("{}-{}{}", self.name, version, arch),
+        }
     }
 }
 
 #[cfg(test)]
 mod tests {
-    use std::str::FromStr;
 
     use test_case::test_case;
 
@@ -388,95 +202,27 @@ mod tests {
         );
     }
 
-    #[test_case("/foo.io/bar/baz",
-        &Info{
-            registry: url::Url::parse("https://foo.io").unwrap(),
-            namespace: "bar".to_string(),
-            file: File{
-                name:"baz".to_string(),
-                ..File::default()}}
-        ; "with package")]
-    #[test_case("foo.io/bar/baz/baz-1-cp311-cp311-macosx_13_0_x86_64.whl",
-        &Info{
-            registry: url::Url::parse("https://foo.io").unwrap(),
-            namespace: "bar".to_string(),
-            file: File{
-                name: "baz".to_string(),
-                version: "1".to_string(),
-                dist_type: DistType::Wheel,
-                architecture: Some("cp311-cp311-macosx_13_0_x86_64".to_string()),
-            }}
-    ; "with wheel, minimal")]
-    #[test_case("foo.io/bar/baz/baz-2.5.1.dev4+g1664eb2.d20231017-1234-cp311-cp311-macosx_13_0_x86_64.whl",
-        &Info{
-            registry: url::Url::parse("https://foo.io").unwrap(),
-            namespace: "bar".to_string(),
-            file: File{
-                name: "baz".to_string(),
-                version: "2.5.1.dev4+g1664eb2.d20231017".to_string(),
-                dist_type: DistType::Wheel,
-                architecture: Some("1234-cp311-cp311-macosx_13_0_x86_64".to_string())
-            }}
-        ; "with wheel, full")]
-    #[test_case("foo.io/bar/baz/baz-1.tar.gz",
-        &Info{
-            registry: url::Url::parse("https://foo.io").unwrap(),
-            namespace: "bar".to_string(),
-            file: File{
-                name: "baz".to_string(),
-                version: "1".to_string(),
-                dist_type: DistType::Sdist,
-                ..File::default()}}
-    ; "with sdist")]
-    /// Test if we can parse a sting into a package::Info object
-    fn test_info_from_str(input: &str, expected: &Info) {
-        assert_eq!(Info::from_str(input).unwrap(), *expected);
-    }
-
     #[test]
     /// Test if we can get the package OCI name (namespace/name)
     fn test_info_oci_name() {
-        let into = Info {
-            registry: url::Url::parse("https://foo.example").unwrap(),
-            namespace: "bar".to_string(),
-            file: File {
-                name: "baz".to_string(),
-                ..File::default()
-            },
-        };
-        assert_eq!(into.oci_name().unwrap(), "bar/baz".to_string());
+        let info = new("https://foo.example", "bar", "baz");
+        assert_eq!(info.oci_name(), "bar/baz".to_string());
     }
 
     /// Test if we can get the package OCI tag (version)
-    #[test_case("1", "1"; "major version")]
-    #[test_case("1.0.0", "1.0.0"; "simple version")]
-    #[test_case("1.0.0.dev4+g1664eb2.d20231017", "1.0.0.dev4-g1664eb2.d20231017"; "full version")]
-    fn test_info_oci_tag(version: &str, expected: &str) {
-        let info = Info {
-            registry: url::Url::parse("https://foo.example").unwrap(),
-            namespace: "bar".into(),
-            file: File {
-                name: "baz".into(),
-                version: version.into(),
-                ..File::default()
-            },
-        };
-        assert_eq!(info.oci_tag().unwrap(), expected.to_string());
+    /// OCI tags are not allowed to contain a "+" character
+    #[test_case("bar-1.tar.gz", "1"; "major version")]
+    #[test_case("bar-1.0.0.tar.gz", "1.0.0"; "simple version")]
+    #[test_case("bar-1.0.0.dev4+g1664eb2.d20231017.tar.gz", "1.0.0.dev4-g1664eb2.d20231017"; "full version")]
+    fn test_info_oci_tag(filename: &str, expected: &str) {
+        let info = from_filename("https://foo.example", "bar", filename).unwrap();
+        assert_eq!(info.oci_tag(), expected.to_string());
     }
 
     #[test]
     /// Test if Info.py_uri() url-encodes the registry
     fn test_info_py_uri() {
-        let info = Info {
-            registry: url::Url::parse("https://foo.example:4000").unwrap(),
-            namespace: "bar".to_string(),
-            file: File {
-                name: "baz".to_string(),
-                version: "1".to_string(),
-                dist_type: DistType::Sdist,
-                ..File::default()
-            },
-        };
+        let info = from_filename("https://foo.example:4000", "bar", "baz-1.tar.gz").unwrap();
         assert_eq!(
             info.py_uri(),
             "/foo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
@@ -484,67 +230,20 @@ mod tests {
     }
 
     #[test]
-    /// Test Info.py_url() returns a valid URL
-    fn test_info_py_url() {
-        let info = Info {
-            registry: url::Url::parse("https://foo.example").unwrap(),
-            namespace: "bar".to_string(),
-            file: File {
-                name: "baz".to_string(),
-                version: "1".to_string(),
-                dist_type: DistType::Sdist,
-                ..File::default()
-            },
-        };
-        assert_eq!(
-            info.py_url(&url::Url::parse("https://example.com").unwrap())
-                .as_str(),
-            "https://example.com/foo.example/bar/baz/baz-1.tar.gz"
-        );
-    }
-
-    #[test]
-    /// Test Info.py_uri() when the File is invalid
-    fn test_info_py_uri_invalid() {
-        let into = Info {
-            registry: url::Url::parse("https://foo.example").unwrap(),
-            namespace: "bar".to_string(),
-            file: File {
-                name: "".to_string(),
-                version: "1".to_string(),
-                dist_type: DistType::Sdist,
-                ..File::default()
-            },
-        };
-        assert_eq!(into.py_uri(), "/foo.example/".to_string());
-    }
-
-    #[test]
-    /// Test Info.with_oci_tag() return an Info object with the new version
-    /// OCI tags are not allowed to contain a "+" character
-    /// python versions can't contain a "-" character
-    fn test_info_with_oci_tag() {
-        let info = Info {
-            registry: url::Url::parse("https://foo.example").unwrap(),
-            namespace: "bar".to_string(),
-            file: File {
-                name: "baz".to_string(),
-                version: "1".to_string(),
-                dist_type: DistType::Sdist,
-                ..File::default()
-            },
-        };
-        let info = info.with_oci_tag("0.1.pre3-1234.foobar").unwrap();
-        assert_eq!(info.file.version, "0.1.pre3+1234.foobar".to_string());
+    /// Test Info.with_oci_file() return an Info object with the new version
+    fn test_info_with_oci_file() {
+        let info = new("https://foo.example", "bar", "baz");
+        let info = info.with_oci_file("0.1.pre3-1234.foobar", "tar.gz");
+        assert_eq!(info.version, Some("0.1.pre3+1234.foobar".to_string()));
     }
 
     #[test_case("baz-1-cp311-cp311-macosx_13_0_x86_64.whl"; "wheel simple version")]
     #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017-1234-cp311-cp311-macosx_13_0_x86_64.whl"; "wheel full version")]
     #[test_case("baz-1.tar.gz"; "sdist simple version")]
     #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017.tar.gz"; "sdist full version")]
-    /// Test if a File can be serialized into a string
-    fn test_file_display(input: &str) {
-        let obj = File::from_str(input).unwrap();
-        assert_eq!(obj.to_string(), input);
+    /// Test if we can convert from and to filenames
+    fn test_info_filename(input: &str) {
+        let obj = from_filename("foo", "bar", input).unwrap();
+        assert_eq!(obj.filename(), input);
     }
 }

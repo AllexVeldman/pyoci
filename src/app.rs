@@ -98,19 +98,21 @@ async fn trace_middleware(
 }
 
 /// List package request handler
+///
+/// (registry, namespace, package)
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn list_package(
     headers: HeaderMap,
-    path_params: Path<(String, String, String)>,
+    Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
     let auth = match headers.get("Authorization") {
         Some(auth) => Some(auth.to_str()?.to_owned()),
         None => None,
     };
-    let package: package::Info = path_params.0.try_into()?;
+    let package = package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry.clone(), auth)?;
+    let mut client = PyOci::new(package.registry()?, auth)?;
     // Fetch at most 100 package versions
     let files = client.list_package_files(&package, 100).await?;
 
@@ -120,19 +122,26 @@ async fn list_package(
 }
 
 /// Download package request handler
+///
+/// (registry, namespace, package, filename)
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn download_package(
-    path_params: Path<(String, String, Option<String>, String)>,
+    Path((registry, namespace, _distribution, filename)): Path<(
+        String,
+        String,
+        Option<String>,
+        String,
+    )>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     let auth = match headers.get("Authorization") {
         Some(auth) => Some(auth.to_str()?.to_owned()),
         None => None,
     };
-    let package: package::Info = path_params.0.try_into()?;
+    let package = package::from_filename(&registry, &namespace, &filename)?;
 
-    let mut client = PyOci::new(package.registry.clone(), auth)?;
+    let mut client = PyOci::new(package.registry()?, auth)?;
     let data = client
         .download_package_file(&package)
         .await?
@@ -164,8 +173,8 @@ async fn publish_package(
         Some(auth) => Some(auth.to_str()?.to_owned()),
         None => None,
     };
-    let package: package::Info = (registry, namespace, None, form_data.filename).try_into()?;
-    let mut client = PyOci::new(package.registry.clone(), auth)?;
+    let package = package::from_filename(&registry, &namespace, &form_data.filename)?;
+    let mut client = PyOci::new(package.registry()?, auth)?;
 
     client
         .publish_package_file(&package, form_data.content)
@@ -282,7 +291,6 @@ impl UploadForm {
 mod tests {
     use super::*;
     use crate::pyoci::digest;
-    use std::str::FromStr;
 
     use axum::{
         body::{to_bytes, Body},
@@ -294,7 +302,7 @@ mod tests {
         distribution::{TagList, TagListBuilder},
         image::{
             Arch, DescriptorBuilder, ImageIndex, ImageIndexBuilder, ImageManifest,
-            ImageManifestBuilder, Os, PlatformBuilder, Sha256Digest,
+            ImageManifestBuilder, Os, PlatformBuilder,
         },
     };
     use tower::ServiceExt;
