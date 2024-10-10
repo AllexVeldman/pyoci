@@ -19,7 +19,7 @@ use sha2::{Digest, Sha256};
 use std::str::FromStr;
 use url::Url;
 
-use crate::package;
+use crate::package::{Package, WithFile, WithoutFile};
 use crate::transport::HttpTransport;
 use crate::ARTIFACT_TYPE;
 
@@ -44,10 +44,10 @@ macro_rules! build_url {
 /// Sanitize a string
 ///
 /// Returns an error if the string contains ".."
-fn sanitize(value: &str) -> Result<String> {
+fn sanitize(value: &str) -> Result<&str> {
     match value {
         value if value.contains("..") => bail!("Invalid value: {}", value),
-        value => Ok(value.to_string()),
+        value => Ok(value),
     }
 }
 
@@ -67,9 +67,9 @@ struct PlatformManifest {
 }
 
 impl PlatformManifest {
-    fn new(manifest: ImageManifest, package: &package::Info) -> Self {
+    fn new(manifest: ImageManifest, package: &Package<WithFile>) -> Self {
         let platform = PlatformBuilder::default()
-            .architecture(Arch::Other(package.oci_architecture()))
+            .architecture(Arch::Other(package.oci_architecture().to_string()))
             .os(Os::Other("any".to_string()))
             .build()
             .expect("valid Platform");
@@ -224,16 +224,16 @@ impl PyOci {
     ///
     /// Limits the number of files to `n`
     /// ref: https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
-    pub async fn list_package_files(
+    pub async fn list_package_files<'a>(
         &mut self,
-        package: &package::Info,
+        package: &'a Package<'a, WithoutFile>,
         n: usize,
-    ) -> Result<Vec<package::Info>> {
-        let name = package.oci_name()?;
+    ) -> Result<Vec<Package<'a, WithFile>>> {
+        let name = package.oci_name();
         let result = self.list_tags(&name).await?;
         tracing::debug!("{:?}", result);
         let tags = result.tags();
-        let mut files: Vec<package::Info> = Vec::new();
+        let mut files: Vec<Package<WithFile>> = Vec::new();
         let futures = FuturesUnordered::new();
 
         // We fetch a list of all tags from the OCI registry.
@@ -247,7 +247,7 @@ impl PyOci {
             futures.push(pyoci.package_info_for_ref(package, &name, tag));
         }
         for result in futures
-            .collect::<Vec<Result<Vec<package::Info>, Error>>>()
+            .collect::<Vec<Result<Vec<Package<WithFile>>, Error>>>()
             .await
         {
             files.append(&mut result?);
@@ -255,12 +255,12 @@ impl PyOci {
         Ok(files)
     }
 
-    async fn package_info_for_ref(
+    async fn package_info_for_ref<'a>(
         mut self,
-        package: &package::Info,
+        package: &'a Package<'a, WithoutFile>,
         name: &str,
         reference: &str,
-    ) -> Result<Vec<package::Info>> {
+    ) -> Result<Vec<Package<'a, WithFile>>> {
         let manifest = self.pull_manifest(name, reference).await?;
         let index = match manifest {
             Some(Manifest::Index(index)) => index,
@@ -283,14 +283,11 @@ impl PyOci {
             // Artifact type is not set, err
             None => bail!("No artifact type set"),
         };
-        let mut files: Vec<package::Info> = Vec::new();
+        let mut files: Vec<Package<WithFile>> = Vec::new();
         for manifest in index.manifests() {
             match manifest.platform().as_ref().unwrap().architecture() {
                 oci_spec::image::Arch::Other(arch) => {
-                    let file = package
-                        .clone()
-                        .with_oci_tag(reference)?
-                        .with_oci_architecture(arch)?;
+                    let file = package.with_oci_file(reference, arch);
                     files.push(file);
                 }
                 arch => bail!("Unsupported architecture '{}'", arch),
@@ -301,11 +298,11 @@ impl PyOci {
 
     pub async fn download_package_file(
         &mut self,
-        package: &crate::package::Info,
+        package: &Package<'_, WithFile>,
     ) -> Result<Response> {
         // Pull index
         let index = match self
-            .pull_manifest(&package.oci_name()?, &package.oci_tag()?)
+            .pull_manifest(&package.oci_name(), &package.oci_tag())
             .await?
         {
             Some(Manifest::Index(index)) => index,
@@ -356,7 +353,7 @@ impl PyOci {
 
         let manifest = match self
             .pull_manifest(
-                &package.oci_name()?,
+                &package.oci_name(),
                 &manifest_descriptor.digest().to_string(),
             )
             .await?
@@ -377,17 +374,17 @@ impl PyOci {
         let [blob_descriptor] = &manifest.layers()[..] else {
             bail!("Image Manifest defines unexpected number of layers, was this package published by pyoci?");
         };
-        self.pull_blob(package.oci_name()?, blob_descriptor.to_owned())
+        self.pull_blob(package.oci_name(), blob_descriptor.to_owned())
             .await
     }
 
     pub async fn publish_package_file(
         &mut self,
-        package: &crate::package::Info,
+        package: &Package<'_, WithFile>,
         file: Vec<u8>,
     ) -> Result<()> {
-        let name = package.oci_name()?;
-        let tag = package.oci_tag()?;
+        let name = package.oci_name();
+        let tag = package.oci_tag();
 
         let layer = Blob::new(file, ARTIFACT_TYPE);
 
