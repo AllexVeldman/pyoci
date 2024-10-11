@@ -13,9 +13,9 @@ refresh-registry:
     docker compose -f docker/docker-compose.yaml up --build --force-recreate --wait pyoci registry
 
 # Run a smoketest on a local pyoci instance and a local OCI registry
-[group("test")]
+[group("ci")]
 test-smoke: refresh-registry
-    @lsof -i -P | grep "5000 (LISTEN)" || { echo "docker registry is not listening on port 5000"; exit 1; }
-    @lsof -i -P | grep "8080 (LISTEN)" || { echo "pyoci is not listening on port 8080"; exit 1; }
     just examples::poetry-publish "0.1.0+1234" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
     just examples::poetry-install "0.1.0+1234" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+    just examples::curl-list-json "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+    just examples::curl-delete "0.1.0+1234" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"

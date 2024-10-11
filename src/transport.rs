@@ -96,6 +96,10 @@ impl HttpTransport {
     pub fn head(&self, url: url::Url) -> reqwest::RequestBuilder {
         self.client.head(url)
     }
+    /// Create a new DELETE request
+    pub fn delete(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.delete(url)
+    }
 }
 
 #[cfg(test)]

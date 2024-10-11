@@ -1,3 +1,4 @@
+# Run the examples against the (just deployed) live environment
 name: Examples
 
 on:

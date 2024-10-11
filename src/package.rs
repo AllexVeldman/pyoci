@@ -8,6 +8,7 @@ use crate::pyoci::PyOciError;
 pub trait FileState {}
 
 pub struct WithFile;
+#[derive(Clone)]
 pub struct WithoutFile;
 
 impl FileState for WithFile {}
@@ -75,7 +76,7 @@ pub fn from_filename<'a>(
     })
 }
 
-impl<T: FileState> Package<'_, T> {
+impl<'a, T: FileState> Package<'a, T> {
     /// Add/replace the version and architecture of the package for OCI provided values
     ///
     /// Replaces '-' by '+' to get back to the python definition of the version
@@ -83,7 +84,7 @@ impl<T: FileState> Package<'_, T> {
     /// <reference> as a tag MUST be at most 128 characters in length and MUST match the following regular expression:
     /// [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}
     /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests>
-    pub fn with_oci_file(&self, tag: &str, arch: &str) -> Package<WithFile> {
+    pub fn with_oci_file(&self, tag: &str, arch: &str) -> Package<'a, WithFile> {
         Package {
             registry: self.registry,
             namespace: self.namespace,

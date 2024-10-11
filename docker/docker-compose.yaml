@@ -16,7 +16,6 @@ services:
     restart: always
     volumes:
       - ./config/config.yaml:/etc/docker/registry/config.yml:Z
-      - ./config/tls:/etc/docker/registry/certs:Z
 
   registry-ui:
     image: joxit/docker-registry-ui:latest
@@ -39,11 +38,3 @@ services:
       - TAGLIST_PAGE_SIZE=100
       - REGISTRY_SECURED=false
       - CATALOG_ELEMENTS_LIMIT=1000
-
-  otlp-collector:
-    image: otel/opentelemetry-collector:0.103.0
-    restart: always
-    ports:
-      - 4317:4317
-      - 4318:4318
-      - 55679:55679
