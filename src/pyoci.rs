@@ -475,6 +475,36 @@ impl PyOci {
         self.push_manifest(&name, Manifest::Index(Box::new(index)), Some(&tag))
             .await
     }
+
+    pub async fn delete_package_version(&mut self, package: &Package<'_, WithFile>) -> Result<()> {
+        let name = package.oci_name();
+        let index = match self.pull_manifest(&name, &package.oci_tag()).await? {
+            Some(Manifest::Index(index)) => index,
+            Some(Manifest::Manifest(_)) => {
+                bail!("Expected ImageIndex, got ImageManifest");
+            }
+            None => {
+                return Err(
+                    PyOciError::from((StatusCode::NOT_FOUND, "ImageIndex does not exist")).into(),
+                )
+            }
+        };
+        // Check artifact type
+        match index.artifact_type() {
+            // Artifact type is as expected, do nothing
+            Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
+            // Artifact type has unexpected value, err
+            Some(value) => bail!("Unknown artifact type: {}", value),
+            // Artifact type is not set, err
+            None => bail!("No artifact type set"),
+        };
+        for manifest in index.manifests() {
+            let digest = manifest.digest().to_string();
+            tracing::debug!("Deleting {name}:{digest}");
+            self.delete_manifest(&name, &digest).await?
+        }
+        Ok(())
+    }
 }
 
 impl PyOci {
@@ -669,6 +699,21 @@ impl PyOci {
             }
             Some(content_type) => bail!("Unknown Content-Type: {}", content_type.to_str().unwrap()),
             None => bail!("Missing Content-Type header"),
+        }
+    }
+
+    /// Delete a tag or manifest
+    ///
+    /// reference: tag or digest of the manifest to delete
+    /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#content-management
+    #[tracing::instrument(skip_all)]
+    async fn delete_manifest(&mut self, name: &str, reference: &str) -> Result<()> {
+        let url = build_url!(&self, "/v2/{}/manifests/{}", name, reference);
+        let request = self.transport.delete(url);
+        let response = self.transport.send(request).await?;
+        match response.status() {
+            StatusCode::ACCEPTED => Ok(()),
+            status => Err(PyOciError::from((status, response.text().await?)).into()),
         }
     }
 }

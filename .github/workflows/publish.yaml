@@ -60,9 +60,20 @@ jobs:
           file: docker/Dockerfile
           cache-from: type=registry,ref=ghcr.io/allexveldman/pyoci:latest
           cache-to: type=inline
+          load: true
           push: ${{ github.ref_type == 'tag' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      # Smoke-test the image
+      # The smoke test contains a build of the image but because the previous
+      # step defines `load: true` the entire build will be from cache.
+      - uses: extractions/setup-just@v2
+      - uses: snok/install-poetry@v1
+      - name: Smoke Test
+        run: just test-smoke
+      - run: docker compose logs pyoci
+        working-directory: ./docker
 
   deploy:
     name: Deploy

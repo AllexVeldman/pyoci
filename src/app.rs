@@ -52,7 +52,7 @@ pub fn router() -> Router {
         )
         .route(
             "/:registry/:namespace/:package/:filename",
-            get(download_package),
+            get(download_package).delete(delete_package_version),
         )
         .route(
             "/:registry/:namespace/",
@@ -177,17 +177,10 @@ async fn list_package_json(
 }
 
 /// Download package request handler
-///
-/// (registry, namespace, package, filename)
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn download_package(
-    Path((registry, namespace, _distribution, filename)): Path<(
-        String,
-        String,
-        Option<String>,
-        String,
-    )>,
+    Path((registry, namespace, _distribution, filename)): Path<(String, String, String, String)>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
     let auth = get_auth(&headers)?;
@@ -207,6 +200,24 @@ async fn download_package(
         )],
         data,
     ))
+}
+
+/// Delete package version request handler
+///
+/// This endpoint does not exist as an official spec and the underlying
+/// OCI distribution spec is not supported by default by some registries
+#[debug_handler]
+#[tracing::instrument(skip_all)]
+async fn delete_package_version(
+    Path((registry, namespace, name, version)): Path<(String, String, String, String)>,
+    headers: HeaderMap,
+) -> Result<String, AppError> {
+    let auth = get_auth(&headers)?;
+    let package = package::new(&registry, &namespace, &name).with_oci_file(&version, "");
+
+    let mut client = PyOci::new(package.registry()?, auth)?;
+    client.delete_package_version(&package).await?;
+    Ok("Deleted".into())
 }
 
 /// Publish package request handler
@@ -1531,5 +1542,101 @@ mod tests {
         }
         assert_eq!(status, StatusCode::NOT_FOUND);
         assert_eq!(body, "ImageIndex does not exist");
+    }
+
+    #[tokio::test]
+    async fn delete_package() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index_010 = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("mani1")) // sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".tar.gz".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("mani2")) // sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".whl".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+            ])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // Pull 0.1.0 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index_010).unwrap())
+                .create_async()
+                .await,
+            // Delete 0.1.0 mani1 manifest
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85")
+                .with_status(202)
+                .create_async()
+                .await,
+            // Delete 0.1.0 mani2 manifest
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198")
+                .with_status(202)
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/{encoded_url}/mockserver/test-package/0.1.0"))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, "Deleted");
     }
 }

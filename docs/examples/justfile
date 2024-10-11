@@ -1,8 +1,14 @@
 
+# Helper to output github log grouping when run in a github workflow
+_group name:
+    @echo "{{ if env_var_or_default("GITHUB_WORKFLOW", "") != "" { "::group::"+name } else { "" } }}"
+
+_endgroup:
+    @echo "{{ if env_var_or_default("GITHUB_WORKFLOW", "") != "" { "::endgroup::" } else { "" } }}"
 
 # Publish using the `poetry` package manager
 [group("poetry")]
-poetry-publish version username="" token="" repository="https://pyoci.com/ghcr.io/allexveldman/":
+poetry-publish version username="" token="" repository="https://pyoci.com/ghcr.io/allexveldman/": (_group "poetry-publish") && _endgroup
     #!/usr/bin/env bash
     set -exuo pipefail
 
@@ -13,7 +19,7 @@ poetry-publish version username="" token="" repository="https://pyoci.com/ghcr.i
     poetry publish -n -r pyoci -u "{{username}}" -p "{{token}}"
 
 [group("poetry")]
-poetry-install version username="" token="" repository="https://pyoci.com/ghcr.io/allexveldman/":
+poetry-install version username="" token="" repository="https://pyoci.com/ghcr.io/allexveldman/": (_group "poetry-install") && _endgroup
     #!/usr/bin/env bash
     set -exuo pipefail
 
@@ -28,7 +34,7 @@ poetry-install version username="" token="" repository="https://pyoci.com/ghcr.i
     poetry run python -m hello_world
 
 [group("curl")]
-curl-publish version username token repository="http://localhost:8080/ghcr.io/allexveldman/":
+curl-publish version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "curl-publish") && _endgroup
     #!/usr/bin/env bash
     set -exuo pipefail
 
@@ -36,6 +42,7 @@ curl-publish version username token repository="http://localhost:8080/ghcr.io/al
     poetry version {{version}}
     poetry build -f sdist
     curl -v {{repository}} \
+    --fail-with-body \
     -u {{username}}:{{token}} \
     -F ":action=file_upload" \
     -F protocol_version=1 \
@@ -47,17 +54,21 @@ curl-publish version username token repository="http://localhost:8080/ghcr.io/al
     -F content=@dist/hello_world-{{version}}.tar.gz
 
 [group("curl")]
-curl-list username token repository="http://localhost:8080/ghcr.io/allexveldman/":
-    curl -v -u {{username}}:{{token}} {{repository}}hello-world/
+curl-list username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "curl-list") && _endgroup
+    curl -v --fail-with-body -u {{username}}:{{token}} {{repository}}hello-world/
 
 [group("curl")]
-curl-list-json username token repository="http://localhost:8080/ghcr.io/allexveldman/":
-    curl -v -u {{username}}:{{token}} {{repository}}hello-world/json
+curl-list-json username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "curl-list-json") && _endgroup
+    curl -v --fail-with-body -u {{username}}:{{token}} {{repository}}hello-world/json
 
 [group("curl")]
-curl-download version username token repository="http://localhost:8080/ghcr.io/allexveldman/":
-    curl -vOJ -u {{username}}:{{token}} {{repository}}hello_world/hello_world-{{version}}.tar.gz
+curl-download version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "curl-download") && _endgroup
+    curl -vOJ --fail-with-body -u {{username}}:{{token}} {{repository}}hello_world/hello_world-{{version}}.tar.gz
     rm hello_world-{{version}}.tar.gz
+
+[group("curl")]
+curl-delete version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "curl-delete") && _endgroup
+    curl -v --fail-with-body -u {{username}}:{{token}} -X "DELETE" {{repository}}hello-world/{{version}}
 
 # Undo changes in the examples to the most recent commit
 reset:
