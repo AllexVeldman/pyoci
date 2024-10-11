@@ -220,6 +220,15 @@ impl PyOci {
         })
     }
 
+    pub async fn list_package_versions<'a>(
+        &mut self,
+        package: &'a Package<'a, WithoutFile>,
+    ) -> Result<Vec<String>> {
+        let name = package.oci_name();
+        let result = self.list_tags(&name).await?;
+        tracing::debug!("{:?}", result);
+        Ok(result.tags().to_owned())
+    }
     /// List all files for the given package
     ///
     /// Limits the number of files to `n`
@@ -235,6 +244,13 @@ impl PyOci {
         let tags = result.tags();
         let mut files: Vec<Package<WithFile>> = Vec::new();
         let futures = FuturesUnordered::new();
+
+        if tags.len() > n {
+            tracing::warn!(
+                "TagsList contains {} tags, only fetching the first {n}",
+                tags.len()
+            )
+        }
 
         // We fetch a list of all tags from the OCI registry.
         // For each tag there can be multiple files.
@@ -268,9 +284,11 @@ impl PyOci {
                 bail!("Expected ImageIndex, got ImageManifest");
             }
             None => {
-                return Err(
-                    PyOciError::from((StatusCode::NOT_FOUND, "ImageIndex does not exist")).into(),
-                )
+                return Err(PyOciError::from((
+                    StatusCode::NOT_FOUND,
+                    format!("ImageManifest '{reference}' does not exist"),
+                ))
+                .into())
             }
         };
 
