@@ -5,9 +5,10 @@ use axum::{
     http::{header, HeaderMap},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
-    Router,
+    Json, Router,
 };
 use http::StatusCode;
+use serde::{ser::SerializeMap, Serialize, Serializer};
 use tracing::{info_span, Instrument};
 
 use crate::{package, pyoci::PyOciError, templates, PyOci};
@@ -45,6 +46,10 @@ pub fn router() -> Router {
             get(|| async { Redirect::to(env!("CARGO_PKG_HOMEPAGE")) }),
         )
         .route("/:registry/:namespace/:package/", get(list_package))
+        .route(
+            "/:registry/:namespace/:package/json",
+            get(list_package_json),
+        )
         .route(
             "/:registry/:namespace/:package/:filename",
             get(download_package),
@@ -106,10 +111,7 @@ async fn list_package(
     headers: HeaderMap,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
-    let auth = match headers.get("Authorization") {
-        Some(auth) => Some(auth.to_str()?.to_owned()),
-        None => None,
-    };
+    let auth = get_auth(&headers)?;
     let package = package::new(&registry, &namespace, &package_name);
 
     let mut client = PyOci::new(package.registry()?, auth)?;
@@ -119,6 +121,59 @@ async fn list_package(
     // TODO: swap to application/vnd.pypi.simple.v1+json
     let template = templates::ListPackageTemplate { files };
     Ok(Html(template.render().expect("valid template")))
+}
+
+/// JSON response for listing a package
+#[derive(Serialize)]
+struct ListJson {
+    info: Info,
+    #[serde(serialize_with = "ser_releases")]
+    releases: Vec<String>,
+}
+
+/// Serializer for the releases field
+///
+/// The releases serialize to {"<version>":[]} with a key for every version.
+/// The list is kept empty so we don't need to query for each version manifest
+fn ser_releases<S>(releases: &[String], serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: Serializer,
+{
+    let mut map = serializer.serialize_map(Some(releases.len()))?;
+    for version in releases {
+        map.serialize_entry::<String, [()]>(version, &[])?;
+    }
+    map.end()
+}
+
+#[derive(Serialize)]
+struct Info {
+    name: String,
+}
+
+/// List package JSON request handler
+///
+/// Allows listing all releases without the additional file information
+/// Specifically this is used by Renovate to determine the available releases
+#[debug_handler]
+#[tracing::instrument(skip_all)]
+async fn list_package_json(
+    headers: HeaderMap,
+    Path((registry, namespace, package_name)): Path<(String, String, String)>,
+) -> Result<Json<ListJson>, AppError> {
+    let auth = get_auth(&headers)?;
+    let package = package::new(&registry, &namespace, &package_name);
+
+    let mut client = PyOci::new(package.registry()?, auth)?;
+    let versions = client.list_package_versions(&package).await?;
+    let response = ListJson {
+        info: Info {
+            name: package.name().to_string(),
+        },
+        releases: versions,
+    };
+
+    Ok(Json(response))
 }
 
 /// Download package request handler
@@ -135,10 +190,7 @@ async fn download_package(
     )>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth = match headers.get("Authorization") {
-        Some(auth) => Some(auth.to_str()?.to_owned()),
-        None => None,
-    };
+    let auth = get_auth(&headers)?;
     let package = package::from_filename(&registry, &namespace, &filename)?;
 
     let mut client = PyOci::new(package.registry()?, auth)?;
@@ -169,10 +221,7 @@ async fn publish_package(
 ) -> Result<String, AppError> {
     let form_data = UploadForm::from_multipart(multipart).await?;
 
-    let auth = match headers.get("Authorization") {
-        Some(auth) => Some(auth.to_str()?.to_owned()),
-        None => None,
-    };
+    let auth = get_auth(&headers)?;
     let package = package::from_filename(&registry, &namespace, &form_data.filename)?;
     let mut client = PyOci::new(package.registry()?, auth)?;
 
@@ -180,6 +229,21 @@ async fn publish_package(
         .publish_package_file(&package, form_data.content)
         .await?;
     Ok("Published".into())
+}
+
+/// Parse the Authentication header, if provided
+fn get_auth(headers: &HeaderMap) -> anyhow::Result<Option<String>> {
+    let auth = match headers.get("Authorization") {
+        Some(auth) => match auth.to_str() {
+            Ok(auth) => Some(auth.to_owned()),
+            Err(_) => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "Failed to convert Authorization header to visible ASCII",
+            )))?,
+        },
+        None => None,
+    };
+    Ok(auth)
 }
 
 /// Form data for the upload API
@@ -297,6 +361,7 @@ mod tests {
         http::Request,
     };
     use bytes::Bytes;
+    use http::HeaderValue;
     use indoc::formatdoc;
     use oci_spec::{
         distribution::{TagList, TagListBuilder},
@@ -306,6 +371,33 @@ mod tests {
         },
     };
     use tower::ServiceExt;
+
+    #[test]
+    fn test_get_auth() {
+        let mut headers = HeaderMap::new();
+        headers.append("Authorization", "foo".try_into().unwrap());
+        let auth = get_auth(&headers).unwrap();
+        assert_eq!(auth, Some("foo".to_string()))
+    }
+
+    #[test]
+    fn test_get_auth_none() {
+        let headers = HeaderMap::new();
+        let auth = get_auth(&headers).unwrap();
+        assert_eq!(auth, None)
+    }
+
+    #[test]
+    fn test_get_auth_invalid() {
+        let mut headers = HeaderMap::new();
+        headers.append(
+            "Authorization",
+            HeaderValue::from_bytes(&[129_u8, 141_u8, 143_u8]).unwrap(),
+        );
+        let auth = get_auth(&headers).unwrap_err();
+        let err = auth.downcast_ref::<PyOciError>().unwrap();
+        assert_eq!(err.status, StatusCode::BAD_REQUEST)
+    }
 
     #[tokio::test]
     async fn publish_package_missing_action() {
@@ -911,6 +1003,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_package_missing_index() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let mocks = vec![
+            // List tags
+            server
+                .mock("GET", "/v2/mockserver/test_package/tags/list")
+                .with_status(404)
+                .with_body("Server missing message")
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/{encoded_url}/mockserver/test-package/"))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::NOT_FOUND);
+        assert_eq!(body, "Server missing message");
+    }
+
+    #[tokio::test]
     async fn list_package_missing_manifest() {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
@@ -998,7 +1135,63 @@ mod tests {
             mock.assert_async().await;
         }
         assert_eq!(status, StatusCode::NOT_FOUND);
-        assert_eq!(body, "ImageIndex does not exist");
+        assert_eq!(body, "ImageManifest '1.2.3' does not exist");
+    }
+
+    #[tokio::test]
+    async fn list_package_json() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let tags_list = TagListBuilder::default()
+            .name("test-package")
+            .tags(vec!["0.1.0".to_string(), "1.2.3".to_string()])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // List tags
+            server
+                .mock("GET", "/v2/mockserver/test_package/tags/list")
+                .with_status(200)
+                .with_body(serde_json::to_string::<TagList>(&tags_list).unwrap())
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/{encoded_url}/mockserver/test-package/json"))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            formatdoc!(
+                r#"{{"info":{{"name":"test_package"}},"releases":{{"0.1.0":[],"1.2.3":[]}}}}"#
+            )
+        );
     }
 
     #[tokio::test]

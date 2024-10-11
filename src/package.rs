@@ -94,6 +94,11 @@ impl<T: FileState> Package<'_, T> {
         }
     }
 
+    /// Name of the package
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
     /// Name of the package as used for the OCI registry
     ///
     /// The package is in the format `<namespace>/<name>`

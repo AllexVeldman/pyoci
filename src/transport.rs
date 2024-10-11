@@ -55,7 +55,7 @@ impl HttpTransport {
     pub fn new(auth: Option<String>) -> Result<Self> {
         let client = reqwest::Client::builder().user_agent(USER_AGENT);
         Ok(Self {
-            client: client.build()?,
+            client: client.build().unwrap(),
             auth_layer: AuthLayer::new(auth)?,
         })
     }

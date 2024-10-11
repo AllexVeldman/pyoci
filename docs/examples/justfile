@@ -51,6 +51,10 @@ curl-list username token repository="http://localhost:8080/ghcr.io/allexveldman/
     curl -v -u {{username}}:{{token}} {{repository}}hello-world/
 
 [group("curl")]
+curl-list-json username token repository="http://localhost:8080/ghcr.io/allexveldman/":
+    curl -v -u {{username}}:{{token}} {{repository}}hello-world/json
+
+[group("curl")]
 curl-download version username token repository="http://localhost:8080/ghcr.io/allexveldman/":
     curl -vOJ -u {{username}}:{{token}} {{repository}}hello_world/hello_world-{{version}}.tar.gz
     rm hello_world-{{version}}.tar.gz
