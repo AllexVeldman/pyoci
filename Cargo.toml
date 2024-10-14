@@ -60,7 +60,7 @@ opentelemetry-proto = { version = "0.26.1", default-features = false, features =
 opentelemetry = { version = "0.26.0", default-features = false, features = ["trace"], optional = true }
 opentelemetry_sdk = { version = "0.26.0", default-features = false, features = ["trace"], optional = true }
 tracing-core = {version = "0.1.32", optional = true }
-prost = {version = "0.13.2", optional = true }
+prost = {version = "0.13.3", optional = true }
 
 
 
