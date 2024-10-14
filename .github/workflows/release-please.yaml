@@ -1,0 +1,27 @@
+name: Release Please
+
+on:
+  push:
+    branches:
+      - main
+
+concurrency:
+  # Queue release please runs instead of running them in parallel
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release:
+    name: Release Please
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - uses: google-github-actions/release-please-action@v4
+        id: release-please
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
