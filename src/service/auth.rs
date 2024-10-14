@@ -1,14 +1,16 @@
-use anyhow::{anyhow, Context as _, Result};
+use anyhow::{anyhow, bail, Context as _, Result};
 use futures::{ready, FutureExt};
-use http::StatusCode;
+use http::{HeaderValue, StatusCode};
 use pin_project::pin_project;
+use regex::Regex;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
 use std::task::{Context, Poll};
 use tower::{Layer, Service};
+use url::Url;
 
-use crate::pyoci::{AuthResponse, PyOciError, WwwAuth};
+use crate::pyoci::{AuthResponse, PyOciError};
 
 /// Authentication layer for the OCI registry
 /// This layer will handle [token authentication](https://distribution.github.io/distribution/spec/auth/token/)
@@ -170,12 +172,18 @@ where
                         tracing::info!("No request to retry, skipping authentication");
                         return Poll::Ready(Ok(response));
                     }
-                    // Take the basic token, we are only expected to trade it once
-                    let Some(basic_token) = this.auth.basic.take() else {
+                    let Some(basic_token) = this.auth.basic.clone() else {
                         // No basic token to trade for a bearer token
                         tracing::info!("No basic token, skipping authentication");
                         return Poll::Ready(Ok(response));
                     };
+                    // If at this point we already have a bearer token, it did not have the correct
+                    // scope for the current request. Drop it so it won't be used again
+                    this.auth
+                        .bearer
+                        .write()
+                        .map_err(|_| anyhow!("Another thread panicked while writing bearer token"))?
+                        .take();
 
                     let www_auth = match response.headers().get("WWW-Authenticate") {
                         None => {
@@ -270,28 +278,102 @@ where
     <S as Service<reqwest::Request>>::Error: Into<anyhow::Error>,
 {
     let mut auth_url = www_auth.realm;
-    auth_url
-        .query_pairs_mut()
-        .append_pair("grant_type", "password")
-        .append_pair("service", &www_auth.service);
+    {
+        let mut query = auth_url.query_pairs_mut();
+        query
+            .append_pair("grant_type", "password")
+            .append_pair("service", &www_auth.service);
+        if let Some(scopes) = www_auth.scope {
+            for scope in scopes {
+                query.append_pair("scope", &scope);
+            }
+        }
+    }
     let mut auth_request = reqwest::Request::new(http::Method::GET, auth_url);
     auth_request
         .headers_mut()
-        .append("Authorization", basic_token);
+        .append(http::header::AUTHORIZATION, basic_token);
     let response = service.call(auth_request).await?;
     if response.status() != StatusCode::OK {
         return Err(AuthError::AuthResponse(response));
     }
-    let auth = response.json::<AuthResponse>().await.map_err(|err| {
+
+    let body = response.text().await?;
+    let auth = serde_json::from_str::<AuthResponse>(&body).map_err(|err| {
+        tracing::info!("Failed to parse AuthResponse");
+        tracing::debug!(body);
         PyOciError::from((
             StatusCode::BAD_GATEWAY,
             format!("Failed to parse authentication response: {err}"),
         ))
     })?;
-    let mut token = http::HeaderValue::try_from(format!("Bearer {}", auth.token))
-        .context("Failed to create bearer token header")?;
+    let mut token =
+        http::HeaderValue::try_from(format!("Bearer {}", auth.token)).map_err(|err| {
+            tracing::info!("Failed to create bearer token header");
+            PyOciError::from((
+                StatusCode::BAD_GATEWAY,
+                format!("Failed to create bearer token header: {err}"),
+            ))
+        })?;
     token.set_sensitive(true);
     Ok(token)
+}
+
+/// WWW-Authenticate header
+/// ref: <https://datatracker.ietf.org/doc/html/rfc6750#section-3>
+#[derive(Debug, Eq, PartialEq)]
+struct WwwAuth {
+    realm: Url,
+    service: String,
+    scope: Option<Vec<String>>,
+}
+
+impl WwwAuth {
+    /// Parse a WWW-Authenticate header
+    fn parse(header: &HeaderValue) -> Result<Self> {
+        let value = header
+            .to_str()
+            .context("Failed to parse WWW-Authenticate header")?;
+        let value = match value.strip_prefix("Bearer ") {
+            None => bail!("Not a Bearer token"),
+            Some(value) => value,
+        };
+        // TODO: Rewrite regexes to str.find()
+        let realm = match Regex::new(r#"realm="(?P<realm>[^"\s]*)"#)
+            .unwrap()
+            .captures(value)
+        {
+            Some(value) => value.name("realm").unwrap().as_str(),
+            None => bail!("`realm` key missing"),
+        };
+        let realm = Url::parse(realm).context("Failed to parse realm URL")?;
+        let service = match Regex::new(r#"service="(?P<service>[^"\s]*)"#)
+            .expect("valid regex")
+            .captures(value)
+        {
+            Some(value) => value.name("service").unwrap().as_str().to_string(),
+            None => bail!("`service` key missing"),
+        };
+        let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
+            .expect("valid regex")
+            .captures(value)
+        {
+            Some(value) => {
+                let scope = value
+                    .name("scope")
+                    .expect("scope to be part of match")
+                    .as_str()
+                    .to_string();
+                Some(scope.split(' ').map(|s| s.to_string()).collect())
+            }
+            None => None,
+        };
+        Ok(WwwAuth {
+            realm,
+            service,
+            scope,
+        })
+    }
 }
 
 /// The high-level tests for this Service are part of `src/transport.rs`.
@@ -303,6 +385,23 @@ mod tests {
     use reqwest::{Body, Client};
     use tower::ServiceBuilder;
     use url::Url;
+
+    #[test]
+    fn www_auth() {
+        let header = HeaderValue::from_static("Bearer realm=\"https://foobar.local\",service=\"pyoci.fakeservice\",scope=\"foo some:value.with/things\\\"");
+        let result = WwwAuth::parse(&header).unwrap();
+        assert_eq!(
+            result,
+            WwwAuth {
+                realm: url::Url::parse("https://foobar.local").unwrap(),
+                service: "pyoci.fakeservice".to_string(),
+                scope: Some(vec![
+                    "foo".to_string(),
+                    "some:value.with/things\\".to_string()
+                ])
+            }
+        )
+    }
 
     // Happy-flow
     #[tokio::test]
@@ -350,6 +449,161 @@ mod tests {
         );
 
         let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+    }
+
+    #[tokio::test]
+    /// Check if the auth scopes are used in the token request
+    async fn auth_service_scope() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\",scope=\"foo bar\""),
+                )
+                .create_async()
+                .await,
+            // Token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice&scope=foo&scope=bar",
+                )
+                .match_header("Authorization", "Basic mybasicauth")
+                .with_status(200)
+                .with_body(r#"{"token":"mytoken"}"#)
+                .create_async()
+                .await,
+            // Re-submitted request, with bearer auth
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer mytoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .service(Client::default());
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+    }
+
+    #[tokio::test]
+    /// Test if we re-authenticate when a later request requires another scope
+    /// This happens when we first pull, then push, like in the publish flow
+    async fn auth_service_increased_scope() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!(
+                        "Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\",scope=\"pull\""
+                    ),
+                )
+                .create_async()
+                .await,
+            // Token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice&scope=pull",
+                )
+                .match_header("Authorization", "Basic mybasicauth")
+                .with_status(200)
+                .with_body(r#"{"token":"mytoken"}"#)
+                .create_async()
+                .await,
+            // Re-submitted request, with bearer auth
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer mytoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+            // next request, with bearer auth, needs bigger scope
+            server
+                .mock("POST", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\",scope=\"pull,push\""),
+                )
+                .create_async()
+                .await,
+            // Token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice&scope=pull%2Cpush",
+                )
+                .match_header("Authorization", "Basic mybasicauth")
+                .with_status(200)
+                .with_body(r#"{"token":"mysecondtoken"}"#)
+                .create_async()
+                .await,
+            // Re-submitted request, with bearer auth
+            server
+                .mock("POST", "/foobar")
+                .match_header("Authorization", "Bearer mysecondtoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .service(Client::default());
+
+        // First request
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+        let response = service.call(request).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+
+        // Second request
+        let request = reqwest::Request::new(
+            http::Method::POST,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+        let response = service.call(request).await.unwrap();
+
         for mock in mocks {
             mock.assert_async().await;
         }
@@ -565,7 +819,8 @@ mod tests {
         assert_eq!(error.status, StatusCode::BAD_GATEWAY);
         assert_eq!(
             error.message,
-            "Failed to parse authentication response: error decoding response body".to_string()
+            "Failed to parse authentication response: missing field `token` at line 1 column 23"
+                .to_string()
         );
     }
 }

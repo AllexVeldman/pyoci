@@ -67,7 +67,6 @@ impl HttpTransport {
     /// this session.
     pub async fn send(&mut self, request: reqwest::RequestBuilder) -> Result<reqwest::Response> {
         let request = request.build()?;
-        tracing::debug!("Request: {:#?}", request);
 
         let mut service = ServiceBuilder::new()
             .layer(self.auth_layer.clone())
@@ -76,7 +75,6 @@ impl HttpTransport {
         poll_fn(|ctx| service.poll_ready(ctx)).await?;
         let response = service.call(request).await?;
 
-        tracing::debug!("Response Headers: {:#?}", response.headers());
         Ok(response)
     }
 

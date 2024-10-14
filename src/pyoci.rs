@@ -2,7 +2,6 @@ use anyhow::{bail, Context, Error, Result};
 use base16ct::lower::encode_string as hex_encode;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
-use http::HeaderValue;
 use http::StatusCode;
 use oci_spec::{
     distribution::TagList,
@@ -12,7 +11,6 @@ use oci_spec::{
         Sha256Digest, SCHEMA_VERSION,
     },
 };
-use regex::Regex;
 use reqwest::Response;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
@@ -149,59 +147,8 @@ impl From<(StatusCode, String)> for PyOciError {
 
 #[derive(Deserialize)]
 pub struct AuthResponse {
+    #[serde(alias = "access_token")]
     pub token: String,
-}
-
-/// WWW-Authenticate header
-/// ref: <https://datatracker.ietf.org/doc/html/rfc6750#section-3>
-pub struct WwwAuth {
-    pub realm: Url,
-    pub service: String,
-    // scope: String,
-}
-
-impl WwwAuth {
-    /// Parse a WWW-Authenticate header
-    pub fn parse(header: &HeaderValue) -> Result<Self> {
-        let value = header
-            .to_str()
-            .context("Failed to parse WWW-Authenticate header")?;
-        let value = match value.strip_prefix("Bearer ") {
-            None => bail!("Not a Bearer token"),
-            Some(value) => value,
-        };
-        let realm = match Regex::new(r#"realm="(?P<realm>[^"\s]*)"#)
-            .unwrap()
-            .captures(value)
-        {
-            Some(value) => value.name("realm").unwrap().as_str(),
-            None => bail!("`realm` key missing"),
-        };
-        let realm = Url::parse(realm).context("Failed to parse realm URL")?;
-        let service = match Regex::new(r#"service="(?P<service>[^"\s]*)"#)
-            .expect("valid regex")
-            .captures(value)
-        {
-            Some(value) => value.name("service").unwrap().as_str().to_string(),
-            None => bail!("`service` key missing"),
-        };
-        // let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
-        //     .expect("valid regex")
-        //     .captures(value)
-        // {
-        //     Some(value) => value
-        //         .name("scope")
-        //         .expect("scope to be part of match")
-        //         .as_str()
-        //         .to_string(),
-        //     None => return Err("scope missing".into()),
-        // };
-        Ok(WwwAuth {
-            realm,
-            service,
-            // scope,
-        })
-    }
 }
 
 /// Client to communicate with the OCI v2 registry
