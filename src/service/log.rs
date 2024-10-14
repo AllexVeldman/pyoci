@@ -53,6 +53,7 @@ where
     }
 
     fn call(&mut self, request: reqwest::Request) -> Self::Future {
+        tracing::debug!("{:?}", request);
         LogFuture {
             method: request.method().to_string(),
             url: request.url().to_string(),
@@ -82,6 +83,7 @@ where
         let result = ready!(this.inner_fut.poll(cx));
         match &result {
             Ok(response) => {
+                tracing::debug!("{:?}", response);
                 let status: u16 = response.status().into();
                 tracing::info!(
                     method = this.method,
