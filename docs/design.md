@@ -47,3 +47,23 @@ This allows multiple build artifacts to be published to the same package version
   ]
 }
 ```
+
+# References
+
+### PyPi
+- Simple API: https://peps.python.org/pep-0503/
+- Simple JSON extention: https://peps.python.org/pep-0691/#content-types
+- JSON API: https://warehouse.pypa.io/api-reference/json.html#
+
+### Python packaging
+- Name normalization: https://packaging.python.org/en/latest/specifications/name-normalization/#name-normalization
+- `.tar.gz`: https://packaging.python.org/en/latest/specifications/source-distribution-format/#source-distribution-file-name
+- `.whl`: https://packaging.python.org/en/latest/specifications/binary-distribution-format/#file-name-convention
+
+### OCI
+- Token auth: https://distribution.github.io/distribution/spec/auth/token/
+- Distribution spec: https://github.com/opencontainers/distribution-spec/blob/main/spec.md
+- Image spec: https://github.com/opencontainers/image-spec/blob/main/spec.md
+
+### Other
+- WWW-Authenticate header: https://datatracker.ietf.org/doc/html/rfc6750#section-3
