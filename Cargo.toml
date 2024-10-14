@@ -65,7 +65,7 @@ prost = {version = "0.13.2", optional = true }
 
 
 [dev-dependencies]
-futures-util = "0.3.30"
+futures-util = "0.3.31"
 indoc = "2.0.5"
 mockito = "1.5.0"
 test-case = "3.3.1"
