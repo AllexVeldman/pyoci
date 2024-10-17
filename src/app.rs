@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use http::StatusCode;
+use http::{HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tracing::{info_span, Instrument};
 
@@ -111,10 +111,9 @@ async fn list_package(
     headers: HeaderMap,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
-    let auth = get_auth(&headers)?;
     let package = package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, auth)?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
     // Fetch at most 100 package versions
     let files = client.list_package_files(&package, 100).await?;
 
@@ -161,10 +160,9 @@ async fn list_package_json(
     headers: HeaderMap,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Json<ListJson>, AppError> {
-    let auth = get_auth(&headers)?;
     let package = package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, auth)?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
     let versions = client.list_package_versions(&package).await?;
     let response = ListJson {
         info: Info {
@@ -183,10 +181,9 @@ async fn download_package(
     Path((registry, namespace, _distribution, filename)): Path<(String, String, String, String)>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    let auth = get_auth(&headers)?;
     let package = package::from_filename(&registry, &namespace, &filename)?;
 
-    let mut client = PyOci::new(package.registry()?, auth)?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
     let data = client
         .download_package_file(&package)
         .await?
@@ -212,10 +209,9 @@ async fn delete_package_version(
     Path((registry, namespace, name, version)): Path<(String, String, String, String)>,
     headers: HeaderMap,
 ) -> Result<String, AppError> {
-    let auth = get_auth(&headers)?;
     let package = package::new(&registry, &namespace, &name).with_oci_file(&version, "");
 
-    let mut client = PyOci::new(package.registry()?, auth)?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
     client.delete_package_version(&package).await?;
     Ok("Deleted".into())
 }
@@ -232,9 +228,8 @@ async fn publish_package(
 ) -> Result<String, AppError> {
     let form_data = UploadForm::from_multipart(multipart).await?;
 
-    let auth = get_auth(&headers)?;
     let package = package::from_filename(&registry, &namespace, &form_data.filename)?;
-    let mut client = PyOci::new(package.registry()?, auth)?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
 
     client
         .publish_package_file(&package, form_data.content)
@@ -243,18 +238,16 @@ async fn publish_package(
 }
 
 /// Parse the Authentication header, if provided
-fn get_auth(headers: &HeaderMap) -> anyhow::Result<Option<String>> {
-    let auth = match headers.get("Authorization") {
-        Some(auth) => match auth.to_str() {
-            Ok(auth) => Some(auth.to_owned()),
-            Err(_) => Err(PyOciError::from((
-                StatusCode::BAD_REQUEST,
-                "Failed to convert Authorization header to visible ASCII",
-            )))?,
-        },
-        None => None,
+fn get_auth(headers: &HeaderMap) -> Option<HeaderValue> {
+    let auth = headers.get("Authorization").map(|auth| {
+        let mut auth = auth.to_owned();
+        auth.set_sensitive(true);
+        auth
+    });
+    if auth.is_none() {
+        tracing::warn!("No Authorization header provided");
     };
-    Ok(auth)
+    auth
 }
 
 /// Form data for the upload API
@@ -387,27 +380,16 @@ mod tests {
     fn test_get_auth() {
         let mut headers = HeaderMap::new();
         headers.append("Authorization", "foo".try_into().unwrap());
-        let auth = get_auth(&headers).unwrap();
-        assert_eq!(auth, Some("foo".to_string()))
+        let auth = get_auth(&headers);
+        assert_eq!(auth, Some(HeaderValue::try_from("foo").unwrap()));
+        assert!(auth.unwrap().is_sensitive());
     }
 
     #[test]
     fn test_get_auth_none() {
         let headers = HeaderMap::new();
-        let auth = get_auth(&headers).unwrap();
+        let auth = get_auth(&headers);
         assert_eq!(auth, None)
-    }
-
-    #[test]
-    fn test_get_auth_invalid() {
-        let mut headers = HeaderMap::new();
-        headers.append(
-            "Authorization",
-            HeaderValue::from_bytes(&[129_u8, 141_u8, 143_u8]).unwrap(),
-        );
-        let auth = get_auth(&headers).unwrap_err();
-        let err = auth.downcast_ref::<PyOciError>().unwrap();
-        assert_eq!(err.status, StatusCode::BAD_REQUEST)
     }
 
     #[tokio::test]

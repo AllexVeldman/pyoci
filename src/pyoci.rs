@@ -2,6 +2,7 @@ use anyhow::{bail, Context, Error, Result};
 use base16ct::lower::encode_string as hex_encode;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
+use http::HeaderValue;
 use http::StatusCode;
 use oci_spec::{
     distribution::TagList,
@@ -160,7 +161,7 @@ pub struct PyOci {
 
 impl PyOci {
     /// Create a new Client
-    pub fn new(registry: Url, auth: Option<String>) -> Result<Self> {
+    pub fn new(registry: Url, auth: Option<HeaderValue>) -> Result<Self> {
         Ok(PyOci {
             registry,
             transport: HttpTransport::new(auth)?,
