@@ -1,5 +1,13 @@
 # Changelog
 
+## [0.1.7](https://github.com/AllexVeldman/pyoci/compare/v0.1.6...v0.1.7) (2024-10-17)
+
+
+### Continuous Integration
+
+* **release:** Can't rely on workflow booleans ([ffef246](https://github.com/AllexVeldman/pyoci/commit/ffef2465f4f98c32a237047fe64157e68da8bf24))
+* **release:** Fix publish output not being a boolean ([#82](https://github.com/AllexVeldman/pyoci/issues/82)) ([956924d](https://github.com/AllexVeldman/pyoci/commit/956924d9acc69858b6762354ca9c49491c9d3805))
+
 ## [0.1.6](https://github.com/AllexVeldman/pyoci/compare/0.1.5...v0.1.6) (2024-10-17)
 
 
