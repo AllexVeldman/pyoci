@@ -2,7 +2,6 @@ use anyhow::{anyhow, bail, Context as _, Result};
 use futures::{ready, FutureExt};
 use http::{HeaderValue, StatusCode};
 use pin_project::pin_project;
-use regex::Regex;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
@@ -338,36 +337,36 @@ impl WwwAuth {
             None => bail!("Not a Bearer token"),
             Some(value) => value,
         };
-        // TODO: Rewrite regexes to str.find()
-        let realm = match Regex::new(r#"realm="(?P<realm>[^"\s]*)"#)
-            .unwrap()
-            .captures(value)
-        {
-            Some(value) => value.name("realm").unwrap().as_str(),
-            None => bail!("`realm` key missing"),
+
+        let realm = {
+            let value = value[value.find(r#"realm=""#).context("`realm` key missing")?..]
+                .strip_prefix(r#"realm=""#)
+                .unwrap();
+            let end = value.find('"').context("invalid realm value")?;
+            Url::parse(&value[..end]).context("Failed to parse realm URL")?
         };
-        let realm = Url::parse(realm).context("Failed to parse realm URL")?;
-        let service = match Regex::new(r#"service="(?P<service>[^"\s]*)"#)
-            .expect("valid regex")
-            .captures(value)
-        {
-            Some(value) => value.name("service").unwrap().as_str().to_string(),
-            None => bail!("`service` key missing"),
+
+        let service = {
+            let value = value[value
+                .find(r#"service=""#)
+                .context("`service` key missing")?..]
+                .strip_prefix(r#"service=""#)
+                .unwrap();
+            let end = value.find('"').context("invalid service value")?;
+            value[..end].to_string()
         };
-        let scope = match Regex::new(r#"scope="(?P<scope>[^"]*)"#)
-            .expect("valid regex")
-            .captures(value)
-        {
-            Some(value) => {
-                let scope = value
-                    .name("scope")
-                    .expect("scope to be part of match")
-                    .as_str()
-                    .to_string();
-                Some(scope.split(' ').map(|s| s.to_string()).collect())
+
+        let scope = {
+            match value.find(r#"scope=""#) {
+                None => None,
+                Some(start) => {
+                    let value = value[start..].strip_prefix(r#"scope=""#).unwrap();
+                    let end = value.find('"').context("invalid scope value")?;
+                    Some(value[..end].split(' ').map(|s| s.to_string()).collect())
+                }
             }
-            None => None,
         };
+
         Ok(WwwAuth {
             realm,
             service,
