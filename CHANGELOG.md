@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.1.8](https://github.com/AllexVeldman/pyoci/compare/v0.1.7...v0.1.8) (2024-10-17)
+
+
+### Features
+
+* **log:** Include host is logs ([#88](https://github.com/AllexVeldman/pyoci/issues/88)) ([c65c0b6](https://github.com/AllexVeldman/pyoci/commit/c65c0b62dafbddf8e3a862db36a06d8cfbfe8e32))
+* **OTLP:** Include version in OTLP logs/traces ([#84](https://github.com/AllexVeldman/pyoci/issues/84)) ([d9d782f](https://github.com/AllexVeldman/pyoci/commit/d9d782fc88410d4bab4136b70bcb006f2475e202))
+
+
+### Bug Fixes
+
+* **auth:** Log a warning when no auth is provided ([#86](https://github.com/AllexVeldman/pyoci/issues/86)) ([3362f4d](https://github.com/AllexVeldman/pyoci/commit/3362f4d1d3068e8827d8b6920687df109c14a8b5))
+
+
+### Code Refactoring
+
+* Remove use of Regex ([#87](https://github.com/AllexVeldman/pyoci/issues/87)) ([98708e1](https://github.com/AllexVeldman/pyoci/commit/98708e1357a065d618242530d6a6cd8805fdeaab))
+
+
+### Build System
+
+* Use Github cache for docker build ([#89](https://github.com/AllexVeldman/pyoci/issues/89)) ([375b810](https://github.com/AllexVeldman/pyoci/commit/375b81059d96afb36914ba4b8628d0eb25803bb2))
+
 ## [0.1.7](https://github.com/AllexVeldman/pyoci/compare/v0.1.6...v0.1.7) (2024-10-17)
 
 
