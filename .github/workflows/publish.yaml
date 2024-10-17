@@ -82,8 +82,8 @@ jobs:
         with:
           context: ./
           file: docker/Dockerfile
-          cache-from: type=registry,ref=ghcr.io/allexveldman/pyoci:latest
-          cache-to: type=inline
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
           load: true
           push: ${{ inputs.publish || false }}
           tags: ${{ steps.meta.outputs.tags }}
