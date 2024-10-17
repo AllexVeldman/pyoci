@@ -22,7 +22,7 @@ jobs:
 
     outputs:
       version: ${{ steps.release-please.outputs.major }}.${{ steps.release-please.outputs.minor }}.${{ steps.release-please.outputs.patch }}
-      publish: ${{ steps.release-please.outputs.release_created == 'true' }}
+      publish: ${{ steps.release-please.outputs.release_created }}
 
     steps:
       - uses: googleapis/release-please-action@v4
@@ -33,11 +33,11 @@ jobs:
   publish:
     name: Publish
     needs: [release]
-    if: needs.release.outputs.publish
+    if: ${{ needs.release.outputs.publish  == 'true'}}
     uses: ./.github/workflows/publish.yaml
     with:
       version: ${{ needs.release.outputs.version }}
-      publish: ${{ needs.release.outputs.publish }}
+      publish: ${{ needs.release.outputs.publish  == 'true'}}
     permissions:
       contents: read
       packages: write
@@ -45,7 +45,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [release, publish]
-    if: needs.release.outputs.publish
+    if: ${{ needs.release.outputs.publish  == 'true'}}
     uses: ./.github/workflows/deploy.yaml
     with:
       version: ${{ needs.release.outputs.version }}
