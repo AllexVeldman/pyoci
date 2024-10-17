@@ -1125,7 +1125,6 @@ dependencies = [
  "opentelemetry_sdk",
  "pin-project",
  "prost",
- "regex",
  "reqwest",
  "serde",
  "serde_json",
