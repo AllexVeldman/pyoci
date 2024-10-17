@@ -22,7 +22,7 @@ jobs:
 
     outputs:
       version: ${{ steps.release-please.outputs.major }}.${{ steps.release-please.outputs.minor }}.${{ steps.release-please.outputs.patch }}
-      publish: ${{ steps.release-please.outputs.release_created }}
+      publish: ${{ steps.release-please.outputs.release_created == 'true' }}
 
     steps:
       - uses: googleapis/release-please-action@v4
