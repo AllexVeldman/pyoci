@@ -65,6 +65,7 @@ pub fn router() -> Router {
 /// Log incoming requests
 async fn accesslog_middleware(
     method: axum::http::Method,
+    host: Option<axum::extract::Host>,
     uri: axum::http::Uri,
     headers: axum::http::HeaderMap,
     request: axum::extract::Request,
@@ -78,6 +79,7 @@ async fn accesslog_middleware(
         .map(|ua| ua.to_str().unwrap_or(""));
     tracing::info!(
         method = method.to_string(),
+        host = host.map(|value| value.0),
         status,
         path = uri.path(),
         user_agent,
