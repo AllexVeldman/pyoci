@@ -33,6 +33,7 @@ use crate::app::router;
 use crate::otlp::otlp;
 
 // crate constants
+const PYOCI_VERSION: &str = env!("CARGO_PKG_VERSION");
 const USER_AGENT: &str = concat!("pyoci ", env!("CARGO_PKG_VERSION"));
 const ARTIFACT_TYPE: &str = "application/pyoci.package.v1";
 
@@ -83,6 +84,7 @@ impl Env {
     fn trace_attributes(&self) -> HashMap<&'static str, Option<String>> {
         HashMap::from([
             ("service.name", Some("pyoci".to_string())),
+            ("service.version", Some(PYOCI_VERSION.to_string())),
             ("deployment.environment", self.deployment_env.clone()),
             ("k8s.container.name", self.container_name.clone()),
             ("k8s.pod.name", self.pod_name.clone()),
