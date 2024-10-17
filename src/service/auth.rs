@@ -25,16 +25,7 @@ pub struct AuthLayer {
 }
 
 impl AuthLayer {
-    pub fn new(basic_token: Option<String>) -> Result<Self> {
-        let basic_token = match basic_token {
-            None => None,
-            Some(token) => {
-                let mut token = http::HeaderValue::try_from(token)?;
-                token.set_sensitive(true);
-                Some(token)
-            }
-        };
-
+    pub fn new(basic_token: Option<HeaderValue>) -> Result<Self> {
         Ok(Self {
             basic: basic_token,
             bearer: Arc::new(RwLock::new(None)),
@@ -441,7 +432,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .layer(
+                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
+            )
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -494,7 +487,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .layer(
+                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
+            )
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -585,7 +580,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .layer(
+                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
+            )
             .service(Client::default());
 
         // First request
@@ -631,7 +628,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some("Basic mybasicauth".into())).unwrap())
+            .layer(
+                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
+            )
             .service(Client::default());
 
         // Construct a request that can't be cloned
@@ -701,7 +700,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some("Basic mybasictoken".into())).unwrap())
+            .layer(
+                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
+            )
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -745,7 +746,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some("Basic mybasictoken".into())).unwrap())
+            .layer(
+                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
+            )
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -799,7 +802,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some("Basic mybasictoken".into())).unwrap())
+            .layer(
+                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasictoken").unwrap())).unwrap(),
+            )
             .service(Client::default());
 
         let request = reqwest::Request::new(
