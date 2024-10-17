@@ -94,7 +94,6 @@ jobs:
       # step defines `load: true` the entire build will be from cache.
       - uses: extractions/setup-just@v2
       - uses: snok/install-poetry@v1
-      - name: Smoke Test
-        run: just test-smoke
+      - run: just test-smoke
       - run: docker compose logs pyoci
         working-directory: ./docker
