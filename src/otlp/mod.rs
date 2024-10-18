@@ -1,6 +1,8 @@
 mod log;
+mod metrics;
 mod trace;
 
+use metrics::OtlpMetricsLayer;
 use std::collections::HashMap;
 use tokio::task::JoinHandle;
 use tokio::time::{interval, Duration, MissedTickBehavior};
@@ -40,15 +42,16 @@ where
     let (Some(otlp_endpoint), Some(otlp_auth)) = (otlp_endpoint, otlp_auth) else {
         return (Box::new(subscriber), None);
     };
-    let log_layer = crate::otlp::OtlpLogLayer::new(otlp_endpoint.clone(), otlp_auth.clone());
-    let trace_layer = crate::otlp::OtlpTraceLayer::new(otlp_endpoint, otlp_auth);
+    let log_layer = crate::otlp::OtlpLogLayer::new(&otlp_endpoint, &otlp_auth);
+    let trace_layer = crate::otlp::OtlpTraceLayer::new(&otlp_endpoint, &otlp_auth);
+    let metrics = crate::otlp::metrics::OtlpMetricsLayer::new(&otlp_endpoint, &otlp_auth);
 
     let subscriber = subscriber
         .with(SpanIdLayer::default())
         .with(SpanTimeLayer::default())
         .with(log_layer.clone())
         .with(trace_layer.clone());
-    let otlp_layer = (log_layer, trace_layer);
+    let otlp_layer = (log_layer, trace_layer, metrics);
 
     // A task that will flush every second
     let handle = tokio::spawn(async move {
@@ -72,11 +75,12 @@ pub trait Toilet {
     async fn flush(&self, _attributes: &HashMap<&str, Option<String>>);
 }
 
-type OtlpLayer = (OtlpLogLayer, OtlpTraceLayer);
+type OtlpLayer = (OtlpLogLayer, OtlpTraceLayer, OtlpMetricsLayer);
 impl Toilet for OtlpLayer {
     async fn flush(&self, attributes: &HashMap<&str, Option<String>>) {
         self.0.flush(attributes).await;
         self.1.flush(attributes).await;
+        self.2.flush(attributes).await;
     }
 }
 

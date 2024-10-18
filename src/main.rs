@@ -136,7 +136,7 @@ fn setup_tracing(
             environ.otlp_endpoint.clone(),
             environ.otlp_auth.clone(),
             environ.trace_attributes(),
-            Duration::from_millis(1000),
+            Duration::from_secs(30),
             cancel_token,
         );
         (el_reg, handle)
@@ -180,9 +180,20 @@ mod tests {
 
     #[tokio::test]
     async fn test_setup_tracing() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mock = server.mock("POST", "/v1/metrics").create_async().await;
+
+        let rest_mock = server
+            .mock("POST", mockito::Matcher::Any)
+            // Expect no other requests
+            .expect(0)
+            .create_async()
+            .await;
+
         let cancel_token = CancellationToken::new();
         let env = Env {
-            otlp_endpoint: Some("url".to_string()),
+            otlp_endpoint: Some(url),
             otlp_auth: Some("unittest".to_string()),
             ..Env::default()
         };
@@ -194,6 +205,8 @@ mod tests {
         if let Some(handle) = handle {
             handle.await.unwrap();
         }
+        mock.assert_async().await;
+        rest_mock.assert_async().await;
     }
 
     #[tokio::test]
