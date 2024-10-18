@@ -44,14 +44,15 @@ where
     };
     let log_layer = crate::otlp::OtlpLogLayer::new(&otlp_endpoint, &otlp_auth);
     let trace_layer = crate::otlp::OtlpTraceLayer::new(&otlp_endpoint, &otlp_auth);
-    let metrics = crate::otlp::metrics::OtlpMetricsLayer::new(&otlp_endpoint, &otlp_auth);
+    let metrics_layer = crate::otlp::metrics::OtlpMetricsLayer::new(&otlp_endpoint, &otlp_auth);
 
     let subscriber = subscriber
         .with(SpanIdLayer::default())
         .with(SpanTimeLayer::default())
         .with(log_layer.clone())
-        .with(trace_layer.clone());
-    let otlp_layer = (log_layer, trace_layer, metrics);
+        .with(trace_layer.clone())
+        .with(metrics_layer.clone());
+    let otlp_layer = (log_layer, trace_layer, metrics_layer);
 
     // A task that will flush every second
     let handle = tokio::spawn(async move {

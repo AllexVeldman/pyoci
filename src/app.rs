@@ -78,12 +78,12 @@ async fn accesslog_middleware(
         .get("user-agent")
         .map(|ua| ua.to_str().unwrap_or(""));
     tracing::info!(
-        method = method.to_string(),
         host = host.map(|value| value.0),
+        "type" = "request",
         status,
+        method = method.to_string(),
         path = uri.path(),
         user_agent,
-        "type" = "request"
     );
     response
 }
