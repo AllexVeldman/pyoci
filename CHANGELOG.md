@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.9](https://github.com/AllexVeldman/pyoci/compare/v0.1.8...v0.1.9) (2024-10-18)
+
+
+### Features
+
+* **OTLP:** Collect uptime metrics ([#90](https://github.com/AllexVeldman/pyoci/issues/90)) ([de8a06c](https://github.com/AllexVeldman/pyoci/commit/de8a06c53f3e1a201fdec3b914e77186f9aa4fdb))
+
 ## [0.1.8](https://github.com/AllexVeldman/pyoci/compare/v0.1.7...v0.1.8) (2024-10-17)
 
 
