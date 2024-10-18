@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.10](https://github.com/AllexVeldman/pyoci/compare/v0.1.9...v0.1.10) (2024-10-18)
+
+
+### Features
+
+* **OTLP:** Add requests count metric ([#92](https://github.com/AllexVeldman/pyoci/issues/92)) ([289d316](https://github.com/AllexVeldman/pyoci/commit/289d316e25bea262db3571dcc1ac74e2560e318c))
+
 ## [0.1.9](https://github.com/AllexVeldman/pyoci/compare/v0.1.8...v0.1.9) (2024-10-18)
 
 
