@@ -70,10 +70,10 @@ pub struct OtlpLogLayer {
 
 // Public methods
 impl OtlpLogLayer {
-    pub fn new(otlp_endpoint: String, otlp_auth: String) -> Self {
+    pub fn new(otlp_endpoint: &str, otlp_auth: &str) -> Self {
         Self {
-            otlp_endpoint,
-            otlp_auth,
+            otlp_endpoint: otlp_endpoint.to_string(),
+            otlp_auth: otlp_auth.to_string(),
             records: Arc::new(RwLock::new(vec![])),
         }
     }
@@ -229,7 +229,7 @@ mod tests {
             .await;
 
         // init tracing with the otlp layer
-        let otlp_layer = OtlpLogLayer::new(url, "unittest_auth".to_string());
+        let otlp_layer = OtlpLogLayer::new(&url, "unittest_auth");
         let otlp_clone = otlp_layer.clone();
         let subscriber = tracing_subscriber::registry()
             .with(SpanIdLayer::default())
@@ -277,7 +277,7 @@ mod tests {
             .await;
 
         // init tracing with the otlp layer
-        let otlp_layer = OtlpLogLayer::new(url, "".into());
+        let otlp_layer = OtlpLogLayer::new(&url, "");
         let otlp_clone = otlp_layer.clone();
         let subscriber = tracing_subscriber::registry()
             .with(SpanIdLayer::default())
