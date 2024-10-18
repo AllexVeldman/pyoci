@@ -1,5 +1,5 @@
 use std::collections::HashMap;
-use std::sync::Arc;
+use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use prost::Message;
@@ -13,6 +13,11 @@ use opentelemetry_proto::tonic::metrics::v1::{
     ResourceMetrics, ScopeMetrics, Sum,
 };
 use opentelemetry_proto::tonic::resource::v1::Resource;
+use tracing::span::{Attributes, Id};
+use tracing::Subscriber;
+use tracing_subscriber::layer::Context;
+use tracing_subscriber::registry::LookupSpan;
+use tracing_subscriber::Layer;
 
 use crate::otlp::Toilet;
 use crate::USER_AGENT;
@@ -21,19 +26,24 @@ use crate::USER_AGENT;
 #[derive(Debug)]
 struct Metrics {
     uptime: UptimeMetric,
+    requests: RequestsMetric,
 }
 
 impl Default for Metrics {
     fn default() -> Self {
         Self {
             uptime: UptimeMetric::new(),
+            requests: RequestsMetric::new(),
         }
     }
 }
 
 impl Metrics {
     fn as_metrics(&self, attributes: &[KeyValue]) -> Vec<Metric> {
-        vec![self.uptime.as_metric(attributes)]
+        vec![
+            self.uptime.as_metric(attributes),
+            self.requests.as_metric(attributes),
+        ]
     }
 }
 
@@ -64,6 +74,47 @@ impl UptimeMetric {
                     start_time_unix_nano: now_u64,
                     time_unix_nano: now_u64,
                     value: Some(Value::AsDouble(diff)),
+                    ..NumberDataPoint::default()
+                }],
+                aggregation_temporality: AggregationTemporality::Cumulative.into(),
+                is_monotonic: true,
+            })),
+            metadata: vec![],
+        }
+    }
+}
+
+#[derive(Debug)]
+struct RequestsMetric {
+    count: RwLock<u32>,
+}
+
+impl RequestsMetric {
+    fn new() -> RequestsMetric {
+        RequestsMetric {
+            count: RwLock::new(0),
+        }
+    }
+
+    fn increment(&self) {
+        *self.count.write().unwrap() += 1;
+    }
+
+    fn as_metric(&self, attributes: &[KeyValue]) -> Metric {
+        let now: u64 = OffsetDateTime::now_utc()
+            .unix_timestamp_nanos()
+            .try_into()
+            .expect("timestamp does not fit in u64");
+        Metric {
+            name: "pyoci_requests".to_string(),
+            description: "Total number of requests handled by this instance".to_string(),
+            unit: "requests".to_string(),
+            data: Some(Data::Sum(Sum {
+                data_points: vec![NumberDataPoint {
+                    attributes: attributes.to_vec(),
+                    start_time_unix_nano: now,
+                    time_unix_nano: now,
+                    value: Some(Value::AsInt(*self.count.read().unwrap() as i64)),
                     ..NumberDataPoint::default()
                 }],
                 aggregation_temporality: AggregationTemporality::Cumulative.into(),
@@ -126,6 +177,23 @@ impl OtlpMetricsLayer {
             otlp_endpoint: otlp_endpoint.to_string(),
             otlp_auth: otlp_auth.to_string(),
             metrics: Arc::new(Metrics::default()),
+        }
+    }
+}
+
+impl<S> Layer<S> for OtlpMetricsLayer
+where
+    S: Subscriber + for<'a> LookupSpan<'a>,
+{
+    fn on_new_span(&self, _attrs: &Attributes<'_>, id: &Id, ctx: Context<'_, S>) {
+        let Some(span) = ctx.span(id) else {
+            tracing::info!("Span {id:?} does not exist");
+            return;
+        };
+
+        // If this is the root span, we are in a new request
+        if span.parent().is_none() {
+            self.metrics.requests.increment();
         }
     }
 }

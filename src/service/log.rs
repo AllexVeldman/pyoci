@@ -87,16 +87,26 @@ where
                 let status: u16 = response.status().into();
                 tracing::info!(
                     method = this.method,
+                    "type" = this.request_type,
                     status,
                     url = this.url,
-                    "type" = this.request_type,
                 );
             }
             Err(error) => {
                 if let Some(source) = error.source() {
-                    tracing::error!("{source}");
+                    tracing::error!(
+                        method = this.method,
+                        "type" = this.request_type,
+                        url = this.url,
+                        error = format!("{source}")
+                    );
                 } else {
-                    tracing::debug!("{error:?}");
+                    tracing::debug!(
+                        method = this.method,
+                        "type" = this.request_type,
+                        url = this.url,
+                        error = format!("{error:?}")
+                    );
                 }
             }
         }
