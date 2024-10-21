@@ -1,6 +1,6 @@
 [package]
 name = "pyoci"
-version = "0.1.10"
+version = "0.1.11"
 edition = "2021"
 authors = ["Allex Veldman"]
 description = "Let any OCI compliant registry act as a PyPi index"
