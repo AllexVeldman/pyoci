@@ -7,7 +7,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
-use http::{HeaderValue, StatusCode};
+use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tracing::{info_span, Instrument};
 
@@ -41,9 +41,14 @@ where
 pub fn router() -> Router {
     // TODO: Validate HOST header against a list of allowed hosts
     Router::new()
+        .fallback(
+            get(|| async { StatusCode::NOT_FOUND })
+                .layer(axum::middleware::from_fn(cache_control_middleware)),
+        )
         .route(
             "/",
-            get(|| async { Redirect::to(env!("CARGO_PKG_HOMEPAGE")) }),
+            get(|| async { Redirect::to(env!("CARGO_PKG_HOMEPAGE")) })
+                .layer(axum::middleware::from_fn(cache_control_middleware)),
         )
         .route("/:registry/:namespace/:package/", get(list_package))
         .route(
@@ -60,6 +65,23 @@ pub fn router() -> Router {
         )
         .layer(axum::middleware::from_fn(accesslog_middleware))
         .layer(axum::middleware::from_fn(trace_middleware))
+}
+
+/// Add cache-control for unmatched routes
+///
+/// This allows downstream caches to not wake up the server for unmatched paths
+/// like scrapers and vulnerability scanners
+async fn cache_control_middleware(
+    request: axum::extract::Request,
+    next: axum::middleware::Next,
+) -> axum::response::Response {
+    let mut response = next.run(request).await;
+    response.headers_mut().insert(
+        CACHE_CONTROL,
+        // Cache the response for 7 days
+        HeaderValue::from_str("max-age=604800, public").unwrap(),
+    );
+    response
 }
 
 /// Log incoming requests
@@ -392,6 +414,42 @@ mod tests {
         let headers = HeaderMap::new();
         let auth = get_auth(&headers);
         assert_eq!(auth, None)
+    }
+
+    #[tokio::test]
+    async fn cache_control_unmatched() {
+        let router = router();
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/foo")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::NOT_FOUND);
+        assert_eq!(
+            response.headers().get("Cache-Control"),
+            Some(&HeaderValue::from_str("max-age=604800, public").unwrap())
+        );
+    }
+
+    #[tokio::test]
+    async fn cache_control_root() {
+        let router = router();
+
+        let req = Request::builder()
+            .method("GET")
+            .uri("/")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::SEE_OTHER);
+        assert_eq!(
+            response.headers().get("Cache-Control"),
+            Some(&HeaderValue::from_str("max-age=604800, public").unwrap())
+        );
     }
 
     #[tokio::test]
