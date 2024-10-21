@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.11](https://github.com/AllexVeldman/pyoci/compare/v0.1.10...v0.1.11) (2024-10-21)
+
+
+### Features
+
+* Instruct caches for root and unmatched routes ([#98](https://github.com/AllexVeldman/pyoci/issues/98)) ([f27c3c1](https://github.com/AllexVeldman/pyoci/commit/f27c3c102e660f6546af07fd78acbfa612d743c4))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump anyhow from 1.0.89 to 1.0.90 ([#96](https://github.com/AllexVeldman/pyoci/issues/96)) ([5b8bcdb](https://github.com/AllexVeldman/pyoci/commit/5b8bcdb6137a172d39407ac51ca013bb3f24a7c4))
+* **deps:** bump futures from 0.3.30 to 0.3.31 ([#94](https://github.com/AllexVeldman/pyoci/issues/94)) ([ac5a7d3](https://github.com/AllexVeldman/pyoci/commit/ac5a7d38ac3d42e9da35da47fc101d49eac73aae))
+* **deps:** bump pin-project from 1.1.5 to 1.1.6 ([#97](https://github.com/AllexVeldman/pyoci/issues/97)) ([4861163](https://github.com/AllexVeldman/pyoci/commit/486116334812212d7b540f96fdcb2975139707dc))
+* **deps:** bump serde_json from 1.0.128 to 1.0.132 ([#95](https://github.com/AllexVeldman/pyoci/issues/95)) ([69deb3c](https://github.com/AllexVeldman/pyoci/commit/69deb3cba16c1a3714a351eaa3138d310b3e7fbf))
+
 ## [0.1.10](https://github.com/AllexVeldman/pyoci/compare/v0.1.9...v0.1.10) (2024-10-18)
 
 
