@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.12](https://github.com/AllexVeldman/pyoci/compare/v0.1.11...v0.1.12) (2024-10-28)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump anyhow from 1.0.90 to 1.0.91 ([#103](https://github.com/AllexVeldman/pyoci/issues/103)) ([d9e06d8](https://github.com/AllexVeldman/pyoci/commit/d9e06d86d401485066f94a1d18b652fe77175f32))
+* **deps:** bump bytes from 1.7.2 to 1.8.0 ([#100](https://github.com/AllexVeldman/pyoci/issues/100)) ([a1a2952](https://github.com/AllexVeldman/pyoci/commit/a1a2952986383746fb893ff1e4f90ce97705eae1))
+* **deps:** bump pin-project from 1.1.6 to 1.1.7 ([#104](https://github.com/AllexVeldman/pyoci/issues/104)) ([452cbc7](https://github.com/AllexVeldman/pyoci/commit/452cbc79b4bf90d825184385e9bc8055ccc7bb4c))
+* **deps:** bump serde from 1.0.210 to 1.0.213 ([#101](https://github.com/AllexVeldman/pyoci/issues/101)) ([f4d918a](https://github.com/AllexVeldman/pyoci/commit/f4d918acc8a892494b9b84a1d9f8515e5444410c))
+* **deps:** bump tokio from 1.40.0 to 1.41.0 ([#102](https://github.com/AllexVeldman/pyoci/issues/102)) ([cb607da](https://github.com/AllexVeldman/pyoci/commit/cb607da78b3331e6227be82ee829eaeb986690ca))
+
 ## [0.1.11](https://github.com/AllexVeldman/pyoci/compare/v0.1.10...v0.1.11) (2024-10-21)
 
 
