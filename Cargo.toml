@@ -51,7 +51,7 @@ pin-project = "1.1.6"
 futures = "0.3.31"
 time = "0.3.36"
 axum = { version = "0.7.7", default-features = false, features = ["multipart","macros", "tokio", "http1", "json"] }
-tokio = { version = "1.40.0", features = ["macros", "rt-multi-thread", "signal", "time"] }
+tokio = { version = "1.41.0", features = ["macros", "rt-multi-thread", "signal", "time"] }
 tokio-util = "0.7.12"
 
 # OTLP dependencies
@@ -68,6 +68,6 @@ futures-util = "0.3.31"
 indoc = "2.0.5"
 mockito = "1.5.0"
 test-case = "3.3.1"
-tokio = { version = "1.40.0", features = ["test-util"]}
+tokio = { version = "1.41.0", features = ["test-util"]}
 bytes = "1.8.0"
 reqwest = { version = "0.12.8", default-features = false, features = ["stream"] }
