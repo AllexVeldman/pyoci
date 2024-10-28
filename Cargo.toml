@@ -47,7 +47,7 @@ anyhow = "1.0.91"
 http = "1.1.0"
 tower = { version = "0.5.1", features = ["util"] }
 async-trait = "0.1.83"
-pin-project = "1.1.6"
+pin-project = "1.1.7"
 futures = "0.3.31"
 time = "0.3.36"
 axum = { version = "0.7.7", default-features = false, features = ["multipart","macros", "tokio", "http1", "json"] }
