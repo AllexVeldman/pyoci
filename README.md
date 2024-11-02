@@ -7,9 +7,8 @@ Publish and download (private) python packages using an OCI registry for storage
 [![codecov](https://codecov.io/github/AllexVeldman/pyoci/graph/badge.svg?token=SXFCPX8M22)](https://codecov.io/github/AllexVeldman/pyoci)
 
 ## Why PyOCI
-As part of my job we create private python packages used in the main application.  
-To not have to rely on `yet-another-cloud-provider`, instead I built PyOCI, making `ghcr.io` act like a python index.  
-This also completely removed the need for separate access management as now GitHub Packages access control applies.
+To not have to rely on `yet-another-cloud-provider` for private Python packages, PyOCI, makes `ghcr.io` act like a python index.  
+In addition, this completely removes the need for separate access management as GitHub Packages access control applies.
 
 Most subscriptions with cloud providers include an [OCI](https://opencontainers.org/) (docker image) registry where private containers can be published and distributed from.
 
@@ -20,6 +19,7 @@ An instance of PyOCI is available at https://pyoci.com, to use this proxy, pleas
 
 Tested registries:
 - [ghcr.io](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry)
+- [Azure Container Registry](https://azure.microsoft.com/en-us/products/container-registry)
 
 
 Published packages will show up in the OCI registry UI:
