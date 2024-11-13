@@ -32,7 +32,7 @@ otlp = [
 [dependencies]
 exitcode = "1.1.2"
 oci-spec = { version = "0.7.0", default-features = false, features = ["image", "distribution"] }
-url = "2.5.2"
+url = "2.5.3"
 tracing = "0.1.40"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
 reqwest = { version = "0.12.9", default-features = false, features = ["json", "rustls-tls"] }
