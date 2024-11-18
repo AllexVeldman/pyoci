@@ -225,8 +225,8 @@ async fn download_package(
 
 /// Delete package version request handler
 ///
-/// This endpoint does not exist as an official spec and the underlying
-/// OCI distribution spec is not supported by default by some registries
+/// This endpoint does not exist as an official spec in the python ecosystem
+/// and the underlying OCI distribution spec is not supported by default for some registries
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn delete_package_version(

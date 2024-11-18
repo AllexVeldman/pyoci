@@ -318,10 +318,7 @@ impl PyOci {
         };
 
         let manifest = match self
-            .pull_manifest(
-                &package.oci_name(),
-                &manifest_descriptor.digest().to_string(),
-            )
+            .pull_manifest(&package.oci_name(), manifest_descriptor.digest().as_ref())
             .await?
         {
             Some(Manifest::Manifest(manifest)) => *manifest,
@@ -592,7 +589,7 @@ impl PyOci {
             Manifest::Manifest(manifest) => {
                 let data = serde_json::to_string(&manifest)?;
                 let data_digest = digest(&data);
-                let url = build_url!(&self, "/v2/{}/manifests/{}", name, &data_digest.to_string());
+                let url = build_url!(&self, "/v2/{}/manifests/{}", name, data_digest.as_ref());
                 (url, data, "application/vnd.oci.image.manifest.v1+json")
             }
         };

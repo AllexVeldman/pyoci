@@ -42,11 +42,34 @@ pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.com/ghcr.io/al
 ```
 > [!Warning]
 > If the package contains dependencies from regular pypi, these will not resolve.
-> 
+>
 > Pip does not have a proper way of indicating you only want to resolve `<package-name>` through PyOCI and it's dependencies through pypi.
 > Poetry does provide you with [a way](https://python-poetry.org/docs/repositories/#package-source-constraint) to do this.
 
 For more examples, including how to publish a package, see the [examples](/docs/examples).
+
+## Host your own
+If you don't want or can't use https://pyoci.com, you can host your own using the docker container.
+
+`docker run ghcr.io/allexveldman/pyoci:latest`
+
+Note that only HTTP is support at this moment,
+PyOCI is expected to run behind a reverse proxy that handles TLS termination, or a trusted environment.
+
+### Environment variables
+- `PORT`: port to listen on, defaults to `8080`.
+- `OTLP_ENDPOINT`: If set, forward logs, traces, and metrics to this OTLP collector endpoint every 30s.
+- `OTLP_AUTH`: Full Authorization header value to use when sending OTLP requests.
+- `RUST_LOG`: Log filter, defaults to `info`.
+
+The following environment variables will be added as attributes to the OTLP resources:
+- `DEPLOYMENT_ENVIRONMENT` -> `deployment.environment`
+
+Set by Azure Container App, can change if I every decide to move host:
+- `CONTAINER_APP_NAME` -> `k8s.container.name`
+- `CONTAINER_APP_REVISION` -> `k8s.pod.name`
+- `CONTAINER_APP_REPLICA_NAME` -> `k8s.replicaset.name`
+
 
 ## Authentication
 Pip's [Basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
@@ -57,7 +80,11 @@ PyOCI will refuse to upload a package file if the package name, version and arch
 To update an existing file, delete it first and re-publish it.
 
 ## Deleting a package
-PyOCI does not provide a way to delete a package, instead you can use the OCI registry provided methods to delete your package.
+There is no formal specification for deleting python packages, instead you can use the OCI registry provided methods to delete your package.
+
+PyOCI also supports deleting a package file using `DELETE /<registry>/<namespace>/<package-name>/<filename>`, support depends on the
+underlying registry's support for the [content management](https://github.com/opencontainers/distribution-spec/blob/main/spec.md#content-management)
+section of the OCI Distribution specification.
 
 ## Renovate + ghcr.io
 As PyOCI acts as a private pypi index, Renovate needs to be configured to use credentials for your private packages.
