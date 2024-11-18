@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.1.13](https://github.com/AllexVeldman/pyoci/compare/v0.1.12...v0.1.13) (2024-11-18)
+
+
+### Documentation
+
+* Add Azure Container Registry to tested registries ([c349a21](https://github.com/AllexVeldman/pyoci/commit/c349a21fe989a535304d91f5407b4790c398c980))
+* Update delete section ([#119](https://github.com/AllexVeldman/pyoci/issues/119)) ([a881a11](https://github.com/AllexVeldman/pyoci/commit/a881a11f2cb983238f4a0c427cb943054a5376c2))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump anyhow from 1.0.91 to 1.0.93 ([#112](https://github.com/AllexVeldman/pyoci/issues/112)) ([dce3d0c](https://github.com/AllexVeldman/pyoci/commit/dce3d0cba57dbe41e91c6df04c86ed20a011b8bd))
+* **deps:** bump axum from 0.7.7 to 0.7.9 ([#116](https://github.com/AllexVeldman/pyoci/issues/116)) ([3292be3](https://github.com/AllexVeldman/pyoci/commit/3292be3a9aab955957c3d8527e4e50e44c87c1aa))
+* **deps:** bump mockito from 1.5.0 to 1.6.1 ([#117](https://github.com/AllexVeldman/pyoci/issues/117)) ([46b3556](https://github.com/AllexVeldman/pyoci/commit/46b35569c97fcf4494bb5aeb3667c04ffdbfa4e6))
+* **deps:** bump oci-spec from 0.7.0 to 0.7.1 ([#118](https://github.com/AllexVeldman/pyoci/issues/118)) ([2776be5](https://github.com/AllexVeldman/pyoci/commit/2776be5e1c08f7a948729c05284a9be7e42e289f))
+* **deps:** bump reqwest from 0.12.8 to 0.12.9 ([#107](https://github.com/AllexVeldman/pyoci/issues/107)) ([4e063c1](https://github.com/AllexVeldman/pyoci/commit/4e063c18cf64feb7c83cc41c211a741346b49f0b))
+* **deps:** bump serde from 1.0.213 to 1.0.215 ([#113](https://github.com/AllexVeldman/pyoci/issues/113)) ([3915668](https://github.com/AllexVeldman/pyoci/commit/39156681378cf33fbf5c437f79f692ffff783ad6))
+* **deps:** bump serde_json from 1.0.132 to 1.0.133 ([#115](https://github.com/AllexVeldman/pyoci/issues/115)) ([9092c3b](https://github.com/AllexVeldman/pyoci/commit/9092c3bbe36ed64577769109aa1116f739d7e26d))
+* **deps:** bump the opentelemetry group with 3 updates ([#114](https://github.com/AllexVeldman/pyoci/issues/114)) ([e13b424](https://github.com/AllexVeldman/pyoci/commit/e13b42475930e13ceda0ea1c293c4c865f44bd3e))
+* **deps:** bump tokio from 1.41.0 to 1.41.1 ([#110](https://github.com/AllexVeldman/pyoci/issues/110)) ([7463838](https://github.com/AllexVeldman/pyoci/commit/74638385da5bb34cb5b547d7c25281c9ca4de876))
+* **deps:** bump url from 2.5.2 to 2.5.3 ([#111](https://github.com/AllexVeldman/pyoci/issues/111)) ([f7df494](https://github.com/AllexVeldman/pyoci/commit/f7df4949f2b13538abcdbdd9746c2eaa606108c5))
+
 ## [0.1.12](https://github.com/AllexVeldman/pyoci/compare/v0.1.11...v0.1.12) (2024-10-28)
 
 
