@@ -16,6 +16,10 @@ mod transport;
 // Services
 mod service;
 
+// Test mocks
+#[cfg(test)]
+mod mocks;
+
 pub use pyoci::PyOci;
 use tokio::task::JoinHandle;
 

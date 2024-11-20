@@ -39,7 +39,6 @@ where
 }
 /// Request Router
 pub fn router() -> Router {
-    // TODO: Validate HOST header against a list of allowed hosts
     Router::new()
         .fallback(
             get(|| async { StatusCode::NOT_FOUND })
@@ -714,6 +713,9 @@ mod tests {
         let url = server.url();
         let encoded_url = urlencoding::encode(&url).into_owned();
 
+        // Set timestamp to fixed time
+        crate::mocks::set_timestamp(1732134216);
+
         let mocks = vec![
             // Mock the server, in order of expected requests
             // IndexManifest does not yet exist
@@ -776,7 +778,7 @@ mod tests {
             server
                 .mock("PUT", "/v2/mockserver/foobar/manifests/1.0.0")
                 .match_header("Content-Type", "application/vnd.oci.image.index.v1+json")
-                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","artifactType":"application/pyoci.package.v1","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:7ffd96d9eab411893eeacfa906e30956290a07b0141d7c1dd54c9fd5c7c48cf5","size":422,"platform":{"architecture":".tar.gz","os":"any"}}]}"#)
+                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","artifactType":"application/pyoci.package.v1","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:7ffd96d9eab411893eeacfa906e30956290a07b0141d7c1dd54c9fd5c7c48cf5","size":422,"platform":{"architecture":".tar.gz","os":"any"}}],"annotations":{"org.opencontainers.image.created":"2024-11-20T20:23:36Z"}}"#)
                 .with_status(201) // CREATED
                 .create_async()
                 .await,

@@ -15,8 +15,15 @@ use oci_spec::{
 use reqwest::Response;
 use serde::Deserialize;
 use sha2::{Digest, Sha256};
+use std::collections::HashMap;
 use std::str::FromStr;
+use time::format_description::well_known::Rfc3339;
 use url::Url;
+
+#[cfg(test)]
+use crate::mocks::OffsetDateTime;
+#[cfg(not(test))]
+use time::OffsetDateTime;
 
 use crate::package::{Package, WithFile, WithoutFile};
 use crate::transport::HttpTransport;
@@ -378,6 +385,10 @@ impl PyOci {
                 .media_type("application/vnd.oci.image.index.v1+json")
                 .artifact_type(ARTIFACT_TYPE)
                 .manifests(vec![manifest.descriptor()])
+                .annotations(HashMap::from([(
+                    "org.opencontainers.image.created".to_string(),
+                    OffsetDateTime::now_utc().format(&Rfc3339)?,
+                )]))
                 .build()
                 .expect("valid ImageIndex"),
             // Existing index found, check artifact type
