@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.14](https://github.com/AllexVeldman/pyoci/compare/v0.1.13...v0.1.14) (2024-11-20)
+
+
+### Bug Fixes
+
+* Return 400 BAD_REQUEST for invalid filenames ([#122](https://github.com/AllexVeldman/pyoci/issues/122)) ([48d15c3](https://github.com/AllexVeldman/pyoci/commit/48d15c339227f01796fc6ea8d679088ceffb83ca))
+
+
+### Miscellaneous Chores
+
+* Include creation date in image index ([#120](https://github.com/AllexVeldman/pyoci/issues/120)) ([37b0b3b](https://github.com/AllexVeldman/pyoci/commit/37b0b3b1cbe1c91782158b076961079172645164))
+
 ## [0.1.13](https://github.com/AllexVeldman/pyoci/compare/v0.1.12...v0.1.13) (2024-11-18)
 
 
