@@ -82,13 +82,14 @@ impl PlatformManifest {
         PlatformManifest { manifest, platform }
     }
 
-    fn descriptor(&self) -> Descriptor {
+    fn descriptor(&self, annotations: HashMap<String, String>) -> Descriptor {
         let (digest, data) = self.digest();
         DescriptorBuilder::default()
             .media_type("application/vnd.oci.image.manifest.v1+json")
             .digest(digest)
             .size(data.len() as u64)
             .platform(self.platform.clone())
+            .annotations(annotations)
             .build()
             .expect("Valid PlatformManifest Descriptor")
     }
@@ -357,7 +358,10 @@ impl PyOci {
         let tag = package.oci_tag();
 
         let layer = Blob::new(file, ARTIFACT_TYPE);
-
+        let annotations = HashMap::from([(
+            "org.opencontainers.image.created".to_string(),
+            OffsetDateTime::now_utc().format(&Rfc3339)?,
+        )]);
         // Build the Manifest
         let config = empty_config();
         let manifest = ImageManifestBuilder::default()
@@ -366,6 +370,7 @@ impl PyOci {
             .artifact_type(ARTIFACT_TYPE)
             .config(config.descriptor.clone())
             .layers(vec![layer.descriptor.clone()])
+            .annotations(annotations.clone())
             .build()
             .expect("valid ImageManifest");
         let manifest = PlatformManifest::new(manifest, package);
@@ -384,11 +389,8 @@ impl PyOci {
                 .schema_version(SCHEMA_VERSION)
                 .media_type("application/vnd.oci.image.index.v1+json")
                 .artifact_type(ARTIFACT_TYPE)
-                .manifests(vec![manifest.descriptor()])
-                .annotations(HashMap::from([(
-                    "org.opencontainers.image.created".to_string(),
-                    OffsetDateTime::now_utc().format(&Rfc3339)?,
-                )]))
+                .manifests(vec![manifest.descriptor(annotations.clone())])
+                .annotations(annotations.clone())
                 .build()
                 .expect("valid ImageIndex"),
             // Existing index found, check artifact type
@@ -416,7 +418,7 @@ impl PyOci {
                     }
                 }
                 let mut manifests = index.manifests().to_vec();
-                manifests.push(manifest.descriptor());
+                manifests.push(manifest.descriptor(annotations));
                 index.set_manifests(manifests);
                 *index
             }
