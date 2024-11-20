@@ -708,6 +708,42 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn publish_package_content_filename_invalid() {
+        let router = router();
+
+        let form = "--foobar\r\n\
+            Content-Disposition: form-data; name=\":action\"\r\n\
+            \r\n\
+            file_upload\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"protocol_version\"\r\n\
+            \r\n\
+            1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"content\"; filename=\".env\"\r\n\
+            \r\n\
+            someawesomepackagedata\r\n\
+            --foobar--\r\n";
+        let req = Request::builder()
+            .method("POST")
+            .uri("/pypi/pytest/")
+            .header("Content-Type", "multipart/form-data; boundary=foobar")
+            .body(form.to_string())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::BAD_REQUEST);
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+        assert_eq!(&body, "Unkown filetype '.env'");
+    }
+
+    #[tokio::test]
     async fn publish_package_url_encoded_registry() {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
@@ -1368,6 +1404,75 @@ mod tests {
         }
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, blob);
+    }
+
+    #[tokio::test]
+    async fn download_package_invalid_file() {
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri("http://localhost.unittest/wp/mockserver/test_package/.env")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body, "Unkown filetype '.env'");
+    }
+
+    #[tokio::test]
+    async fn download_package_invalid_whl() {
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri("http://localhost.unittest/wp/mockserver/test_package/foo.whl")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body, "Invalid binary distribution filename 'foo.whl'");
+    }
+
+    #[tokio::test]
+    async fn download_package_invalid_tar() {
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri("http://localhost.unittest/wp/mockserver/test_package/foo.tar.gz")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        assert_eq!(status, StatusCode::BAD_REQUEST);
+        assert_eq!(body, "Invalid source distribution filename 'foo.tar.gz'");
     }
 
     #[tokio::test]

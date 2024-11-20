@@ -50,20 +50,26 @@ pub fn from_filename<'a>(
     if filename.is_empty() {
         bail!("Empty filename")
     }
-    if filename == "json" {
-        Err(PyOciError::from((
-            StatusCode::NOT_FOUND,
-            format!("Unkown filetype '{}'", filename),
-        )))?;
-    }
     let (name, version, arch) = match filename.strip_suffix(".tar.gz") {
         Some(rest) => match rest.splitn(2, '-').collect::<Vec<_>>()[..] {
             [name, version] => (name, version, ".tar.gz"),
-            _ => bail!("Invalid source distribution filename '{}'", filename),
+            _ => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                format!("Invalid source distribution filename '{}'", filename),
+            )))?,
         },
-        None => match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
-            [name, version, arch] => (name, version, arch),
-            _ => bail!("Invalid binary distribution filename '{}'", filename),
+        None => match filename.ends_with(".whl") {
+            true => match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
+                [name, version, arch] => (name, version, arch),
+                _ => Err(PyOciError::from((
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid binary distribution filename '{}'", filename),
+                )))?,
+            },
+            false => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                format!("Unkown filetype '{}'", filename),
+            )))?,
         },
     };
     Ok(Package {
