@@ -49,7 +49,7 @@ tower = { version = "0.5.1", features = ["util"] }
 async-trait = "0.1.83"
 pin-project = "1.1.7"
 futures = "0.3.31"
-time = "0.3.36"
+time = { version = "0.3.36", features = ["formatting"] }
 axum = { version = "0.7.9", default-features = false, features = ["multipart","macros", "tokio", "http1", "json"] }
 tokio = { version = "1.41.1", features = ["macros", "rt-multi-thread", "signal", "time"] }
 tokio-util = "0.7.12"
