@@ -380,6 +380,8 @@ impl UploadForm {
 
 #[cfg(test)]
 mod tests {
+    use std::collections::HashMap;
+
     use super::*;
     use crate::pyoci::digest;
 
@@ -962,6 +964,150 @@ mod tests {
             "Platform '.tar.gz' already exists for version '1.0.0'"
         );
         assert_eq!(status, StatusCode::CONFLICT);
+    }
+
+    #[tokio::test]
+    async fn publish_package_existing_index() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest(digest("FooBar"))
+                .size(6_u64)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".whl".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .annotations(HashMap::from([(
+                "org.opencontainers.image.created".to_string(),
+                "1970-01-01T00:00:00Z".to_string(),
+            )]))
+            .build()
+            .unwrap();
+
+        // Mock the server, in order of expected requests
+        let mocks = vec![
+            // IndexManifest exists
+            server
+                .mock("GET", "/v2/mockserver/foobar/manifests/1.0.0")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index).unwrap())
+                .create_async()
+                .await,
+            // HEAD request to check if blob exists for:
+            // - layer
+            // - config
+            server
+                .mock(
+                    "HEAD",
+                    mockito::Matcher::Regex(r"/v2/mockserver/foobar/blobs/.+".to_string()),
+                )
+                .expect(2)
+                .with_status(404)
+                .create_async()
+                .await,
+            // POST request with blob for layer
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/1?_state=uploading"),
+                )
+                .create_async()
+                .await,
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/1?_state=uploading&digest=sha256%3Ab7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // POST request with blob for config
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/2?_state=uploading"),
+                )
+                .create_async()
+                .await,
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/2?_state=uploading&digest=sha256%3A44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // PUT request to create Manifest
+            server
+                .mock("PUT", "/v2/mockserver/foobar/manifests/sha256:89909daa9622152518936752dfcd377c8bc650ff21a02ea5556b47b95ac376fa")
+                .match_header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":"application/pyoci.package.v1","config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},"layers":[{"mediaType":"application/pyoci.package.v1","digest":"sha256:b7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0","size":22}],"annotations":{"org.opencontainers.image.created":"1970-01-01T00:00:00Z"}}"#)
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // PUT request to update Index
+            server
+                .mock("PUT", "/v2/mockserver/foobar/manifests/1.0.0")
+                .match_header("Content-Type", "application/vnd.oci.image.index.v1+json")
+                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","artifactType":"application/pyoci.package.v1","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:0d749abe1377573493e0df74df8d1282e46967754a1ebc7cc6323923a788ad5c","size":6,"platform":{"architecture":".whl","os":"any"}},{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:89909daa9622152518936752dfcd377c8bc650ff21a02ea5556b47b95ac376fa","size":496,"annotations":{"org.opencontainers.image.created":"1970-01-01T00:00:00Z"},"platform":{"architecture":".tar.gz","os":"any"}}],"annotations":{"org.opencontainers.image.created":"1970-01-01T00:00:00Z"}}"#)
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router();
+
+        let form = "--foobar\r\n\
+            Content-Disposition: form-data; name=\":action\"\r\n\
+            \r\n\
+            file_upload\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"protocol_version\"\r\n\
+            \r\n\
+            1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
+            \r\n\
+            someawesomepackagedata\r\n\
+            --foobar--\r\n";
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/{encoded_url}/mockserver/"))
+            .header("Content-Type", "multipart/form-data; boundary=foobar")
+            .body(form.to_string())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(&body, "Published");
+        assert_eq!(status, StatusCode::OK);
     }
 
     #[tokio::test]
