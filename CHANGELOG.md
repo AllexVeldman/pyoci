@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.1.15](https://github.com/AllexVeldman/pyoci/compare/v0.1.14...v0.1.15) (2024-11-25)
+
+
+### Miscellaneous Chores
+
+* Add created timestamp to manifest ([#123](https://github.com/AllexVeldman/pyoci/issues/123)) ([fec6287](https://github.com/AllexVeldman/pyoci/commit/fec6287df33768263eae13bde6f8c83bc6401048))
+* **deps:** bump url from 2.5.3 to 2.5.4 ([#126](https://github.com/AllexVeldman/pyoci/issues/126)) ([3319f9c](https://github.com/AllexVeldman/pyoci/commit/3319f9c61d65a07af794bd9390caef53681d3dcd))
+* **tests:** Add test for adding a file to existing index ([#125](https://github.com/AllexVeldman/pyoci/issues/125)) ([40e3c11](https://github.com/AllexVeldman/pyoci/commit/40e3c115aa3747400dece4db0f53eeeae6450be6))
+
 ## [0.1.14](https://github.com/AllexVeldman/pyoci/compare/v0.1.13...v0.1.14) (2024-11-20)
 
 
