@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.16](https://github.com/AllexVeldman/pyoci/compare/v0.1.15...v0.1.16) (2024-12-07)
+
+
+### Miscellaneous Chores
+
+* **trace:** Add trace attributes ([#127](https://github.com/AllexVeldman/pyoci/issues/127)) ([7ead818](https://github.com/AllexVeldman/pyoci/commit/7ead818f09f5990969da8b8bfb18834510dc2dc3))
+
 ## [0.1.15](https://github.com/AllexVeldman/pyoci/compare/v0.1.14...v0.1.15) (2024-11-25)
 
 
