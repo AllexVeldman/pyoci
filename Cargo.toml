@@ -33,7 +33,7 @@ otlp = [
 exitcode = "1.1.2"
 oci-spec = { version = "0.7.1", default-features = false, features = ["image", "distribution"] }
 url = "2.5.4"
-tracing = "0.1.40"
+tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.18", features = ["env-filter", "fmt"] }
 reqwest = { version = "0.12.9", default-features = false, features = ["json", "rustls-tls"] }
 askama = { version = "0.12.1", default-features = false }
