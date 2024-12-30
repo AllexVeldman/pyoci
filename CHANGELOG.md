@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.17](https://github.com/AllexVeldman/pyoci/compare/v0.1.16...v0.1.17) (2024-12-30)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump anyhow from 1.0.93 to 1.0.95 ([#134](https://github.com/AllexVeldman/pyoci/issues/134)) ([8ade5e2](https://github.com/AllexVeldman/pyoci/commit/8ade5e2a90688ca97560d132295e8c45988decf2))
+* **deps:** bump http from 1.1.0 to 1.2.0 ([#131](https://github.com/AllexVeldman/pyoci/issues/131)) ([e1fdcd9](https://github.com/AllexVeldman/pyoci/commit/e1fdcd98ee5d445bb18f8872dd4c8c8fef3f11a2))
+* **deps:** bump the opentelemetry group with 2 updates ([#129](https://github.com/AllexVeldman/pyoci/issues/129)) ([4205cc8](https://github.com/AllexVeldman/pyoci/commit/4205cc8be04f8760a12dd053fe6076c8786b4b72))
+* **deps:** bump time from 0.3.36 to 0.3.37 ([#132](https://github.com/AllexVeldman/pyoci/issues/132)) ([eaa5ca3](https://github.com/AllexVeldman/pyoci/commit/eaa5ca3f82fb36ff66b6252825a39c6d66b847bc))
+* **deps:** bump tracing from 0.1.40 to 0.1.41 ([#130](https://github.com/AllexVeldman/pyoci/issues/130)) ([de3309b](https://github.com/AllexVeldman/pyoci/commit/de3309b0dff96f4c577893a83e28d19afe7fa9d0))
+
 ## [0.1.16](https://github.com/AllexVeldman/pyoci/compare/v0.1.15...v0.1.16) (2024-12-07)
 
 
