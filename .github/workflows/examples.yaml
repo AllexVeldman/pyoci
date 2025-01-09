@@ -38,8 +38,8 @@ jobs:
 
       - name: Publish
         run: |
-          just examples poetry-publish "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}"
+          just examples poetry-publish "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"
 
       - name: Install
         run: |
-          just examples poetry-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}"
+          just examples poetry-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"

@@ -98,7 +98,7 @@ you can:
 4. Add a hostRule for the Renovate runner to apply basic auth for pyoci using the environment variable
 5. In the [package settings](https://docs.github.com/en/packages/learn-github-packages/configuring-a-packages-access-control-and-visibility#ensuring-workflow-access-to-your-package) of the private package give the repository running renovate `read` access.
 
-Note that [at the time of writing](https://github.com/orgs/community/discussions/24636), GitHub App Tokens can't be granted `read:package` permissions,
+Note that at the time of writing, [GitHub App Tokens can't be granted `read:package` permissions](https://github.com/orgs/community/discussions/24636),
 this is why you'll need to use the `GITHUB_TOKEN`.
 
 `.github/workflows/renovate.yaml`
@@ -139,3 +139,6 @@ module.exports = {
   ],
 };
 ```
+
+## Contributing
+See the [contributing](CONTRIBUTING.md)
