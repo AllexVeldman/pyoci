@@ -25,6 +25,9 @@ poetry-install version username="" token="" repository="https://pyoci.com/ghcr.i
 
     cd ./poetry/install
 
+    # Ensure we start with a clean venv
+    poetry env remove --all
+
     # Setup the registry source credentials
     poetry source add --priority=explicit pyoci "{{repository}}"
     export POETRY_HTTP_BASIC_PYOCI_USERNAME={{username}}
