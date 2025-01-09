@@ -64,6 +64,7 @@ pub fn router() -> Router {
         )
         .layer(axum::middleware::from_fn(accesslog_middleware))
         .layer(axum::middleware::from_fn(trace_middleware))
+        .route("/health", get(|| async { StatusCode::OK }))
 }
 
 /// Add cache-control for unmatched routes
@@ -1933,5 +1934,19 @@ mod tests {
         }
         assert_eq!(status, StatusCode::OK);
         assert_eq!(body, "Deleted");
+    }
+
+    #[tokio::test]
+    async fn health() {
+        let router = router();
+        let req = Request::builder()
+            .method("GET")
+            .uri("/health")
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        assert_eq!(status, StatusCode::OK);
     }
 }
