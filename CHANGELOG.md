@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.1.18](https://github.com/AllexVeldman/pyoci/compare/v0.1.17...v0.1.18) (2025-01-09)
+
+
+### Features
+
+* Allow hosting PyOCI on a subpath ([#142](https://github.com/AllexVeldman/pyoci/issues/142)) ([328044e](https://github.com/AllexVeldman/pyoci/commit/328044e9b4bb09af67f2237c1fb8c29dfde172e8)), closes [#141](https://github.com/AllexVeldman/pyoci/issues/141)
+* Health endpoint ([#143](https://github.com/AllexVeldman/pyoci/issues/143)) ([090f520](https://github.com/AllexVeldman/pyoci/commit/090f5202886ca4110db7016e531d0f96c71f6452))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump async-trait from 0.1.83 to 0.1.84 ([#136](https://github.com/AllexVeldman/pyoci/issues/136)) ([e00e5c0](https://github.com/AllexVeldman/pyoci/commit/e00e5c0d2353e522514705f2b6c9e6a5d1b94003))
+* **deps:** bump prost from 0.13.3 to 0.13.4 ([#139](https://github.com/AllexVeldman/pyoci/issues/139)) ([75aa552](https://github.com/AllexVeldman/pyoci/commit/75aa552e26b8f0e0abd178f133ed3a2ed0e1a8e9))
+* **deps:** bump tokio-util from 0.7.12 to 0.7.13 ([#138](https://github.com/AllexVeldman/pyoci/issues/138)) ([821c3c4](https://github.com/AllexVeldman/pyoci/commit/821c3c427efd29b86b574f28147b8a1929cd4d89))
+* **deps:** bump tracing-subscriber from 0.3.18 to 0.3.19 ([#140](https://github.com/AllexVeldman/pyoci/issues/140)) ([5f886e0](https://github.com/AllexVeldman/pyoci/commit/5f886e07a582c1665c94baab6ecaada90dc7a3e8))
+
 ## [0.1.17](https://github.com/AllexVeldman/pyoci/compare/v0.1.16...v0.1.17) (2024-12-30)
 
 
