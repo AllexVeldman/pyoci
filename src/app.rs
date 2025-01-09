@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
     debug_handler,
-    extract::{DefaultBodyLimit, Multipart, Path},
+    extract::{DefaultBodyLimit, Multipart, Path, State},
     http::{header, HeaderMap},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
@@ -37,9 +37,15 @@ where
         Self(err.into())
     }
 }
+
+#[derive(Debug, Clone)]
+struct PyOciState {
+    subpath: Option<String>,
+}
+
 /// Request Router
-pub fn router() -> Router {
-    Router::new()
+pub fn router(subpath: Option<String>) -> Router {
+    let pyoci_routes = Router::new()
         .fallback(
             get(|| async { StatusCode::NOT_FOUND })
                 .layer(axum::middleware::from_fn(cache_control_middleware)),
@@ -61,10 +67,16 @@ pub fn router() -> Router {
         .route(
             "/:registry/:namespace/",
             post(publish_package).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
-        )
+        );
+    let router = match subpath {
+        Some(ref subpath) => Router::new().nest(subpath, pyoci_routes),
+        None => pyoci_routes,
+    };
+    router
         .layer(axum::middleware::from_fn(accesslog_middleware))
         .layer(axum::middleware::from_fn(trace_middleware))
         .route("/health", get(|| async { StatusCode::OK }))
+        .with_state(PyOciState { subpath })
 }
 
 /// Add cache-control for unmatched routes
@@ -132,6 +144,7 @@ async fn trace_middleware(
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn list_package(
+    State(PyOciState { subpath }): State<PyOciState>,
     headers: HeaderMap,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
@@ -142,7 +155,10 @@ async fn list_package(
     let files = client.list_package_files(&package, 100).await?;
 
     // TODO: swap to application/vnd.pypi.simple.v1+json
-    let template = templates::ListPackageTemplate { files };
+    let template = templates::ListPackageTemplate {
+        files,
+        subpath: &subpath.unwrap_or("".to_string()),
+    };
     Ok(Html(template.render().expect("valid template")))
 }
 
@@ -420,7 +436,7 @@ mod tests {
 
     #[tokio::test]
     async fn cache_control_unmatched() {
-        let router = router();
+        let router = router(None);
 
         let req = Request::builder()
             .method("GET")
@@ -438,7 +454,7 @@ mod tests {
 
     #[tokio::test]
     async fn cache_control_root() {
-        let router = router();
+        let router = router(None);
 
         let req = Request::builder()
             .method("GET")
@@ -456,7 +472,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_missing_action() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\"submit-name\"\r\n\
@@ -484,7 +500,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_invalid_action() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -512,7 +528,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_missing_protocol_version() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -540,7 +556,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_invalid_protocol_version() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -572,7 +588,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_missing_content() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -604,7 +620,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_empty_content() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -640,7 +656,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_missing_filename() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -676,7 +692,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_filename_empty() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -712,7 +728,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_filename_invalid() {
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -747,7 +763,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn publish_package_url_encoded_registry() {
+    async fn publish_package() {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
         let encoded_url = urlencoding::encode(&url).into_owned();
@@ -828,7 +844,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -846,6 +862,127 @@ mod tests {
         let req = Request::builder()
             .method("POST")
             .uri(format!("/{encoded_url}/mockserver/"))
+            .header("Content-Type", "multipart/form-data; boundary=foobar")
+            .body(form.to_string())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(&body, "Published");
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn publish_package_subpath() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        // Set timestamp to fixed time
+        crate::mocks::set_timestamp(1732134216);
+
+        let mocks = vec![
+            // Mock the server, in order of expected requests
+            // IndexManifest does not yet exist
+            server
+                .mock("GET", "/v2/mockserver/foobar/manifests/1.0.0")
+                .with_status(404)
+                .create_async()
+                .await,
+            // HEAD request to check if blob exists for:
+            // - layer
+            // - config
+            server
+                .mock(
+                    "HEAD",
+                    mockito::Matcher::Regex(r"/v2/mockserver/foobar/blobs/.+".to_string()),
+                )
+                .expect(2)
+                .with_status(404)
+                .create_async()
+                .await,
+            // POST request with blob for layer
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/1?_state=uploading"),
+                )
+                .create_async()
+                .await,
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/1?_state=uploading&digest=sha256%3Ab7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // POST request with blob for config
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/2?_state=uploading"),
+                )
+                .create_async()
+                .await,
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/2?_state=uploading&digest=sha256%3A44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // PUT request to create Manifest
+            server
+                .mock("PUT", "/v2/mockserver/foobar/manifests/sha256:e281659053054737342fd0c74a7605c4678c227db1e073260b44f845dfdf535a")
+                .match_header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":"application/pyoci.package.v1","config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},"layers":[{"mediaType":"application/pyoci.package.v1","digest":"sha256:b7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0","size":22}],"annotations":{"org.opencontainers.image.created":"2024-11-20T20:23:36Z"}}"#)
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // PUT request to create Index
+            server
+                .mock("PUT", "/v2/mockserver/foobar/manifests/1.0.0")
+                .match_header("Content-Type", "application/vnd.oci.image.index.v1+json")
+                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","artifactType":"application/pyoci.package.v1","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:e281659053054737342fd0c74a7605c4678c227db1e073260b44f845dfdf535a","size":496,"annotations":{"org.opencontainers.image.created":"2024-11-20T20:23:36Z"},"platform":{"architecture":".tar.gz","os":"any"}}],"annotations":{"org.opencontainers.image.created":"2024-11-20T20:23:36Z"}}"#)
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router(Some("/foo".to_string()));
+
+        let form = "--foobar\r\n\
+            Content-Disposition: form-data; name=\":action\"\r\n\
+            \r\n\
+            file_upload\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"protocol_version\"\r\n\
+            \r\n\
+            1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
+            \r\n\
+            someawesomepackagedata\r\n\
+            --foobar--\r\n";
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/foo/{encoded_url}/mockserver/"))
             .header("Content-Type", "multipart/form-data; boundary=foobar")
             .body(form.to_string())
             .unwrap();
@@ -925,7 +1062,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1072,7 +1209,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1200,7 +1337,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1241,6 +1378,135 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn list_package_subpath() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let tags_list = TagListBuilder::default()
+            .name("test-package")
+            .tags(vec!["0.1.0".to_string(), "1.2.3".to_string()])
+            .build()
+            .unwrap();
+
+        let index_010 = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest(digest("FooBar"))
+                .size(6_u64)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".tar.gz".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let index_123 = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest(digest("FooBar"))
+                .size(6_u64)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".tar.gz".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // List tags
+            server
+                .mock("GET", "/v2/mockserver/test_package/tags/list")
+                .with_status(200)
+                .with_body(serde_json::to_string::<TagList>(&tags_list).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index_010).unwrap())
+                .create_async()
+                .await,
+            // Pull 1.2.3 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/1.2.3")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index_123).unwrap())
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router(Some("/foo".to_string()));
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!("/foo/{encoded_url}/mockserver/test-package/"))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(
+            body,
+            formatdoc!(
+                r#"
+                <!DOCTYPE html>
+                <html lang="en">
+                <head>
+                    <meta charset="UTF-8">
+                    <title>PyOCI</title>
+                </head>
+                <body>
+                    <a href="/foo/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
+                    <a href="/foo/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
+                </body>
+                </html>"#
+            )
+        );
+    }
+
+    #[tokio::test]
     async fn list_package_missing_index() {
         let mut server = mockito::Server::new_async().await;
         let url = server.url();
@@ -1261,7 +1527,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1352,7 +1618,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1403,7 +1669,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/json"))
@@ -1533,7 +1799,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1554,8 +1820,129 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn download_package_subpath() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("FooBar"))
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".whl".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("manifest-digest")) // sha256:bc669544845542470042912a0f61b90499ffc2320b45ea66b0be50439c5aab19
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".tar.gz".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+            ])
+            .build()
+            .unwrap();
+
+        let manifest = ImageManifestBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .config(
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.empty.v1+json")
+                    .digest(digest("config-digest")) // sha:7b6a7aed8c63f4480a863fa046048c4bfb77d4514212ad646a5fcadcf8f5da47
+                    .size(0_u64)
+                    .build()
+                    .unwrap(),
+            )
+            .layers(vec![DescriptorBuilder::default()
+                .media_type("application/pyoci.package.v1")
+                .digest(digest("layer-digest")) // sha:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969
+                .size(42_u64)
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let blob = Bytes::from(vec![1, 2, 3]);
+
+        let mocks = vec![
+            // Pull 0.1.0 index
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0.tar.gz manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:bc669544845542470042912a0f61b90499ffc2320b45ea66b0be50439c5aab19")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.manifest.v1+json")
+                .with_body(serde_json::to_string::<ImageManifest>(&manifest).unwrap())
+                .create_async()
+                .await,
+            // Pull 0.1.0.tar.gz blob
+            server
+                .mock("GET", "/v2/mockserver/test_package/blobs/sha256:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969")
+                .with_status(200)
+                .with_body(blob.clone())
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router(Some("/foo".to_string()));
+        let req = Request::builder()
+            .method("GET")
+            .uri(format!(
+                "http://localhost.unittest/foo/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz"
+            ))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = to_bytes(response.into_body(), usize::MAX).await.unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, blob);
+    }
+
+    #[tokio::test]
     async fn download_package_invalid_file() {
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/.env")
@@ -1578,7 +1965,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_whl() {
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.whl")
@@ -1601,7 +1988,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_tar() {
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.tar.gz")
@@ -1692,7 +2079,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1764,7 +2151,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1814,7 +2201,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1912,7 +2299,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("DELETE")
             .uri(format!("/{encoded_url}/mockserver/test-package/0.1.0"))
@@ -1937,8 +2324,105 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn delete_package_subpath() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        let index_010 = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("mani1")) // sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".tar.gz".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.image.manifest.v1+json")
+                    .digest(digest("mani2")) // sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198
+                    .size(6_u64)
+                    .platform(
+                        PlatformBuilder::default()
+                            .architecture(Arch::Other(".whl".to_string()))
+                            .os(Os::Other("any".to_string()))
+                            .build()
+                            .unwrap(),
+                    )
+                    .build()
+                    .unwrap(),
+            ])
+            .build()
+            .unwrap();
+
+        let mocks = vec![
+            // Pull 0.1.0 manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/0.1.0")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index_010).unwrap())
+                .create_async()
+                .await,
+            // Delete 0.1.0 mani1 manifest
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85")
+                .with_status(202)
+                .create_async()
+                .await,
+            // Delete 0.1.0 mani2 manifest
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198")
+                .with_status(202)
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router(Some("/foo".to_string()));
+        let req = Request::builder()
+            .method("DELETE")
+            .uri(format!("/foo/{encoded_url}/mockserver/test-package/0.1.0"))
+            .body(Body::empty())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(status, StatusCode::OK);
+        assert_eq!(body, "Deleted");
+    }
+
+    #[tokio::test]
     async fn health() {
-        let router = router();
+        let router = router(None);
         let req = Request::builder()
             .method("GET")
             .uri("/health")

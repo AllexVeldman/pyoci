@@ -6,7 +6,7 @@
 </head>
 <body>
 {%- for file in files %}
-    <a href="{{ file.py_uri() }}">{{ file.filename() }}</a>
+    <a href="{{ subpath }}{{ file.py_uri() }}">{{ file.filename() }}</a>
 {%- endfor %}
 </body>
 </html>

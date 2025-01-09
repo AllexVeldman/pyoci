@@ -49,7 +49,7 @@ pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.com/ghcr.io/al
 For more examples, including how to publish a package, see the [examples](/docs/examples).
 
 ## Host your own
-If you don't want or can't use https://pyoci.com, you can host your own using the docker container.
+If you don't want, or can't, use https://pyoci.com, you can host your own using the docker container.
 
 `docker run ghcr.io/allexveldman/pyoci:latest`
 
@@ -58,6 +58,7 @@ PyOCI is expected to run behind a reverse proxy that handles TLS termination, or
 
 ### Environment variables
 - `PORT`: port to listen on, defaults to `8080`.
+- `PYOCI_PATH`: Host PyOCI on a subpath, for example: `PYOCI_PATH="/acme-corp"`.
 - `OTLP_ENDPOINT`: If set, forward logs, traces, and metrics to this OTLP collector endpoint every 30s.
 - `OTLP_AUTH`: Full Authorization header value to use when sending OTLP requests.
 - `RUST_LOG`: Log filter, defaults to `info`.

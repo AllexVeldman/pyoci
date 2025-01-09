@@ -46,6 +46,7 @@ const ARTIFACT_TYPE: &str = "application/pyoci.package.v1";
 struct Env {
     port: u16,
     rust_log: String,
+    path: Option<String>,
     otlp_endpoint: Option<String>,
     otlp_auth: Option<String>,
     deployment_env: Option<String>,
@@ -60,6 +61,7 @@ impl Env {
         Self {
             port: 8080,
             rust_log: "info".to_string(),
+            path: None,
             otlp_endpoint: None,
             otlp_auth: None,
             deployment_env: None,
@@ -75,6 +77,7 @@ impl Env {
                 .parse()
                 .expect("Failed to parse PORT"),
             rust_log: env::var("RUST_LOG").unwrap_or("info".to_string()),
+            path: env::var("PYOCI_PATH").ok(),
             otlp_endpoint: env::var("OTLP_ENDPOINT").ok(),
             otlp_auth: env::var("OTLP_AUTH").ok(),
             deployment_env: env::var("DEPLOYMENT_ENVIRONMENT").ok(),
@@ -109,11 +112,15 @@ async fn main() {
     }
 
     // Setup the webserver
-    tracing::info!("Starting server on port {}", environ.port);
+    tracing::info!(
+        "Listening on 0.0.0.0:{}{}",
+        environ.port,
+        &environ.path.clone().unwrap_or("".to_string())
+    );
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", environ.port))
         .await
         .unwrap();
-    axum::serve(listener, router())
+    axum::serve(listener, router(environ.path))
         .with_graceful_shutdown(shutdown_signal(cancel_token, otlp_handle))
         .await
         .unwrap();
