@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.19](https://github.com/AllexVeldman/pyoci/compare/v0.1.18...v0.1.19) (2025-01-13)
+
+
+### Features
+
+* Allow configuring the max body size ([#153](https://github.com/AllexVeldman/pyoci/issues/153)) ([852818f](https://github.com/AllexVeldman/pyoci/commit/852818fe8ef4001e37a6e008b21fa06dab378246))
+
+
+### Bug Fixes
+
+* Return HTTP 413 Payload Too Large instead of 500 ([852818f](https://github.com/AllexVeldman/pyoci/commit/852818fe8ef4001e37a6e008b21fa06dab378246))
+
+
+### Documentation
+
+* Add CONTRIBUTING and examples README ([#146](https://github.com/AllexVeldman/pyoci/issues/146)) ([7a0d8ab](https://github.com/AllexVeldman/pyoci/commit/7a0d8abef2ee480c3fa140f45830292e58dad48e))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump async-trait from 0.1.84 to 0.1.85 ([#148](https://github.com/AllexVeldman/pyoci/issues/148)) ([bd0000d](https://github.com/AllexVeldman/pyoci/commit/bd0000d4e674502f183726ab20c7d347db6d8006))
+* **deps:** bump bytes from 1.8.0 to 1.9.0 ([#150](https://github.com/AllexVeldman/pyoci/issues/150)) ([5d0b3f7](https://github.com/AllexVeldman/pyoci/commit/5d0b3f755724996af2c25c0724fbb60be9e67a37))
+* **deps:** bump serde from 1.0.215 to 1.0.217 ([#152](https://github.com/AllexVeldman/pyoci/issues/152)) ([56fa102](https://github.com/AllexVeldman/pyoci/commit/56fa102d2a2432d12e66d6ad236db78932589ba8))
+* **deps:** bump serde_json from 1.0.133 to 1.0.135 ([#149](https://github.com/AllexVeldman/pyoci/issues/149)) ([4022267](https://github.com/AllexVeldman/pyoci/commit/4022267194fbb2cafa30557f156efd9dfde46da2))
+* **deps:** bump tokio from 1.41.1 to 1.43.0 ([#145](https://github.com/AllexVeldman/pyoci/issues/145)) ([2984aa8](https://github.com/AllexVeldman/pyoci/commit/2984aa8ee31b3f4cd9f4ab6b9d93e1edb89e56f0))
+* **deps:** bump tower from 0.5.1 to 0.5.2 ([#151](https://github.com/AllexVeldman/pyoci/issues/151)) ([beddeb2](https://github.com/AllexVeldman/pyoci/commit/beddeb2f0ba5ed10b23f798b1883850df130a4e8))
+
 ## [0.1.18](https://github.com/AllexVeldman/pyoci/compare/v0.1.17...v0.1.18) (2025-01-09)
 
 
