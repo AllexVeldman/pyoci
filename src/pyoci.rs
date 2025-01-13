@@ -1,4 +1,5 @@
 use anyhow::{bail, Context, Error, Result};
+use axum::response::IntoResponse;
 use base16ct::lower::encode_string as hex_encode;
 use futures::stream::FuturesUnordered;
 use futures::stream::StreamExt;
@@ -136,6 +137,12 @@ impl std::error::Error for PyOciError {}
 impl std::fmt::Display for PyOciError {
     fn fmt(&self, f: &mut std::fmt::Formatter) -> std::fmt::Result {
         write!(f, "{}: {}", self.status, self.message)
+    }
+}
+
+impl IntoResponse for PyOciError {
+    fn into_response(self) -> axum::response::Response {
+        (self.status, self.message).into_response()
     }
 }
 

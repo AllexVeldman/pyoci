@@ -1,7 +1,7 @@
 use askama::Template;
 use axum::{
     debug_handler,
-    extract::{DefaultBodyLimit, Multipart, Path, State},
+    extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, Path, State},
     http::{header, HeaderMap},
     response::{Html, IntoResponse, Redirect},
     routing::{get, post},
@@ -20,10 +20,15 @@ struct AppError(anyhow::Error);
 // Tell axum how to convert `AppError` into a response.
 impl IntoResponse for AppError {
     fn into_response(self) -> axum::response::Response {
-        match self.0.downcast_ref::<PyOciError>() {
-            Some(err) => (err.status, err.message.clone()).into_response(),
-            None => (StatusCode::INTERNAL_SERVER_ERROR, format!("{}", self.0)).into_response(),
-        }
+        let any_err = match self.0.downcast::<PyOciError>() {
+            Ok(err) => return err.into_response(),
+            Err(err) => err,
+        };
+        let any_err = match any_err.downcast::<MultipartError>() {
+            Ok(err) => return err.into_response(),
+            Err(err) => err,
+        };
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{:#}", any_err)).into_response()
     }
 }
 
@@ -44,7 +49,7 @@ struct PyOciState {
 }
 
 /// Request Router
-pub fn router(subpath: Option<String>) -> Router {
+pub fn router(subpath: Option<String>, body_limit: usize) -> Router {
     let pyoci_routes = Router::new()
         .fallback(
             get(|| async { StatusCode::NOT_FOUND })
@@ -66,7 +71,7 @@ pub fn router(subpath: Option<String>) -> Router {
         )
         .route(
             "/:registry/:namespace/",
-            post(publish_package).layer(DefaultBodyLimit::max(50 * 1024 * 1024)),
+            post(publish_package).layer(DefaultBodyLimit::max(body_limit)),
         );
     let router = match subpath {
         Some(ref subpath) => Router::new().nest(subpath, pyoci_routes),
@@ -436,7 +441,7 @@ mod tests {
 
     #[tokio::test]
     async fn cache_control_unmatched() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let req = Request::builder()
             .method("GET")
@@ -454,7 +459,7 @@ mod tests {
 
     #[tokio::test]
     async fn cache_control_root() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let req = Request::builder()
             .method("GET")
@@ -471,8 +476,24 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn publish_package_body_limit() {
+        let router = router(None, 10);
+
+        let form = "Exceeds max body limit";
+        let req = Request::builder()
+            .method("POST")
+            .uri("/pypi/pytest/")
+            .header("Content-Type", "multipart/form-data; boundary=foobar")
+            .body(form.to_string())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        assert_eq!(response.status(), StatusCode::PAYLOAD_TOO_LARGE);
+    }
+
+    #[tokio::test]
     async fn publish_package_missing_action() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\"submit-name\"\r\n\
@@ -500,7 +521,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_invalid_action() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -528,7 +549,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_missing_protocol_version() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -556,7 +577,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_invalid_protocol_version() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -588,7 +609,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_missing_content() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -620,7 +641,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_empty_content() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -656,7 +677,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_missing_filename() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -692,7 +713,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_filename_empty() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -728,7 +749,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_filename_invalid() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -844,7 +865,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -965,7 +986,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()));
+        let router = router(Some("/foo".to_string()), 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1062,7 +1083,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1209,7 +1230,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1337,7 +1358,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1466,7 +1487,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()));
+        let router = router(Some("/foo".to_string()), 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/foo/{encoded_url}/mockserver/test-package/"))
@@ -1527,7 +1548,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1618,7 +1639,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1669,7 +1690,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/json"))
@@ -1799,7 +1820,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1920,7 +1941,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()));
+        let router = router(Some("/foo".to_string()), 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1942,7 +1963,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_file() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/.env")
@@ -1965,7 +1986,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_whl() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.whl")
@@ -1988,7 +2009,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_tar() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.tar.gz")
@@ -2079,7 +2100,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2151,7 +2172,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2201,7 +2222,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2299,7 +2320,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("DELETE")
             .uri(format!("/{encoded_url}/mockserver/test-package/0.1.0"))
@@ -2395,7 +2416,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()));
+        let router = router(Some("/foo".to_string()), 50_000_000);
         let req = Request::builder()
             .method("DELETE")
             .uri(format!("/foo/{encoded_url}/mockserver/test-package/0.1.0"))
@@ -2422,7 +2443,7 @@ mod tests {
 
     #[tokio::test]
     async fn health() {
-        let router = router(None);
+        let router = router(None, 50_000_000);
         let req = Request::builder()
             .method("GET")
             .uri("/health")
