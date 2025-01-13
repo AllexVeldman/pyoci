@@ -8,7 +8,7 @@ _endgroup:
 
 # Publish using the `poetry` package manager
 [group("poetry")]
-poetry-publish version username token repository="https://localhost:8080/ghcr.io/allexveldman/": (_group "poetry-publish") && _endgroup
+poetry-publish version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "poetry-publish") && _endgroup
     #!/usr/bin/env bash
     set -exuo pipefail
 
@@ -19,7 +19,7 @@ poetry-publish version username token repository="https://localhost:8080/ghcr.io
     poetry publish -n -r pyoci -u "{{username}}" -p "{{token}}"
 
 [group("poetry")]
-poetry-install version username token repository="https://localhost:8080/ghcr.io/allexveldman/": (_group "poetry-install") && _endgroup
+poetry-install version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "poetry-install") && _endgroup
     #!/usr/bin/env bash
     set -exuo pipefail
 

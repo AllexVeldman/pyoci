@@ -53,6 +53,7 @@ struct Env {
     container_name: Option<String>,
     pod_name: Option<String>,
     replica_name: Option<String>,
+    body_limit: usize,
 }
 
 impl Env {
@@ -68,6 +69,7 @@ impl Env {
             container_name: None,
             pod_name: None,
             replica_name: None,
+            body_limit: 50_000_000,
         }
     }
     fn new() -> Self {
@@ -78,6 +80,9 @@ impl Env {
                 .expect("Failed to parse PORT"),
             rust_log: env::var("RUST_LOG").unwrap_or("info".to_string()),
             path: env::var("PYOCI_PATH").ok(),
+            body_limit: env::var("PYOCI_MAX_BODY")
+                .map(|f| f.parse().expect("PYOCI_MAX_BODY is not a valid integer"))
+                .unwrap_or(50_000_000),
             otlp_endpoint: env::var("OTLP_ENDPOINT").ok(),
             otlp_auth: env::var("OTLP_AUTH").ok(),
             deployment_env: env::var("DEPLOYMENT_ENVIRONMENT").ok(),
@@ -120,7 +125,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", environ.port))
         .await
         .unwrap();
-    axum::serve(listener, router(environ.path))
+    axum::serve(listener, router(environ.path, environ.body_limit))
         .with_graceful_shutdown(shutdown_signal(cancel_token, otlp_handle))
         .await
         .unwrap();
