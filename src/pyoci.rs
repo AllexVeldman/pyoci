@@ -360,15 +360,17 @@ impl PyOci {
         &mut self,
         package: &Package<'_, WithFile>,
         file: Vec<u8>,
+        mut annotations: HashMap<String, String>,
     ) -> Result<()> {
         let name = package.oci_name();
         let tag = package.oci_tag();
 
         let layer = Blob::new(file, ARTIFACT_TYPE);
-        let annotations = HashMap::from([(
+        annotations.insert(
             "org.opencontainers.image.created".to_string(),
             OffsetDateTime::now_utc().format(&Rfc3339)?,
-        )]);
+        );
+
         // Build the Manifest
         let config = empty_config();
         let manifest = ImageManifestBuilder::default()
