@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use askama::Template;
 use axum::{
     debug_handler,
@@ -9,7 +11,7 @@ use axum::{
 };
 use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
-use tracing::{info_span, Instrument};
+use tracing::{debug, info_span, Instrument};
 
 use crate::{package, pyoci::PyOciError, templates, PyOci};
 
@@ -277,7 +279,7 @@ async fn publish_package(
     let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
 
     client
-        .publish_package_file(&package, form_data.content)
+        .publish_package_file(&package, form_data.content, form_data.labels)
         .await?;
     Ok("Published".into())
 }
@@ -297,11 +299,12 @@ fn get_auth(headers: &HeaderMap) -> Option<HeaderValue> {
 
 /// Form data for the upload API
 ///
-/// ref: https://warehouse.pypa.io/api-reference/legacy.html#upload-api
+/// ref: https://docs.pypi.org/api/upload/
 #[derive(Debug)]
 struct UploadForm {
     filename: String,
     content: Vec<u8>,
+    labels: HashMap<String, String>,
 }
 
 impl UploadForm {
@@ -313,15 +316,29 @@ impl UploadForm {
         let mut protocol_version = None;
         let mut content = None;
         let mut filename = None;
+        let mut labels = HashMap::new();
+
         while let Some(field) = multipart.next_field().await? {
-            match field.name() {
-                Some(":action") => action = Some(field.text().await?),
-                Some("protocol_version") => protocol_version = Some(field.text().await?),
-                Some("content") => {
+            let Some(field_name) = field.name().map(|f| f.to_owned()) else {
+                continue;
+            };
+
+            match field_name.as_str() {
+                ":action" => action = Some(field.text().await?),
+                "protocol_version" => protocol_version = Some(field.text().await?),
+                "content" => {
                     filename = field.file_name().map(|s| s.to_string());
                     content = Some(field.bytes().await?)
                 }
-                _ => (),
+                "classifiers" => {
+                    let classifier = field.text().await?;
+                    if let Some(label) = classifier.strip_prefix("PyOCI :: Label :: ") {
+                        if let [key, value] = label.splitn(2, " :: ").collect::<Vec<_>>()[..] {
+                            labels.insert(key.to_string(), value.to_string());
+                        };
+                    }
+                }
+                name => debug!("Discarding field '{name}': {}", field.text().await?),
             }
         }
 
@@ -396,6 +413,7 @@ impl UploadForm {
         Ok(Self {
             filename,
             content: content.into(),
+            labels,
         })
     }
 }
@@ -414,6 +432,7 @@ mod tests {
     use bytes::Bytes;
     use http::HeaderValue;
     use indoc::formatdoc;
+    use mockito::Matcher;
     use oci_spec::{
         distribution::{TagList, TagListBuilder},
         image::{
@@ -421,6 +440,7 @@ mod tests {
             ImageManifestBuilder, Os, PlatformBuilder,
         },
     };
+    use serde_json::from_str;
     use tower::ServiceExt;
 
     #[test]
@@ -967,7 +987,29 @@ mod tests {
             server
                 .mock("PUT", "/v2/mockserver/foobar/manifests/sha256:e281659053054737342fd0c74a7605c4678c227db1e073260b44f845dfdf535a")
                 .match_header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
-                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.manifest.v1+json","artifactType":"application/pyoci.package.v1","config":{"mediaType":"application/vnd.oci.empty.v1+json","digest":"sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a","size":2},"layers":[{"mediaType":"application/pyoci.package.v1","digest":"sha256:b7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0","size":22}],"annotations":{"org.opencontainers.image.created":"2024-11-20T20:23:36Z"}}"#)
+                .match_request(|request|{
+                    let request_json = from_str::<ImageManifest>(&request.utf8_lossy_body().expect("Body value")).expect("Valid manifest");
+                    request_json == from_str::<ImageManifest>(r#"{
+                      "schemaVersion": 2,
+                      "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                      "artifactType": "application/pyoci.package.v1",
+                      "config": {
+                        "mediaType": "application/vnd.oci.empty.v1+json",
+                        "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+                        "size": 2
+                      },
+                      "layers": [
+                        {
+                          "mediaType": "application/pyoci.package.v1",
+                          "digest": "sha256:b7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0",
+                          "size": 22
+                        }
+                      ],
+                      "annotations": {
+                        "org.opencontainers.image.created": "2024-11-20T20:23:36Z"
+                      }
+                    }"#).unwrap()
+                })
                 .with_status(201) // CREATED
                 .create_async()
                 .await,
@@ -975,7 +1017,31 @@ mod tests {
             server
                 .mock("PUT", "/v2/mockserver/foobar/manifests/1.0.0")
                 .match_header("Content-Type", "application/vnd.oci.image.index.v1+json")
-                .match_body(r#"{"schemaVersion":2,"mediaType":"application/vnd.oci.image.index.v1+json","artifactType":"application/pyoci.package.v1","manifests":[{"mediaType":"application/vnd.oci.image.manifest.v1+json","digest":"sha256:e281659053054737342fd0c74a7605c4678c227db1e073260b44f845dfdf535a","size":496,"annotations":{"org.opencontainers.image.created":"2024-11-20T20:23:36Z"},"platform":{"architecture":".tar.gz","os":"any"}}],"annotations":{"org.opencontainers.image.created":"2024-11-20T20:23:36Z"}}"#)
+                .match_request(|request|{
+                    let request_json = from_str::<ImageIndex>(&request.utf8_lossy_body().expect("Body value")).expect("Valid manifest");
+                    request_json == from_str::<ImageIndex>(r#"{
+                      "schemaVersion": 2,
+                      "mediaType": "application/vnd.oci.image.index.v1+json",
+                      "artifactType": "application/pyoci.package.v1",
+                      "manifests": [
+                        {
+                          "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                          "digest": "sha256:e281659053054737342fd0c74a7605c4678c227db1e073260b44f845dfdf535a",
+                          "size": 496,
+                          "annotations": {
+                            "org.opencontainers.image.created": "2024-11-20T20:23:36Z"
+                          },
+                          "platform": {
+                            "architecture": ".tar.gz",
+                            "os": "any"
+                          }
+                        }
+                      ],
+                      "annotations": {
+                        "org.opencontainers.image.created": "2024-11-20T20:23:36Z"
+                      }
+                    }"#).unwrap()
+                })
                 .with_status(201) // CREATED
                 .create_async()
                 .await,
@@ -1004,6 +1070,159 @@ mod tests {
         let req = Request::builder()
             .method("POST")
             .uri(format!("/foo/{encoded_url}/mockserver/"))
+            .header("Content-Type", "multipart/form-data; boundary=foobar")
+            .body(form.to_string())
+            .unwrap();
+        let response = router.oneshot(req).await.unwrap();
+
+        let status = response.status();
+        let body = String::from_utf8(
+            to_bytes(response.into_body(), usize::MAX)
+                .await
+                .unwrap()
+                .into(),
+        )
+        .unwrap();
+
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(&body, "Published");
+        assert_eq!(status, StatusCode::OK);
+    }
+
+    #[tokio::test]
+    async fn publish_package_with_classifiers() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let encoded_url = urlencoding::encode(&url).into_owned();
+
+        // Set timestamp to fixed time
+        crate::mocks::set_timestamp(1732134216);
+
+        let mocks = vec![
+            // Mock the server, in order of expected requests
+            // IndexManifest does not yet exist
+            server
+                .mock("GET", "/v2/mockserver/foobar/manifests/1.0.0")
+                .with_status(404)
+                .create_async()
+                .await,
+            // HEAD request to check if blob exists for:
+            // - layer
+            // - config
+            server
+                .mock(
+                    "HEAD",
+                    mockito::Matcher::Regex(r"/v2/mockserver/foobar/blobs/.+".to_string()),
+                )
+                .expect(2)
+                .with_status(404)
+                .create_async()
+                .await,
+            // POST request with blob for layer
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/1?_state=uploading"),
+                )
+                .create_async()
+                .await,
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/1?_state=uploading&digest=sha256%3Ab7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // POST request with blob for config
+            server
+                .mock("POST", "/v2/mockserver/foobar/blobs/uploads/")
+                .with_status(202) // ACCEPTED
+                .with_header(
+                    "Location",
+                    &format!("{url}/v2/mockserver/foobar/blobs/uploads/2?_state=uploading"),
+                )
+                .create_async()
+                .await,
+            server
+                .mock("PUT", "/v2/mockserver/foobar/blobs/uploads/2?_state=uploading&digest=sha256%3A44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a")
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // PUT request to create Manifest
+            server
+                .mock("PUT", Matcher::Regex("/v2/mockserver/foobar/manifests/sha256:.*".to_string()))
+                .match_header("Content-Type", "application/vnd.oci.image.manifest.v1+json")
+                .match_request(|request|{
+                    // We only expect 1 call to this endpoint, deserialize and match the annotations
+                    // Since the annotations serialize in a random order this can change the sha
+                    // and makes matching the entire body very impractical on failures.
+                    // TODO: refactor so most of this logic can be tested in isolation instead of
+                    // needing a mock server
+                    let request_json = from_str::<ImageManifest>(&request.utf8_lossy_body().expect("Body value")).expect("Valid manifest");
+                    request_json.annotations() == &Some(HashMap::from([
+                        ("org.opencontainers.image.url".to_string(),"https://github.com/allexveldman/pyoci".to_string()),
+                        ("org.opencontainers.image.created".to_string(),"2024-11-20T20:23:36Z".to_string()),
+                        ("other-label".to_string(), "foobar".to_string()),
+                    ]))
+                })
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            // PUT request to create Index
+            server
+                .mock("PUT", "/v2/mockserver/foobar/manifests/1.0.0")
+                .match_header("Content-Type", "application/vnd.oci.image.index.v1+json")
+                .match_request(|request|{
+                    // We only expect 1 call to this endpoint, deserialize and match the annotations
+                    let request_json = from_str::<ImageIndex>(&request.utf8_lossy_body().expect("Body value")).expect("Valid manifest");
+                    request_json.annotations() == &Some(HashMap::from([
+                        ("org.opencontainers.image.url".to_string(),"https://github.com/allexveldman/pyoci".to_string()),
+                        ("org.opencontainers.image.created".to_string(),"2024-11-20T20:23:36Z".to_string()),
+                        ("other-label".to_string(), "foobar".to_string()),
+                    ]))
+                })
+                .with_status(201) // CREATED
+                .create_async()
+                .await,
+            server
+                .mock("GET", mockito::Matcher::Any)
+                .expect(0)
+                .create_async()
+                .await,
+        ];
+
+        let router = router(None, 50_000_000);
+
+        let form = "--foobar\r\n\
+            Content-Disposition: form-data; name=\":action\"\r\n\
+            \r\n\
+            file_upload\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"protocol_version\"\r\n\
+            \r\n\
+            1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"classifiers\"\r\n\
+            \r\n\
+            Programming Language :: Python :: 3.13\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"classifiers\"\r\n\
+            \r\n\
+            PyOCI :: Label :: org.opencontainers.image.url :: https://github.com/allexveldman/pyoci\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"classifiers\"\r\n\
+            \r\n\
+            PyOCI :: Label :: other-label :: foobar\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
+            \r\n\
+            someawesomepackagedata\r\n\
+            --foobar--\r\n";
+        let req = Request::builder()
+            .method("POST")
+            .uri(format!("/{encoded_url}/mockserver/"))
             .header("Content-Type", "multipart/form-data; boundary=foobar")
             .body(form.to_string())
             .unwrap();

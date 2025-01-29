@@ -4,6 +4,11 @@ version = "0.0.1"
 description = "Example project for PyOCI with poetry"
 authors = ["Allex Veldman <allexveldman@gmail.com>"]
 
+classifiers = [
+    "PyOCI :: Label :: org.opencontainers.image.url :: https://github.com/allexveldman/pyoci",
+    "PyOCI :: Label :: org.opencontainers.image.description :: Published using PyOCI as part of the examples."
+]
+
 [tool.poetry.dependencies]
 python = "^3.8"
 

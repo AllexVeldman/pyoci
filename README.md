@@ -72,6 +72,11 @@ Set by Azure Container App, can change if I every decide to move host:
 - `CONTAINER_APP_REVISION` -> `k8s.pod.name`
 - `CONTAINER_APP_REPLICA_NAME` -> `k8s.replicaset.name`
 
+## Add Labels to your package
+Labels can be added to your package by including them as a `PyOCI :: Label :: <Key> :: <Value>` [classifier](https://packaging.python.org/en/latest/specifications/core-metadata/#classifier-multiple-use) of the package.
+If the classifiers are found in the package upload request, the key-value pairs will be added as [annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md) (aka labels in docker terms) to the OCI image.
+
+Note that these classifiers are case-sensitive and [non-standard](https://pypi.org/classifiers/).
 
 ## Authentication
 Pip's [Basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
