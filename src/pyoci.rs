@@ -15,6 +15,7 @@ use oci_spec::{
 };
 use reqwest::Response;
 use serde::Deserialize;
+use serde_json::to_string_pretty;
 use sha2::{Digest, Sha256};
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -26,8 +27,8 @@ use crate::mocks::OffsetDateTime;
 #[cfg(not(test))]
 use time::OffsetDateTime;
 
-use crate::package::{Package, WithFile, WithoutFile};
-use crate::transport::HttpTransport;
+use crate::package::{Package, WithFileName, WithoutFileName};
+use crate::transport::{HttpTransport, Transport};
 use crate::ARTIFACT_TYPE;
 
 /// Build an URL from a format string while sanitizing the parameters
@@ -74,7 +75,7 @@ struct PlatformManifest {
 }
 
 impl PlatformManifest {
-    fn new(manifest: ImageManifest, package: &Package<WithFile>) -> Self {
+    fn new(manifest: ImageManifest, package: &Package<WithFileName>) -> Self {
         let platform = PlatformBuilder::default()
             .architecture(Arch::Other(package.oci_architecture().to_string()))
             .os(Os::Other("any".to_string()))
@@ -168,24 +169,42 @@ pub struct AuthResponse {
 }
 
 /// Client to communicate with the OCI v2 registry
-#[derive(Debug, Clone)]
-pub struct PyOci {
+#[derive(Debug)]
+pub struct PyOci<T> {
     registry: Url,
-    transport: HttpTransport,
+    transport: T,
 }
 
-impl PyOci {
+impl PyOci<HttpTransport> {
     /// Create a new Client
-    pub fn new(registry: Url, auth: Option<HeaderValue>) -> Result<Self> {
+    pub fn new(registry: Url, auth: Option<HeaderValue>) -> Result<PyOci<HttpTransport>> {
         Ok(PyOci {
             registry,
             transport: HttpTransport::new(auth)?,
         })
     }
+}
 
+impl<T> Clone for PyOci<T>
+where
+    T: Clone,
+{
+    fn clone(&self) -> Self {
+        Self {
+            registry: self.registry.clone(),
+            transport: self.transport.clone(),
+        }
+    }
+}
+
+/// Create/List/Download/Delete Packages
+impl<T> PyOci<T>
+where
+    T: Transport + Clone,
+{
     pub async fn list_package_versions<'a>(
         &mut self,
-        package: &'a Package<'a, WithoutFile>,
+        package: &'a Package<'a, WithoutFileName>,
     ) -> Result<Vec<String>> {
         let name = package.oci_name();
         let result = self.list_tags(&name).await?;
@@ -198,14 +217,14 @@ impl PyOci {
     /// ref: https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
     pub async fn list_package_files<'a>(
         &mut self,
-        package: &'a Package<'a, WithoutFile>,
+        package: &'a Package<'a, WithoutFileName>,
         n: usize,
-    ) -> Result<Vec<Package<'a, WithFile>>> {
+    ) -> Result<Vec<Package<'a, WithFileName>>> {
         let name = package.oci_name();
         let result = self.list_tags(&name).await?;
         tracing::debug!("{:?}", result);
         let tags = result.tags();
-        let mut files: Vec<Package<WithFile>> = Vec::new();
+        let mut files: Vec<Package<WithFileName>> = Vec::new();
         let futures = FuturesUnordered::new();
 
         if tags.len() > n {
@@ -226,7 +245,7 @@ impl PyOci {
             futures.push(pyoci.package_info_for_ref(package, &name, tag));
         }
         for result in futures
-            .collect::<Vec<Result<Vec<Package<WithFile>>, Error>>>()
+            .collect::<Vec<Result<Vec<Package<WithFileName>>, Error>>>()
             .await
         {
             files.append(&mut result?);
@@ -236,10 +255,10 @@ impl PyOci {
 
     async fn package_info_for_ref<'a>(
         mut self,
-        package: &'a Package<'a, WithoutFile>,
+        package: &'a Package<'a, WithoutFileName>,
         name: &str,
         reference: &str,
-    ) -> Result<Vec<Package<'a, WithFile>>> {
+    ) -> Result<Vec<Package<'a, WithFileName>>> {
         let manifest = self.pull_manifest(name, reference).await?;
         let index = match manifest {
             Some(Manifest::Index(index)) => index,
@@ -264,7 +283,7 @@ impl PyOci {
             // Artifact type is not set, err
             None => bail!("No artifact type set"),
         };
-        let mut files: Vec<Package<WithFile>> = Vec::new();
+        let mut files: Vec<Package<WithFileName>> = Vec::new();
         for manifest in index.manifests() {
             match manifest.platform().as_ref().unwrap().architecture() {
                 oci_spec::image::Arch::Other(arch) => {
@@ -279,7 +298,7 @@ impl PyOci {
 
     pub async fn download_package_file(
         &mut self,
-        package: &Package<'_, WithFile>,
+        package: &Package<'_, WithFileName>,
     ) -> Result<Response> {
         // Pull index
         let index = match self
@@ -356,22 +375,70 @@ impl PyOci {
             .await
     }
 
+    /// Construct and publish the manifests and blob provided.
+    ///
+    /// The `sha256_digest`, if provided, will be verified against the sha256 of the actual content.
+    ///
+    /// The `annotations` will be added to the ImageManifest, mimicking the default docker CLI
+    /// behaviour.
     pub async fn publish_package_file(
         &mut self,
-        package: &Package<'_, WithFile>,
+        package: &Package<'_, WithFileName>,
         file: Vec<u8>,
         mut annotations: HashMap<String, String>,
+        sha256_digest: Option<String>,
     ) -> Result<()> {
         let name = package.oci_name();
         let tag = package.oci_tag();
 
         let layer = Blob::new(file, ARTIFACT_TYPE);
-        annotations.insert(
+
+        let package_digest = verify_digest(&layer, sha256_digest)?;
+
+        // Annotations added to the manifest descriptor in the ImageIndex
+        // We're adding the digest here so we don't need to pull the ImageManifest when listing
+        // packages to get the package (blob) digest
+        let mut index_manifest_annotations = HashMap::from([(
+            "com.pyoci.sha256_digest".to_string(),
+            package_digest.to_string(),
+        )]);
+
+        let creation_annotation = HashMap::from([(
             "org.opencontainers.image.created".to_string(),
             OffsetDateTime::now_utc().format(&Rfc3339)?,
-        );
+        )]);
+
+        annotations.extend(creation_annotation.clone());
+        index_manifest_annotations.extend(creation_annotation.clone());
 
         // Build the Manifest
+        let manifest = self.image_manifest(package, &layer, annotations);
+        let index = self
+            .image_index(
+                package,
+                &manifest,
+                creation_annotation,
+                index_manifest_annotations,
+            )
+            .await?;
+        tracing::debug!("{}", to_string_pretty(&index).unwrap());
+        tracing::debug!("{}", to_string_pretty(&manifest.manifest).unwrap());
+
+        self.push_blob(&name, layer).await?;
+        self.push_blob(&name, empty_config()).await?;
+        self.push_manifest(&name, Manifest::Manifest(Box::new(manifest.manifest)), None)
+            .await?;
+        self.push_manifest(&name, Manifest::Index(Box::new(index)), Some(&tag))
+            .await
+    }
+
+    /// Get the definition of a new ImageManifest
+    fn image_manifest(
+        &self,
+        package: &Package<'_, WithFileName>,
+        layer: &Blob,
+        annotations: HashMap<String, String>,
+    ) -> PlatformManifest {
         let config = empty_config();
         let manifest = ImageManifestBuilder::default()
             .schema_version(SCHEMA_VERSION)
@@ -379,10 +446,22 @@ impl PyOci {
             .artifact_type(ARTIFACT_TYPE)
             .config(config.descriptor.clone())
             .layers(vec![layer.descriptor.clone()])
-            .annotations(annotations.clone())
+            .annotations(annotations)
             .build()
             .expect("valid ImageManifest");
-        let manifest = PlatformManifest::new(manifest, package);
+        PlatformManifest::new(manifest, package)
+    }
+
+    /// Create or Update the definition of a new ImageIndex
+    async fn image_index(
+        &mut self,
+        package: &Package<'_, WithFileName>,
+        manifest: &PlatformManifest,
+        index_annotations: HashMap<String, String>,
+        index_manifest_annotations: HashMap<String, String>,
+    ) -> Result<ImageIndex> {
+        let name = package.oci_name();
+        let tag = package.oci_tag();
         // Pull an existing index
         let index = match self.pull_manifest(&name, &tag).await? {
             Some(Manifest::Manifest(_)) => {
@@ -398,8 +477,8 @@ impl PyOci {
                 .schema_version(SCHEMA_VERSION)
                 .media_type("application/vnd.oci.image.index.v1+json")
                 .artifact_type(ARTIFACT_TYPE)
-                .manifests(vec![manifest.descriptor(annotations.clone())])
-                .annotations(annotations.clone())
+                .manifests(vec![manifest.descriptor(index_manifest_annotations)])
+                .annotations(index_annotations)
                 .build()
                 .expect("valid ImageIndex"),
             // Existing index found, check artifact type
@@ -427,23 +506,18 @@ impl PyOci {
                     }
                 }
                 let mut manifests = index.manifests().to_vec();
-                manifests.push(manifest.descriptor(annotations));
+                manifests.push(manifest.descriptor(index_manifest_annotations));
                 index.set_manifests(manifests);
                 *index
             }
         };
-        tracing::debug!("Index: {:?}", index.to_string().unwrap());
-        tracing::debug!("Manifest: {:?}", manifest.manifest.to_string().unwrap());
-
-        self.push_blob(&name, layer).await?;
-        self.push_blob(&name, config).await?;
-        self.push_manifest(&name, Manifest::Manifest(Box::new(manifest.manifest)), None)
-            .await?;
-        self.push_manifest(&name, Manifest::Index(Box::new(index)), Some(&tag))
-            .await
+        Ok(index)
     }
 
-    pub async fn delete_package_version(&mut self, package: &Package<'_, WithFile>) -> Result<()> {
+    pub async fn delete_package_version(
+        &mut self,
+        package: &Package<'_, WithFileName>,
+    ) -> Result<()> {
         let name = package.oci_name();
         let index = match self.pull_manifest(&name, &package.oci_tag()).await? {
             Some(Manifest::Index(index)) => index,
@@ -474,7 +548,30 @@ impl PyOci {
     }
 }
 
-impl PyOci {
+/// Check if the provided digest matches the package digest
+///
+/// Returns the digest if successful
+fn verify_digest(layer: &Blob, expected_digest: Option<String>) -> Result<String> {
+    let package_digest = layer.descriptor.digest().digest();
+
+    if let Some(sha256_digest) = expected_digest {
+        // Verify if the sha256 as provided by the request matches the calculated sha of the
+        // uploaded content.
+        if package_digest != sha256_digest {
+            Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "Provided sha256_digest does not match the package content",
+            )))?;
+        }
+    }
+    Ok(package_digest.to_string())
+}
+
+/// Low-level functionality for interacting with the OCI registry
+impl<T> PyOci<T>
+where
+    T: Transport + Clone,
+{
     /// Push a blob to the registry using POST then PUT method
     ///
     /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#post-then-put
@@ -692,6 +789,9 @@ fn empty_config() -> Blob {
 
 #[cfg(test)]
 mod tests {
+    use pretty_assertions::assert_eq;
+    use serde_json::from_str;
+
     use super::*;
 
     #[test]
@@ -835,5 +935,330 @@ mod tests {
         for mock in mocks {
             mock.assert_async().await;
         }
+    }
+
+    #[test]
+    // Check if the digest is returned when no expected digest is provided
+    fn verify_digest_none() {
+        let layer = Blob::new(vec![b'a', b'b', b'c'], "test-artifact");
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_string();
+        let result = verify_digest(&layer, None).expect("SHAs should match");
+        assert_eq!(result, sha);
+    }
+
+    #[test]
+    // Check if the digest is returned when the expected digest matches
+    fn verify_digest_match() {
+        let layer = Blob::new(vec![b'a', b'b', b'c'], "test-artifact");
+        let sha = "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad".to_string();
+        let result = verify_digest(&layer, Some(sha.clone())).expect("SHAs should match");
+        assert_eq!(result, sha);
+    }
+
+    #[test]
+    // Check if an error is returned if the sha does not match
+    fn verify_digest_no_match() {
+        let layer = Blob::new(vec![b'a', b'b', b'c'], "test-artifact");
+        let result = verify_digest(&layer, Some("no-match".to_string()))
+            .expect_err("Should return an error");
+        let err = result
+            .downcast::<PyOciError>()
+            .expect("Error should be PyOciError");
+        assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[test]
+    fn image_manifest() {
+        let pyoci = PyOci {
+            registry: Url::parse("https://pyoci.com").expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        let package =
+            Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").expect("Valid Package");
+        let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
+        let annotations = HashMap::from([(
+            "test-annotation-key".to_string(),
+            "test-annotation-value".to_string(),
+        )]);
+
+        let result = pyoci.image_manifest(&package, &layer, annotations.clone());
+        assert_eq!(
+            result.manifest,
+            from_str::<ImageManifest>(r#"{
+              "schemaVersion": 2,
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "artifactType": "application/pyoci.package.v1",
+              "config": {
+                "mediaType": "application/vnd.oci.empty.v1+json",
+                "digest": "sha256:44136fa355b3678a1146ad16f7e8649e94fb4fc21fe77e8310c060f61caaff8a",
+                "size": 2
+              },
+              "layers": [
+                {
+                  "mediaType": "test-artifact",
+                  "digest": "sha256:489cd5dbc708c7e541de4d7cd91ce6d0f1613573b7fc5b40d3942ccb9555cf35",
+                  "size": 3
+                }
+              ],
+              "annotations": {
+                "test-annotation-key": "test-annotation-value"
+              }
+            }"#).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    // Test if we can create a new ImageIndex
+    async fn image_index_new() {
+        // PyOci.image_index() will reach out to see if there is an existing index
+        // Reply with a NOT_FOUND
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        server
+            .mock("GET", "/v2/mockserver/bar/manifests/1")
+            .with_status(404)
+            .create_async()
+            .await;
+
+        let mut pyoci = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        // Setup the objects we're publishing
+        let package = Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").unwrap();
+        let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
+        let manifest = ImageManifestBuilder::default()
+            .schema_version(SCHEMA_VERSION)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type(ARTIFACT_TYPE)
+            .config(empty_config().descriptor)
+            .layers(vec![layer.descriptor])
+            .build()
+            .expect("valid ImageManifest");
+        let manifest = PlatformManifest::new(manifest, &package);
+
+        // Annotations for the ImageIndex
+        let index_annotations = HashMap::from([("idx-key".to_string(), "idx-val".to_string())]);
+        // Annotations for the ImageIndex.manifests[]
+        let index_manifest_annotations =
+            HashMap::from([("idx-mani-key".to_string(), "idx-mani-val".to_string())]);
+
+        let result = pyoci
+            .image_index(
+                &package,
+                &manifest,
+                index_annotations,
+                index_manifest_annotations,
+            )
+            .await
+            .expect("Valid ImageIndex");
+
+        assert_eq!(
+            result,
+            from_str::<ImageIndex>(r#"{
+              "schemaVersion": 2,
+              "mediaType": "application/vnd.oci.image.index.v1+json",
+              "artifactType": "application/pyoci.package.v1",
+              "manifests": [
+                {
+                  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                  "digest": "sha256:6b95ce6324c6745397ccdb66864a73598b4df8989b1c0c8f0f386d85e2640d47",
+                  "size": 406,
+                  "annotations": {
+                    "idx-mani-key": "idx-mani-val"
+                  },
+                  "platform": {
+                    "architecture": ".tar.gz",
+                    "os": "any"
+                  }
+                }
+              ],
+              "annotations": {
+                "idx-key": "idx-val"
+              }
+            }"#).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    // Test if we can update an existing ImageIndex
+    async fn image_index_existing() {
+        // PyOci.image_index() will reach out to see if there is an existing index
+        // Reply with the existing index
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        // Existing ImageIndex
+        let index = r#"{
+          "schemaVersion": 2,
+          "mediaType": "application/vnd.oci.image.index.v1+json",
+          "artifactType": "application/pyoci.package.v1",
+          "manifests": [
+            {
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "digest": "sha256:0d749abe1377573493e0df74df8d1282e46967754a1ebc7cc6323923a788ad5c",
+              "size": 6,
+              "platform": {
+                "architecture": ".whl",
+                "os": "any"
+              }
+            }
+          ],
+          "annotations": {
+            "created": "yesterday"
+          }
+        }"#;
+
+        server
+            .mock("GET", "/v2/mockserver/bar/manifests/1")
+            .with_status(200)
+            .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+            .with_body(index)
+            .create_async()
+            .await;
+
+        let mut pyoci = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        // Setup the objects we're publishing
+        let package = Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").unwrap();
+        let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
+        let manifest = ImageManifestBuilder::default()
+            .schema_version(SCHEMA_VERSION)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type(ARTIFACT_TYPE)
+            .config(empty_config().descriptor)
+            .layers(vec![layer.descriptor])
+            .build()
+            .expect("valid ImageManifest");
+        let manifest = PlatformManifest::new(manifest, &package);
+
+        // The ImageIndex annotations are only set when the index is newly created
+        // So these annotations should not show up in the updated index
+        let index_annotations = HashMap::from([("created".to_string(), "today".to_string())]);
+        // Annotations for the new ImageIndex.manifests[]
+        let index_manifest_annotations =
+            HashMap::from([("idx-mani-key".to_string(), "idx-mani-val".to_string())]);
+
+        let result = pyoci
+            .image_index(
+                &package,
+                &manifest,
+                index_annotations,
+                index_manifest_annotations,
+            )
+            .await
+            .expect("Valid ImageIndex");
+
+        assert_eq!(
+            result,
+            from_str::<ImageIndex>(r#"{
+              "schemaVersion": 2,
+              "mediaType": "application/vnd.oci.image.index.v1+json",
+              "artifactType": "application/pyoci.package.v1",
+              "manifests": [
+                {
+                  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                  "digest": "sha256:0d749abe1377573493e0df74df8d1282e46967754a1ebc7cc6323923a788ad5c",
+                  "size": 6,
+                  "platform": {
+                    "architecture": ".whl",
+                    "os": "any"
+                  }
+                },
+                {
+                  "mediaType": "application/vnd.oci.image.manifest.v1+json",
+                  "digest": "sha256:6b95ce6324c6745397ccdb66864a73598b4df8989b1c0c8f0f386d85e2640d47",
+                  "size": 406,
+                  "annotations": {
+                    "idx-mani-key": "idx-mani-val"
+                  },
+                  "platform": {
+                    "architecture": ".tar.gz",
+                    "os": "any"
+                  }
+                }
+              ],
+              "annotations": {
+                "created": "yesterday"
+              }
+            }"#).unwrap()
+        );
+    }
+
+    #[tokio::test]
+    // Test if existing packages are rejected
+    async fn image_index_conflict() {
+        // PyOci.image_index() will reach out to see if there is an existing index
+        // Reply with the existing index
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        // Existing ImageIndex
+        let index = r#"{
+          "schemaVersion": 2,
+          "mediaType": "application/vnd.oci.image.index.v1+json",
+          "artifactType": "application/pyoci.package.v1",
+          "manifests": [
+            {
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "digest": "sha256:6b95ce6324c6745397ccdb66864a73598b4df8989b1c0c8f0f386d85e2640d47",
+              "size": 406,
+              "annotations": {
+                "idx-mani-key": "idx-mani-val"
+              },
+              "platform": {
+                "architecture": ".tar.gz",
+                "os": "any"
+              }
+            }
+          ],
+          "annotations": {
+            "created": "yesterday"
+          }
+        }"#;
+
+        server
+            .mock("GET", "/v2/mockserver/bar/manifests/1")
+            .with_status(200)
+            .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+            .with_body(index)
+            .create_async()
+            .await;
+
+        let mut pyoci = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        // Setup the objects we're publishing
+        let package = Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").unwrap();
+        let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
+        let manifest = ImageManifestBuilder::default()
+            .schema_version(SCHEMA_VERSION)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type(ARTIFACT_TYPE)
+            .config(empty_config().descriptor)
+            .layers(vec![layer.descriptor])
+            .build()
+            .expect("valid ImageManifest");
+        let manifest = PlatformManifest::new(manifest, &package);
+
+        let result = pyoci
+            .image_index(&package, &manifest, HashMap::new(), HashMap::new())
+            .await
+            .expect_err("Expected an Err")
+            .downcast::<PyOciError>()
+            .expect("Expected a PyOciError");
+
+        assert_eq!(result.status, StatusCode::CONFLICT);
+        assert_eq!(
+            result.message,
+            "Platform '.tar.gz' already exists for version '1'"
+        );
     }
 }

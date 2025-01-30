@@ -7,6 +7,10 @@ Packages published through PyOCI use the `application/pyoci.package.v1` [artifac
 The image index gets tagged with the package version.
 This allows multiple build artifacts to be published to the same package version.
 
+`com.pyoci.sha256_digest` is added as an annotation in the `ImageIndex.manifests[]`
+containing the digest of the package blob.
+This is so we don't need to pull the manifest itself to get the digest of the package.
+
 ```json
 {
   "schemaVersion": 2,
@@ -22,7 +26,8 @@ This allows multiple build artifacts to be published to the same package version
         "os": "any"
       },
       "annotations": {
-        "org.opencontainers.image.created":"2024-11-20T20:23:36Z"
+        "org.opencontainers.image.created":"2024-11-20T20:23:36Z",
+        "com.pyoci.sha256_digest": "b7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0"
       }
     }
   ],
@@ -33,6 +38,11 @@ This allows multiple build artifacts to be published to the same package version
 ```
 
 ## Image Manifest
+
+When a package is published with `PyOci :: Label :: <key> :: <value>` classifiers,
+the key/value pair will be added to the ImageManifest annotations.
+
+'org.opencontainers.image.created' will always be added.
 
 ```json
 {
@@ -52,6 +62,8 @@ This allows multiple build artifacts to be published to the same package version
     }
   ],
   "annotations": {
+    "org.opencontainers.image.description": "Published using PyOCI as part of the examples.",
+    "org.opencontainers.image.url": "https://github.com/allexveldman/pyoci",
     "org.opencontainers.image.created":"2024-11-20T20:23:36Z"
   }
 }
