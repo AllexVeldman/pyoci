@@ -7,12 +7,12 @@ use crate::pyoci::PyOciError;
 
 pub trait FileState {}
 
-pub struct WithFile;
+pub struct WithFileName;
 #[derive(Clone)]
-pub struct WithoutFile;
+pub struct WithoutFileName;
 
-impl FileState for WithFile {}
-impl FileState for WithoutFile {}
+impl FileState for WithFileName {}
+impl FileState for WithoutFileName {}
 
 #[derive(Debug, PartialEq, Eq, Clone)]
 pub struct Package<'a, T: FileState> {
@@ -24,64 +24,6 @@ pub struct Package<'a, T: FileState> {
     _phantom: PhantomData<T>,
 }
 
-/// Create a Package without version or file information.
-pub fn new<'a>(registry: &'a str, namespace: &'a str, name: &'a str) -> Package<'a, WithoutFile> {
-    let name = name.replace('-', "_");
-    Package {
-        registry,
-        namespace,
-        name,
-        version: None,
-        arch: None,
-        _phantom: PhantomData,
-    }
-}
-
-/// Create a Package parsing a filename into it's components
-///
-/// The filename is expected to be normalized, specifically there should be no '-' in any of
-/// it's components.
-/// ref: https://packaging.python.org/en/latest/specifications/binary-distribution-format/#escaping-and-unicode
-pub fn from_filename<'a>(
-    registry: &'a str,
-    namespace: &'a str,
-    filename: &str,
-) -> Result<Package<'a, WithFile>> {
-    if filename.is_empty() {
-        bail!("Empty filename")
-    }
-    let (name, version, arch) = match filename.strip_suffix(".tar.gz") {
-        Some(rest) => match rest.splitn(2, '-').collect::<Vec<_>>()[..] {
-            [name, version] => (name, version, ".tar.gz"),
-            _ => Err(PyOciError::from((
-                StatusCode::BAD_REQUEST,
-                format!("Invalid source distribution filename '{}'", filename),
-            )))?,
-        },
-        None => match filename.ends_with(".whl") {
-            true => match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
-                [name, version, arch] => (name, version, arch),
-                _ => Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    format!("Invalid binary distribution filename '{}'", filename),
-                )))?,
-            },
-            false => Err(PyOciError::from((
-                StatusCode::BAD_REQUEST,
-                format!("Unkown filetype '{}'", filename),
-            )))?,
-        },
-    };
-    Ok(Package {
-        registry,
-        namespace,
-        name: name.to_string(),
-        version: Some(version.to_string()),
-        arch: Some(arch.to_string()),
-        _phantom: PhantomData,
-    })
-}
-
 impl<'a, T: FileState> Package<'a, T> {
     /// Add/replace the version and architecture of the package for OCI provided values
     ///
@@ -90,7 +32,7 @@ impl<'a, T: FileState> Package<'a, T> {
     /// <reference> as a tag MUST be at most 128 characters in length and MUST match the following regular expression:
     /// [a-zA-Z0-9_][a-zA-Z0-9._-]{0,127}
     /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#pulling-manifests>
-    pub fn with_oci_file(&self, tag: &str, arch: &str) -> Package<'a, WithFile> {
+    pub fn with_oci_file(&self, tag: &str, arch: &str) -> Package<'a, WithFileName> {
         Package {
             registry: self.registry,
             namespace: self.namespace,
@@ -136,7 +78,71 @@ fn registry_url(registry: &str) -> Result<url::Url> {
     Ok(url)
 }
 
-impl Package<'_, WithFile> {
+impl Package<'_, WithoutFileName> {
+    /// Create a Package without version or file information.
+    pub fn new<'a>(
+        registry: &'a str,
+        namespace: &'a str,
+        name: &'a str,
+    ) -> Package<'a, WithoutFileName> {
+        let name = name.replace('-', "_");
+        Package {
+            registry,
+            namespace,
+            name,
+            version: None,
+            arch: None,
+            _phantom: PhantomData,
+        }
+    }
+}
+
+impl Package<'_, WithFileName> {
+    /// Create a Package parsing a filename into it's components
+    ///
+    /// The filename is expected to be normalized, specifically there should be no '-' in any of
+    /// it's components.
+    /// ref: https://packaging.python.org/en/latest/specifications/binary-distribution-format/#escaping-and-unicode
+    pub fn from_filename<'a>(
+        registry: &'a str,
+        namespace: &'a str,
+        filename: &str,
+    ) -> Result<Package<'a, WithFileName>> {
+        if filename.is_empty() {
+            bail!("Empty filename")
+        }
+        let (name, version, arch) = match filename.strip_suffix(".tar.gz") {
+            Some(rest) => match rest.splitn(2, '-').collect::<Vec<_>>()[..] {
+                [name, version] => (name, version, ".tar.gz"),
+                _ => Err(PyOciError::from((
+                    StatusCode::BAD_REQUEST,
+                    format!("Invalid source distribution filename '{}'", filename),
+                )))?,
+            },
+            None => match filename.ends_with(".whl") {
+                true => match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
+                    [name, version, arch] => (name, version, arch),
+                    _ => Err(PyOciError::from((
+                        StatusCode::BAD_REQUEST,
+                        format!("Invalid binary distribution filename '{}'", filename),
+                    )))?,
+                },
+                false => Err(PyOciError::from((
+                    StatusCode::BAD_REQUEST,
+                    format!("Unkown filetype '{}'", filename),
+                )))?,
+            },
+        };
+        Ok(Package {
+            registry,
+            namespace,
+            name: name.to_string(),
+            version: Some(version.to_string()),
+            arch: Some(arch.to_string()),
+            _phantom: PhantomData,
+        })
+    }
+
     /// Tag of the package as used for the OCI registry
     pub fn oci_tag(&self) -> String {
         // OCI tags are not allowed to contain a "+" character
@@ -217,7 +223,7 @@ mod tests {
     #[test]
     /// Test if we can get the package OCI name (namespace/name)
     fn test_info_oci_name() {
-        let info = new("https://foo.example", "bar", "baz");
+        let info = Package::new("https://foo.example", "bar", "baz");
         assert_eq!(info.oci_name(), "bar/baz".to_string());
     }
 
@@ -227,14 +233,15 @@ mod tests {
     #[test_case("bar-1.0.0.tar.gz", "1.0.0"; "simple version")]
     #[test_case("bar-1.0.0.dev4+g1664eb2.d20231017.tar.gz", "1.0.0.dev4-g1664eb2.d20231017"; "full version")]
     fn test_info_oci_tag(filename: &str, expected: &str) {
-        let info = from_filename("https://foo.example", "bar", filename).unwrap();
+        let info = Package::from_filename("https://foo.example", "bar", filename).unwrap();
         assert_eq!(info.oci_tag(), expected.to_string());
     }
 
     #[test]
     /// Test if Info.py_uri() url-encodes the registry
     fn test_info_py_uri() {
-        let info = from_filename("https://foo.example:4000", "bar", "baz-1.tar.gz").unwrap();
+        let info =
+            Package::from_filename("https://foo.example:4000", "bar", "baz-1.tar.gz").unwrap();
         assert_eq!(
             info.py_uri(),
             "/foo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
@@ -244,7 +251,7 @@ mod tests {
     #[test]
     /// Test Info.with_oci_file() return an Info object with the new version
     fn test_info_with_oci_file() {
-        let info = new("https://foo.example", "bar", "baz");
+        let info = Package::new("https://foo.example", "bar", "baz");
         let info = info.with_oci_file("0.1.pre3-1234.foobar", "tar.gz");
         assert_eq!(info.version, Some("0.1.pre3+1234.foobar".to_string()));
     }
@@ -255,7 +262,7 @@ mod tests {
     #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017.tar.gz"; "sdist full version")]
     /// Test if we can convert from and to filenames
     fn test_info_filename(input: &str) {
-        let obj = from_filename("foo", "bar", input).unwrap();
+        let obj = Package::from_filename("foo", "bar", input).unwrap();
         assert_eq!(obj.filename(), input);
     }
 }

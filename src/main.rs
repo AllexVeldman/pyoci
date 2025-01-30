@@ -20,7 +20,7 @@ mod service;
 #[cfg(test)]
 mod mocks;
 
-pub use pyoci::PyOci;
+use pyoci::PyOci;
 use tokio::task::JoinHandle;
 
 use std::collections::HashMap;
