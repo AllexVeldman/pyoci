@@ -211,6 +211,7 @@ where
         tracing::debug!("{:?}", result);
         Ok(result.tags().to_owned())
     }
+
     /// List all files for the given package
     ///
     /// Limits the number of files to `n`
@@ -287,7 +288,16 @@ where
         for manifest in index.manifests() {
             match manifest.platform().as_ref().unwrap().architecture() {
                 oci_spec::image::Arch::Other(arch) => {
-                    let file = package.with_oci_file(reference, arch);
+                    let sha256_digest = if let Some(annotations) = manifest.annotations() {
+                        annotations
+                            .get("com.pyoci.sha256_digest")
+                            .map(|v| v.to_string())
+                    } else {
+                        None
+                    };
+                    let file = package
+                        .with_oci_file(reference, arch)
+                        .with_sha256(sha256_digest);
                     files.push(file);
                 }
                 arch => bail!("Unsupported architecture '{}'", arch),
@@ -965,6 +975,110 @@ mod tests {
             .downcast::<PyOciError>()
             .expect("Error should be PyOciError");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn package_info_for_ref() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        // Existing ImageIndex
+        let index = r#"{
+          "schemaVersion": 2,
+          "mediaType": "application/vnd.oci.image.index.v1+json",
+          "artifactType": "application/pyoci.package.v1",
+          "manifests": [
+            {
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "digest": "sha256:0d749abe1377573493e0df74df8d1282e46967754a1ebc7cc6323923a788ad5c",
+              "size": 6,
+              "platform": {
+                "architecture": ".tar.gz",
+                "os": "any"
+              }
+            }
+          ],
+          "annotations": {
+            "created": "yesterday"
+          }
+        }"#;
+        server
+            .mock("GET", "/v2/mockserver/bar/manifests/1")
+            .with_status(200)
+            .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+            .with_body(index)
+            .create_async()
+            .await;
+
+        let pyoci = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        let package = Package::new("ghcr.io", "mockserver", "bar");
+
+        let result = pyoci
+            .package_info_for_ref(&package, "mockserver/bar", "1")
+            .await
+            .expect("Valid response");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(result[0].py_uri(), "/ghcr.io/mockserver/bar/bar-1.tar.gz");
+    }
+
+    #[tokio::test]
+    async fn package_info_for_ref_sha256_digest() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        // Existing ImageIndex
+        let index = r#"{
+          "schemaVersion": 2,
+          "mediaType": "application/vnd.oci.image.index.v1+json",
+          "artifactType": "application/pyoci.package.v1",
+          "manifests": [
+            {
+              "mediaType": "application/vnd.oci.image.manifest.v1+json",
+              "digest": "sha256:0d749abe1377573493e0df74df8d1282e46967754a1ebc7cc6323923a788ad5c",
+              "size": 6,
+              "platform": {
+                "architecture": ".tar.gz",
+                "os": "any"
+              },
+              "annotations":{
+                "com.pyoci.sha256_digest": "12345"
+              }
+            }
+          ],
+          "annotations": {
+            "created": "yesterday"
+          }
+        }"#;
+        server
+            .mock("GET", "/v2/mockserver/bar/manifests/1")
+            .with_status(200)
+            .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+            .with_body(index)
+            .create_async()
+            .await;
+
+        let pyoci = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        let package = Package::new("ghcr.io", "mockserver", "bar");
+
+        let result = pyoci
+            .package_info_for_ref(&package, "mockserver/bar", "1")
+            .await
+            .expect("Valid response");
+
+        assert_eq!(result.len(), 1);
+        assert_eq!(
+            result[0].py_uri(),
+            "/ghcr.io/mockserver/bar/bar-1.tar.gz#sha256=12345"
+        );
     }
 
     #[test]

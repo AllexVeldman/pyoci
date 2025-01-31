@@ -72,9 +72,9 @@ the key/value pair will be added to the ImageManifest annotations.
 # References
 
 ### PyPi
-- Simple API: https://peps.python.org/pep-0503/
-- Simple JSON extention: https://peps.python.org/pep-0691/#content-types
-- JSON API: https://warehouse.pypa.io/api-reference/json.html#
+- Simple API PEP: https://peps.python.org/pep-0503/
+- Simple JSON extention PEP: https://peps.python.org/pep-0691/#content-types
+- API definitions: https://docs.pypi.org/api/
 
 ### Python packaging
 - Name normalization: https://packaging.python.org/en/latest/specifications/name-normalization/#name-normalization

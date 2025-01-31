@@ -21,6 +21,7 @@ pub struct Package<'a, T: FileState> {
     name: String,
     version: Option<String>,
     arch: Option<String>,
+    sha256: Option<String>,
     _phantom: PhantomData<T>,
 }
 
@@ -39,6 +40,7 @@ impl<'a, T: FileState> Package<'a, T> {
             name: self.name.to_owned(),
             version: Some(tag.replace('-', "+")),
             arch: Some(arch.to_string()),
+            sha256: None,
             _phantom: PhantomData,
         }
     }
@@ -92,6 +94,7 @@ impl Package<'_, WithoutFileName> {
             name,
             version: None,
             arch: None,
+            sha256: None,
             _phantom: PhantomData,
         }
     }
@@ -139,8 +142,13 @@ impl Package<'_, WithFileName> {
             name: name.to_string(),
             version: Some(version.to_string()),
             arch: Some(arch.to_string()),
+            sha256: None,
             _phantom: PhantomData,
         })
+    }
+
+    pub fn with_sha256(self, sha256: Option<String>) -> Self {
+        Self { sha256, ..self }
     }
 
     /// Tag of the package as used for the OCI registry
@@ -168,13 +176,18 @@ impl Package<'_, WithFileName> {
             .strip_prefix("https://")
             .unwrap_or(self.registry);
         let registry = urlencoding::encode(registry);
-        format!(
+        let uri = format!(
             "/{}/{}/{}/{}",
             registry,
             self.namespace,
             self.name,
             self.filename()
-        )
+        );
+        if let Some(sha256) = &self.sha256 {
+            format!("{}#sha256={}", uri, sha256)
+        } else {
+            uri
+        }
     }
 
     /// Return the filename of this package
@@ -245,6 +258,17 @@ mod tests {
         assert_eq!(
             info.py_uri(),
             "/foo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
+        );
+    }
+
+    #[test]
+    fn test_info_py_uri_with_sha() {
+        let info = Package::from_filename("https://foo.example:4000", "bar", "baz-1.tar.gz")
+            .unwrap()
+            .with_sha256(Some("12345".into()));
+        assert_eq!(
+            info.py_uri(),
+            "/foo.example%3A4000/bar/baz/baz-1.tar.gz#sha256=12345".to_string()
         );
     }
 
