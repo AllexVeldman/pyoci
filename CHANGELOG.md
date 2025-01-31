@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.20](https://github.com/AllexVeldman/pyoci/compare/v0.1.19...v0.1.20) (2025-01-31)
+
+
+### Features
+
+* Add the package digest to `list_package` ([#163](https://github.com/AllexVeldman/pyoci/issues/163)) ([7fd3ccd](https://github.com/AllexVeldman/pyoci/commit/7fd3ccd4157225611934369e2260399da09bd9ab)), closes [#160](https://github.com/AllexVeldman/pyoci/issues/160)
+* Allow setting labels on the OCI image ([#159](https://github.com/AllexVeldman/pyoci/issues/159)) ([6140d20](https://github.com/AllexVeldman/pyoci/commit/6140d200529d80286fb6f8ac347fd75e888cd8ab))
+* SHA256 digest of the provided content is checked against the provided `sha256_digest` in the request. [#162](https://github.com/AllexVeldman/pyoci/issues/162) ([968afe8](https://github.com/AllexVeldman/pyoci/commit/968afe89ed540f81fcb8bd0994d2e7938741ab7f))
+
+
+### Miscellaneous Chores
+
+* **deps:** bump pin-project from 1.1.7 to 1.1.8 ([#157](https://github.com/AllexVeldman/pyoci/issues/157)) ([8d9d0d2](https://github.com/AllexVeldman/pyoci/commit/8d9d0d27e7974e91efce5cc8a3429f891c2b987e))
+* **deps:** bump reqwest from 0.12.9 to 0.12.12 ([#156](https://github.com/AllexVeldman/pyoci/issues/156)) ([b0160cb](https://github.com/AllexVeldman/pyoci/commit/b0160cb897145ee2ccee08ee6511f11d49d50361))
+* **deps:** bump serde_json from 1.0.135 to 1.0.137 ([#155](https://github.com/AllexVeldman/pyoci/issues/155)) ([ed7f932](https://github.com/AllexVeldman/pyoci/commit/ed7f932484de0cdc2005f9af8d65284ed006b510))
+
+
+### Code Refactoring
+
+* Refactor of the publish path and HttpTransport [#162](https://github.com/AllexVeldman/pyoci/issues/162) ([968afe8](https://github.com/AllexVeldman/pyoci/commit/968afe89ed540f81fcb8bd0994d2e7938741ab7f))
+
 ## [0.1.19](https://github.com/AllexVeldman/pyoci/compare/v0.1.18...v0.1.19) (2025-01-13)
 
 
