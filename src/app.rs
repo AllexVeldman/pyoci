@@ -342,8 +342,13 @@ impl UploadForm {
                     if let Some(label) = classifier.strip_prefix("PyOCI :: Label :: ") {
                         if let [key, value] = label.splitn(2, " :: ").collect::<Vec<_>>()[..] {
                             labels.insert(key.to_string(), value.to_string());
-                        };
-                    }
+                            debug!("Found label '{key}={value}'");
+                        } else {
+                            debug!("Invalid PyOci label '{label}'");
+                        }
+                    } else {
+                        debug!("Discarding field 'classifiers': {classifier}");
+                    };
                 }
                 "sha256_digest" => sha256 = Some(field.text().await?),
                 name => debug!("Discarding field '{name}': {}", field.text().await?),
