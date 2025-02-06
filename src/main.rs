@@ -54,6 +54,7 @@ struct Env {
     pod_name: Option<String>,
     replica_name: Option<String>,
     body_limit: usize,
+    max_versions: usize,
 }
 
 impl Env {
@@ -70,6 +71,7 @@ impl Env {
             pod_name: None,
             replica_name: None,
             body_limit: 50_000_000,
+            max_versions: 100,
         }
     }
     fn new() -> Self {
@@ -83,6 +85,12 @@ impl Env {
             body_limit: env::var("PYOCI_MAX_BODY")
                 .map(|f| f.parse().expect("PYOCI_MAX_BODY is not a valid integer"))
                 .unwrap_or(50_000_000),
+            max_versions: env::var("PYOCI_MAX_VERSIONS")
+                .map(|f| {
+                    f.parse()
+                        .expect("PYOCI_MAX_VERSIONS is not a valid integer")
+                })
+                .unwrap_or(100),
             otlp_endpoint: env::var("OTLP_ENDPOINT").ok(),
             otlp_auth: env::var("OTLP_AUTH").ok(),
             deployment_env: env::var("DEPLOYMENT_ENVIRONMENT").ok(),
@@ -125,7 +133,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", environ.port))
         .await
         .unwrap();
-    axum::serve(listener, router(environ.path, environ.body_limit))
+    axum::serve(listener, router(environ))
         .with_graceful_shutdown(shutdown_signal(cancel_token, otlp_handle))
         .await
         .unwrap();

@@ -60,6 +60,9 @@ PyOCI is expected to run behind a reverse proxy that handles TLS termination, or
 - `PORT`: port to listen on, defaults to `8080`.
 - `PYOCI_PATH`: Host PyOCI on a subpath, for example: `PYOCI_PATH="/acme-corp"`.
 - `PYOCI_MAX_BODY`: Limit the maximum accepted body size in bytes when publishing packages, defaults to 50MB.
+- `PYOCI_MAX_VERSIONS`: Limit how many versions (in reverse alphabetical order) to fetch filenames for when listing a package.
+    By default PyOCI will only include the last `100` versions.
+    To not limit the versions, set this value to `0`.
 - `OTLP_ENDPOINT`: If set, forward logs, traces, and metrics to this OTLP collector endpoint every 30s.
 - `OTLP_AUTH`: Full Authorization header value to use when sending OTLP requests.
 - `RUST_LOG`: Log filter, defaults to `info`.
