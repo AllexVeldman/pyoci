@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 
 use askama::Template;
 use axum::{
@@ -13,7 +13,7 @@ use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tracing::{debug, info_span, Instrument};
 
-use crate::{package::Package, pyoci::PyOciError, templates, PyOci};
+use crate::{package::Package, pyoci::PyOciError, templates, Env, PyOci};
 
 #[derive(Debug)]
 // Custom error type to translate between anyhow/axum
@@ -48,10 +48,11 @@ where
 #[derive(Debug, Clone)]
 struct PyOciState {
     subpath: Option<String>,
+    max_versions: usize,
 }
 
 /// Request Router
-pub fn router(subpath: Option<String>, body_limit: usize) -> Router {
+pub fn router(env: Env) -> Router {
     let pyoci_routes = Router::new()
         .fallback(
             get(|| async { StatusCode::NOT_FOUND })
@@ -73,9 +74,9 @@ pub fn router(subpath: Option<String>, body_limit: usize) -> Router {
         )
         .route(
             "/:registry/:namespace/",
-            post(publish_package).layer(DefaultBodyLimit::max(body_limit)),
+            post(publish_package).layer(DefaultBodyLimit::max(env.body_limit)),
         );
-    let router = match subpath {
+    let router = match env.path {
         Some(ref subpath) => Router::new().nest(subpath, pyoci_routes),
         None => pyoci_routes,
     };
@@ -83,7 +84,10 @@ pub fn router(subpath: Option<String>, body_limit: usize) -> Router {
         .layer(axum::middleware::from_fn(accesslog_middleware))
         .layer(axum::middleware::from_fn(trace_middleware))
         .route("/health", get(|| async { StatusCode::OK }))
-        .with_state(PyOciState { subpath })
+        .with_state(PyOciState {
+            subpath: env.path,
+            max_versions: env.max_versions,
+        })
 }
 
 /// Add cache-control for unmatched routes
@@ -118,6 +122,8 @@ async fn accesslog_middleware(
     let user_agent = headers
         .get("user-agent")
         .map(|ua| ua.to_str().unwrap_or(""));
+
+    tracing::debug!("Accept: {:?}", headers);
     tracing::info!(
         host = host.map(|value| value.0),
         "type" = "request",
@@ -151,7 +157,10 @@ async fn trace_middleware(
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn list_package(
-    State(PyOciState { subpath }): State<PyOciState>,
+    State(PyOciState {
+        subpath,
+        max_versions,
+    }): State<PyOciState>,
     headers: HeaderMap,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
@@ -159,7 +168,7 @@ async fn list_package(
 
     let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
     // Fetch at most 100 package versions
-    let files = client.list_package_files(&package, 100).await?;
+    let files = client.list_package_files(&package, max_versions).await?;
 
     // TODO: swap to application/vnd.pypi.simple.v1+json
     let template = templates::ListPackageTemplate {
@@ -174,14 +183,14 @@ async fn list_package(
 struct ListJson {
     info: Info,
     #[serde(serialize_with = "ser_releases")]
-    releases: Vec<String>,
+    releases: BTreeSet<String>,
 }
 
 /// Serializer for the releases field
 ///
 /// The releases serialize to {"<version>":[]} with a key for every version.
 /// The list is kept empty so we don't need to query for each version manifest
-fn ser_releases<S>(releases: &[String], serializer: S) -> Result<S::Ok, S::Error>
+fn ser_releases<S>(releases: &BTreeSet<String>, serializer: S) -> Result<S::Ok, S::Error>
 where
     S: Serializer,
 {
@@ -789,7 +798,7 @@ mod tests {
 
     #[tokio::test]
     async fn cache_control_unmatched() {
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
 
         let req = Request::builder()
             .method("GET")
@@ -807,7 +816,7 @@ mod tests {
 
     #[tokio::test]
     async fn cache_control_root() {
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
 
         let req = Request::builder()
             .method("GET")
@@ -825,7 +834,10 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_body_limit() {
-        let router = router(None, 10);
+        let router = router(Env {
+            body_limit: 10,
+            ..Env::default()
+        });
 
         let form = "Exceeds max body limit";
         let req = Request::builder()
@@ -841,7 +853,7 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_filename_invalid() {
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -955,7 +967,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1074,7 +1086,10 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()), 50_000_000);
+        let router = router(Env {
+            path: Some("/foo".to_string()),
+            ..Env::default()
+        });
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1121,7 +1136,12 @@ mod tests {
 
         let tags_list = TagListBuilder::default()
             .name("test-package")
-            .tags(vec!["0.1.0".to_string(), "1.2.3".to_string()])
+            .tags(vec![
+                "0.1.0".to_string(),
+                // max_versions is set to 2, so this version will be excluded
+                "0.0.1".to_string(),
+                "1.2.3".to_string(),
+            ])
             .build()
             .unwrap();
 
@@ -1202,7 +1222,10 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env {
+            max_versions: 2,
+            ..Env::default()
+        });
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1331,7 +1354,10 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()), 50_000_000);
+        let router = router(Env {
+            path: Some("/foo".to_string()),
+            ..Env::default()
+        });
         let req = Request::builder()
             .method("GET")
             .uri(format!("/foo/{encoded_url}/mockserver/test-package/"))
@@ -1392,7 +1418,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1483,7 +1509,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1534,7 +1560,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/json"))
@@ -1664,7 +1690,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1785,7 +1811,10 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()), 50_000_000);
+        let router = router(Env {
+            path: Some("/foo".to_string()),
+            ..Env::default()
+        });
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1807,7 +1836,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_file() {
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/.env")
@@ -1830,7 +1859,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_whl() {
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.whl")
@@ -1853,7 +1882,7 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_tar() {
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.tar.gz")
@@ -1944,7 +1973,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2016,7 +2045,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2066,7 +2095,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2164,7 +2193,7 @@ mod tests {
                 .await,
         ];
 
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("DELETE")
             .uri(format!("/{encoded_url}/mockserver/test-package/0.1.0"))
@@ -2260,7 +2289,10 @@ mod tests {
                 .await,
         ];
 
-        let router = router(Some("/foo".to_string()), 50_000_000);
+        let router = router(Env {
+            path: Some("/foo".to_string()),
+            ..Env::default()
+        });
         let req = Request::builder()
             .method("DELETE")
             .uri(format!("/foo/{encoded_url}/mockserver/test-package/0.1.0"))
@@ -2287,7 +2319,7 @@ mod tests {
 
     #[tokio::test]
     async fn health() {
-        let router = router(None, 50_000_000);
+        let router = router(Env::default());
         let req = Request::builder()
             .method("GET")
             .uri("/health")

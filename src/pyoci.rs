@@ -17,6 +17,7 @@ use reqwest::Response;
 use serde::Deserialize;
 use serde_json::to_string_pretty;
 use sha2::{Digest, Sha256};
+use std::collections::BTreeSet;
 use std::collections::HashMap;
 use std::str::FromStr;
 use time::format_description::well_known::Rfc3339;
@@ -205,11 +206,11 @@ where
     pub async fn list_package_versions<'a>(
         &mut self,
         package: &'a Package<'a, WithoutFileName>,
-    ) -> Result<Vec<String>> {
+    ) -> Result<BTreeSet<String>> {
         let name = package.oci_name();
         let result = self.list_tags(&name).await?;
         tracing::debug!("{:?}", result);
-        Ok(result.tags().to_owned())
+        Ok(result)
     }
 
     /// List all files for the given package
@@ -219,15 +220,19 @@ where
     pub async fn list_package_files<'a>(
         &mut self,
         package: &'a Package<'a, WithoutFileName>,
-        n: usize,
+        mut n: usize,
     ) -> Result<Vec<Package<'a, WithFileName>>> {
         let name = package.oci_name();
-        let result = self.list_tags(&name).await?;
-        tracing::debug!("{:?}", result);
-        let tags = result.tags();
+        let tags = self.list_tags(&name).await?;
         let mut files: Vec<Package<WithFileName>> = Vec::new();
         let futures = FuturesUnordered::new();
 
+        tracing::info!("# of tags: {}", tags.len());
+
+        if n == 0 {
+            // Fetch all versions
+            n = tags.len()
+        }
         if tags.len() > n {
             tracing::warn!(
                 "TagsList contains {} tags, only fetching the first {n}",
@@ -684,8 +689,10 @@ where
     }
 
     /// List the available tags for a package
+    ///
+    /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
     #[tracing::instrument(skip_all, fields(otel.name = name))]
-    async fn list_tags(&mut self, name: &str) -> anyhow::Result<TagList> {
+    async fn list_tags(&mut self, name: &str) -> anyhow::Result<BTreeSet<String>> {
         let url = build_url!(&self, "/v2/{}/tags/list", name);
         let request = self.transport.get(url);
         let response = self.transport.send(request).await?;
@@ -693,7 +700,36 @@ where
             StatusCode::OK => {}
             status => return Err(PyOciError::from((status, response.text().await?)).into()),
         };
-        let tags = response.json::<TagList>().await?;
+        let mut link_header = match response.headers().get("link") {
+            Some(link) => Some(Link::try_from(link)?),
+            None => None,
+        };
+        let mut tags: BTreeSet<String> = response
+            .json::<TagList>()
+            .await?
+            .tags()
+            .iter()
+            .map(|f| f.to_string())
+            .collect();
+        while let Some(ref link) = link_header {
+            // Follow the link headers as long as a Link header is returned
+            let mut url = self.registry.clone();
+            url.set_path("");
+            let url = url.join(&link.0)?;
+            let request = self.transport.get(url);
+            let response = self.transport.send(request).await?;
+            match response.status() {
+                StatusCode::OK => {}
+                status => return Err(PyOciError::from((status, response.text().await?)).into()),
+            };
+            link_header = match response.headers().get("link") {
+                Some(link) => Some(Link::try_from(link)?),
+                None => None,
+            };
+            let tag_list = response.json::<TagList>().await?;
+            tags.extend(tag_list.tags().iter().map(|f| f.to_string()));
+        }
+
         Ok(tags)
     }
 
@@ -795,6 +831,55 @@ where
 /// static EmptyConfig Descriptor
 fn empty_config() -> Blob {
     Blob::new("{}".into(), "application/vnd.oci.empty.v1+json")
+}
+
+struct Link(String);
+
+impl TryFrom<&HeaderValue> for Link {
+    type Error = PyOciError;
+
+    fn try_from(value: &HeaderValue) -> std::result::Result<Self, Self::Error> {
+        let value = match value.to_str() {
+            Ok(value) => value,
+            _ => {
+                return Err(PyOciError::from((
+                    StatusCode::BAD_GATEWAY,
+                    "OCI registry provided invalid Link header",
+                )))
+            }
+        };
+        let parts = value.split(';').collect::<Vec<_>>();
+        tracing::debug!("{parts:?}");
+        let target = match parts.first().map(|f| f.trim()) {
+            Some(target) if target.starts_with('<') && target.ends_with('>') => {
+                target.strip_prefix('<').unwrap().strip_suffix('>').unwrap()
+            }
+            _ => {
+                return Err(PyOciError::from((
+                    StatusCode::BAD_GATEWAY,
+                    "OCI registry provided an invalid Link target",
+                )))
+            }
+        };
+
+        // Check the Link contains the correct "rel"
+        let mut valid_rel = false;
+        for param in &parts[1..] {
+            match param.split_once('=') {
+                Some((key, value)) if key.trim() == "rel" && value.trim() == "\"next\"" => {
+                    valid_rel = true
+                }
+                _ => {}
+            }
+        }
+        if !valid_rel {
+            return Err(PyOciError::from((
+                StatusCode::BAD_GATEWAY,
+                "OCI registry provide invalid Link rel",
+            )));
+        }
+        Ok(Link(target.to_string()))
+    }
 }
 
 #[cfg(test)]
@@ -975,6 +1060,125 @@ mod tests {
             .downcast::<PyOciError>()
             .expect("Error should be PyOciError");
         assert_eq!(err.status, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn list_tags() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        let tags = r#"{
+          "name": "mockserver/bar",
+          "tags": [
+            "1",
+            "2",
+            "3"
+          ]
+        }"#;
+        server
+            .mock("GET", "/v2/mockserver/bar/tags/list")
+            .with_status(200)
+            .with_body(tags)
+            .create_async()
+            .await;
+
+        let mut pyoci = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        let result = pyoci
+            .list_tags("mockserver/bar")
+            .await
+            .expect("Valid response");
+
+        assert_eq!(
+            result,
+            BTreeSet::from(["1".to_string(), "2".to_string(), "3".to_string()])
+        );
+    }
+
+    #[tokio::test]
+    async fn list_tags_link_header() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+
+        server
+            .mock("GET", "/v2/mockserver/bar/tags/list")
+            .with_header(
+                "Link",
+                "</v2/mockserver/bar/tags/list?n=3&last=3>; rel=\"next\"",
+            )
+            .with_status(200)
+            .with_body(
+                r#"{
+                  "name": "mockserver/bar",
+                  "tags": [
+                    "1",
+                    "2",
+                    "3"
+                  ]
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        server
+            .mock("GET", "/v2/mockserver/bar/tags/list?n=3&last=3")
+            .with_header(
+                "Link",
+                "</v2/mockserver/bar/tags/list?n=3&last=6>; rel=\"next\"",
+            )
+            .with_status(200)
+            .with_body(
+                r#"{
+                  "name": "mockserver/bar",
+                  "tags": [
+                    "4",
+                    "5",
+                    "6"
+                  ]
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        server
+            .mock("GET", "/v2/mockserver/bar/tags/list?n=3&last=6")
+            .with_status(200)
+            .with_body(
+                r#"{
+                  "name": "mockserver/bar",
+                  "tags": [
+                    "7"
+                  ]
+                }"#,
+            )
+            .create_async()
+            .await;
+
+        let mut pyoci = PyOci {
+            registry: Url::parse(&url).expect("valid url"),
+            transport: HttpTransport::new(None).unwrap(),
+        };
+
+        let result = pyoci
+            .list_tags("mockserver/bar")
+            .await
+            .expect("Valid response");
+
+        assert_eq!(
+            result,
+            BTreeSet::from([
+                "1".to_string(),
+                "2".to_string(),
+                "3".to_string(),
+                "4".to_string(),
+                "5".to_string(),
+                "6".to_string(),
+                "7".to_string(),
+            ])
+        );
     }
 
     #[tokio::test]
@@ -1374,5 +1578,14 @@ mod tests {
             result.message,
             "Platform '.tar.gz' already exists for version '1'"
         );
+    }
+
+    #[test]
+    fn link() {
+        let link = Link::try_from(&HeaderValue::from_static("</v2/allexveldman/hello_world/tags/list?last=0.0.1-example.1.poetry.2824051&n=5>; rel=\"next\"")).unwrap();
+        assert_eq!(
+            link.0,
+            "/v2/allexveldman/hello_world/tags/list?last=0.0.1-example.1.poetry.2824051&n=5"
+        )
     }
 }
