@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.21](https://github.com/AllexVeldman/pyoci/compare/v0.1.20...v0.1.21) (2025-02-06)
+
+
+### Bug Fixes
+
+* Package version list incomplete ([#167](https://github.com/AllexVeldman/pyoci/issues/167)) ([1660245](https://github.com/AllexVeldman/pyoci/commit/1660245b1a0c8c5fc918b8040b40b5241749d56e)), closes [#166](https://github.com/AllexVeldman/pyoci/issues/166)
+
 ## [0.1.20](https://github.com/AllexVeldman/pyoci/compare/v0.1.19...v0.1.20) (2025-01-31)
 
 
