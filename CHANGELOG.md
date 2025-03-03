@@ -1,5 +1,29 @@
 # Changelog
 
+## [0.1.22](https://github.com/AllexVeldman/pyoci/compare/v0.1.21...v0.1.22) (2025-03-03)
+
+
+### Bug Fixes
+
+* Breaking changes in Axum ([#154](https://github.com/AllexVeldman/pyoci/issues/154)) ([9372d1b](https://github.com/AllexVeldman/pyoci/commit/9372d1b2eca224249cab8030434bd66b41b94ee7))
+
+
+### Miscellaneous Chores
+
+* **release:** Give dependency updates their own section in changelog ([#177](https://github.com/AllexVeldman/pyoci/issues/177)) ([e606350](https://github.com/AllexVeldman/pyoci/commit/e606350fe104ddeed13f4fa6826c135baae992fd))
+* Switch console log to a more compact format ([#174](https://github.com/AllexVeldman/pyoci/issues/174)) ([7b90e86](https://github.com/AllexVeldman/pyoci/commit/7b90e86cf6756ffa8286c893b1248f041a962f31))
+
+
+### Dependency Updates
+
+* bump async-trait from 0.1.85 to 0.1.87 ([#176](https://github.com/AllexVeldman/pyoci/issues/176)) ([f1d7eb7](https://github.com/AllexVeldman/pyoci/commit/f1d7eb777acd09164857ae61462ef329db4097fd))
+* bump axum from 0.7.9 to 0.8.1 ([#154](https://github.com/AllexVeldman/pyoci/issues/154)) ([9372d1b](https://github.com/AllexVeldman/pyoci/commit/9372d1b2eca224249cab8030434bd66b41b94ee7))
+* bump bytes from 1.9.0 to 1.10.0 ([#171](https://github.com/AllexVeldman/pyoci/issues/171)) ([45eb946](https://github.com/AllexVeldman/pyoci/commit/45eb946e1e326cc0e295ffdff3feb69c5eac42dd))
+* bump pin-project from 1.1.8 to 1.1.9 ([#172](https://github.com/AllexVeldman/pyoci/issues/172)) ([4921104](https://github.com/AllexVeldman/pyoci/commit/49211044307bd7adc569232c323650cc06610c18))
+* bump prost from 0.13.4 to 0.13.5 ([#179](https://github.com/AllexVeldman/pyoci/issues/179)) ([a124bdb](https://github.com/AllexVeldman/pyoci/commit/a124bdb3fea0469418c082b4a927916efac91c73))
+* bump serde_json from 1.0.137 to 1.0.139 ([#173](https://github.com/AllexVeldman/pyoci/issues/173)) ([45edf47](https://github.com/AllexVeldman/pyoci/commit/45edf47dc077794e09eb8319c9fcbc84c172390a))
+* bump the opentelemetry group with 3 updates ([#178](https://github.com/AllexVeldman/pyoci/issues/178)) ([2913720](https://github.com/AllexVeldman/pyoci/commit/2913720bdc26b0979a0bc961cf5dd3e851db2dde))
+
 ## [0.1.21](https://github.com/AllexVeldman/pyoci/compare/v0.1.20...v0.1.21) (2025-02-06)
 
 
