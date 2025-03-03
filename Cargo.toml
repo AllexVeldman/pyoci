@@ -55,9 +55,9 @@ tokio = { version = "1.43.0", features = ["macros", "rt-multi-thread", "signal",
 tokio-util = "0.7.13"
 
 # OTLP dependencies
-opentelemetry-proto = { version = "0.27.0", default-features = false, features = ["gen-tonic-messages", "logs", "trace", "metrics"], optional = true }
-opentelemetry = { version = "0.27.1", default-features = false, features = ["trace"], optional = true }
-opentelemetry_sdk = { version = "0.27.1", default-features = false, features = ["trace"], optional = true }
+opentelemetry-proto = { version = "0.28.0", default-features = false, features = ["gen-tonic-messages", "logs", "trace", "metrics"], optional = true }
+opentelemetry = { version = "0.28.0", default-features = false, features = ["trace"], optional = true }
+opentelemetry_sdk = { version = "0.28.0", default-features = false, features = ["trace"], optional = true }
 tracing-core = {version = "0.1.32", optional = true }
 prost = {version = "0.13.5", optional = true }
 axum-extra = { version = "0.10.0", default-features = false }
