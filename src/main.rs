@@ -147,7 +147,9 @@ fn setup_tracing(
     cancel_token: CancellationToken,
 ) -> (impl Subscriber, Option<JoinHandle<()>>) {
     // Setup tracing
-    let fmt_layer = tracing_subscriber::fmt::layer();
+    let fmt_layer = tracing_subscriber::fmt::layer()
+        .with_target(false)
+        .compact();
 
     let el_reg = tracing_subscriber::registry()
         .with(EnvFilter::new(&environ.rust_log))
