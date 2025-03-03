@@ -29,4 +29,5 @@ jobs:
             test
             build
             ci
+            deps
           requireScope: false
