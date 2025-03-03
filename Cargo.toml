@@ -59,7 +59,7 @@ opentelemetry-proto = { version = "0.27.0", default-features = false, features =
 opentelemetry = { version = "0.27.1", default-features = false, features = ["trace"], optional = true }
 opentelemetry_sdk = { version = "0.27.1", default-features = false, features = ["trace"], optional = true }
 tracing-core = {version = "0.1.32", optional = true }
-prost = {version = "0.13.4", optional = true }
+prost = {version = "0.13.5", optional = true }
 axum-extra = { version = "0.10.0", default-features = false }
 
 
