@@ -55,6 +55,10 @@
     {
       "type": "ci",
       "section": "Continuous Integration"
+    },
+    {
+      "type": "deps",
+      "section": "Dependency Updates"
     }
   ]
 }

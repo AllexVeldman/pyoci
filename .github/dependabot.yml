@@ -4,7 +4,9 @@ updates:
     directory: "/"
     schedule:
       interval: "weekly"
+    commit-message:
+      prefix: "deps"
     groups:
       opentelemetry:
-        patterns: 
+        patterns:
         - "opentelemetry*"
