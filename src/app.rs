@@ -9,6 +9,7 @@ use axum::{
     routing::{get, post},
     Json, Router,
 };
+use axum_extra::extract::{rejection::HostRejection, Host};
 use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tracing::{debug, info_span, Instrument};
@@ -63,17 +64,17 @@ pub fn router(env: Env) -> Router {
             get(|| async { Redirect::to(env!("CARGO_PKG_HOMEPAGE")) })
                 .layer(axum::middleware::from_fn(cache_control_middleware)),
         )
-        .route("/:registry/:namespace/:package/", get(list_package))
+        .route("/{registry}/{namespace}/{package}/", get(list_package))
         .route(
-            "/:registry/:namespace/:package/json",
+            "/{registry}/{namespace}/{package}/json",
             get(list_package_json),
         )
         .route(
-            "/:registry/:namespace/:package/:filename",
+            "/{registry}/{namespace}/{package}/{filename}",
             get(download_package).delete(delete_package_version),
         )
         .route(
-            "/:registry/:namespace/",
+            "/{registry}/{namespace}/",
             post(publish_package).layer(DefaultBodyLimit::max(env.body_limit)),
         );
     let router = match env.path {
@@ -110,7 +111,7 @@ async fn cache_control_middleware(
 /// Log incoming requests
 async fn accesslog_middleware(
     method: axum::http::Method,
-    host: Option<axum::extract::Host>,
+    host: Result<Host, HostRejection>,
     uri: axum::http::Uri,
     headers: axum::http::HeaderMap,
     request: axum::extract::Request,
@@ -125,7 +126,7 @@ async fn accesslog_middleware(
 
     tracing::debug!("Accept: {:?}", headers);
     tracing::info!(
-        host = host.map(|value| value.0),
+        host = host.map(|value| value.0).unwrap_or("".to_string()),
         "type" = "request",
         status,
         method = method.to_string(),
