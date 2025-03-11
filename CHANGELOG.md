@@ -1,5 +1,16 @@
 # Changelog
 
+## [0.1.23](https://github.com/AllexVeldman/pyoci/compare/v0.1.22...v0.1.23) (2025-03-11)
+
+
+### Dependency Updates
+
+* Bump mockito from 1.6.1 to 1.7.0 ([#184](https://github.com/AllexVeldman/pyoci/issues/184)) ([b559ebd](https://github.com/AllexVeldman/pyoci/commit/b559ebd85b4782f03a3094359aa0a49eafa18cb5))
+* Bump pin-project from 1.1.9 to 1.1.10 ([#182](https://github.com/AllexVeldman/pyoci/issues/182)) ([4c46766](https://github.com/AllexVeldman/pyoci/commit/4c4676669fda8fcdb53868e2fd033275b557db54))
+* Bump ring from 0.17.8 to 0.17.13 in the cargo group ([#180](https://github.com/AllexVeldman/pyoci/issues/180)) ([360a256](https://github.com/AllexVeldman/pyoci/commit/360a256503e04cd9113f47d9c316435c4a2c564c))
+* Bump serde_json from 1.0.139 to 1.0.140 ([#183](https://github.com/AllexVeldman/pyoci/issues/183)) ([9d975d3](https://github.com/AllexVeldman/pyoci/commit/9d975d3c9b70643849b45c96b7575748dab25471))
+* Bump tokio from 1.43.0 to 1.44.0 ([#181](https://github.com/AllexVeldman/pyoci/issues/181)) ([381555c](https://github.com/AllexVeldman/pyoci/commit/381555c3a95e99ef8a3a4c5edb35afc9ec2809b2))
+
 ## [0.1.22](https://github.com/AllexVeldman/pyoci/compare/v0.1.21...v0.1.22) (2025-03-03)
 
 
