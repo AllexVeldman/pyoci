@@ -3,6 +3,9 @@ name = "hello-world"
 version = "0.0.1"
 description = "Example project for PyOCI with poetry"
 authors = ["Allex Veldman <allexveldman@gmail.com>"]
+homepage = "https://pyoci.com"
+repository = "https://github.com/allexveldman/pyoci"
+documentation = "https://github.com/allexveldman/pyoci/README.md"
 
 classifiers = [
     "PyOCI :: Label :: org.opencontainers.image.url :: https://github.com/allexveldman/pyoci",

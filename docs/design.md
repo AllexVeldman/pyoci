@@ -11,6 +11,8 @@ This allows multiple build artifacts to be published to the same package version
 containing the digest of the package blob.
 This is so we don't need to pull the manifest itself to get the digest of the package.
 
+`com.pyoci.project_urls` is added from the published Project-URLs and included in the `<>/json` endpoint.
+
 ```json
 {
   "schemaVersion": 2,
@@ -27,7 +29,8 @@ This is so we don't need to pull the manifest itself to get the digest of the pa
       },
       "annotations": {
         "org.opencontainers.image.created":"2024-11-20T20:23:36Z",
-        "com.pyoci.sha256_digest": "b7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0"
+        "com.pyoci.sha256_digest": "b7513fb69106a855b69153582dec476677b3c79f4a13cfee6fb7a356cfa754c0",
+        "com.pyoci.project_urls": "{\"Homepage\":\"https://pyoci.com\",\"Repository\":\"https://github.com/allexveldman/pyoci\"}"
       }
     }
   ],
@@ -42,7 +45,7 @@ This is so we don't need to pull the manifest itself to get the digest of the pa
 When a package is published with `PyOci :: Label :: <key> :: <value>` classifiers,
 the key/value pair will be added to the ImageManifest annotations.
 
-'org.opencontainers.image.created' will always be added.
+`org.opencontainers.image.created` will always be added.
 
 ```json
 {
@@ -80,6 +83,7 @@ the key/value pair will be added to the ImageManifest annotations.
 - Name normalization: https://packaging.python.org/en/latest/specifications/name-normalization/#name-normalization
 - `.tar.gz`: https://packaging.python.org/en/latest/specifications/source-distribution-format/#source-distribution-file-name
 - `.whl`: https://packaging.python.org/en/latest/specifications/binary-distribution-format/#file-name-convention
+- Core metadata: https://packaging.python.org/en/latest/specifications/core-metadata/
 
 ### OCI
 - Token auth: https://distribution.github.io/distribution/spec/auth/token/
