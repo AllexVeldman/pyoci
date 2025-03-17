@@ -1,4 +1,4 @@
-use std::marker::PhantomData;
+use std::{collections::HashMap, marker::PhantomData};
 
 use anyhow::{bail, Result};
 use http::StatusCode;
@@ -22,6 +22,7 @@ pub struct Package<'a, T: FileState> {
     version: Option<String>,
     arch: Option<String>,
     sha256: Option<String>,
+    project_urls: Option<String>,
     _phantom: PhantomData<T>,
 }
 
@@ -41,6 +42,7 @@ impl<'a, T: FileState> Package<'a, T> {
             version: Some(tag.replace('-', "+")),
             arch: Some(arch.to_string()),
             sha256: None,
+            project_urls: None,
             _phantom: PhantomData,
         }
     }
@@ -95,6 +97,7 @@ impl Package<'_, WithoutFileName> {
             version: None,
             arch: None,
             sha256: None,
+            project_urls: None,
             _phantom: PhantomData,
         }
     }
@@ -143,12 +146,28 @@ impl Package<'_, WithFileName> {
             version: Some(version.to_string()),
             arch: Some(arch.to_string()),
             sha256: None,
+            project_urls: None,
             _phantom: PhantomData,
         })
     }
 
     pub fn with_sha256(self, sha256: Option<String>) -> Self {
         Self { sha256, ..self }
+    }
+
+    pub fn with_project_urls(self, project_urls: Option<String>) -> Self {
+        Self {
+            project_urls,
+            ..self
+        }
+    }
+
+    pub fn project_urls(&self) -> Option<HashMap<String, String>> {
+        if let Some(project_urls) = &self.project_urls {
+            serde_json::from_str(project_urls).unwrap_or_default()
+        } else {
+            None
+        }
     }
 
     /// Tag of the package as used for the OCI registry

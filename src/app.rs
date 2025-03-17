@@ -183,6 +183,7 @@ async fn list_package(
 #[derive(Serialize)]
 struct ListJson {
     info: Info,
+    project_urls: HashMap<String, String>,
     #[serde(serialize_with = "ser_releases")]
     releases: BTreeSet<String>,
 }
@@ -221,10 +222,24 @@ async fn list_package_json(
 
     let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
     let versions = client.list_package_versions(&package).await?;
+
+    let mut project_urls = HashMap::new();
+    if let Some(last_version) = versions.last() {
+        if let Some(package) = client
+            .package_info_for_ref(&package, last_version)
+            .await?
+            .first()
+            .map(|p| p.project_urls())
+            .unwrap()
+        {
+            project_urls = package
+        }
+    }
     let response = ListJson {
         info: Info {
             name: package.name().to_string(),
         },
+        project_urls,
         releases: versions,
     };
 
@@ -294,6 +309,7 @@ async fn publish_package(
             form_data.content,
             form_data.labels,
             form_data.sha256,
+            form_data.project_urls,
         )
         .await?;
     Ok("Published".into())
@@ -315,12 +331,13 @@ fn get_auth(headers: &HeaderMap) -> Option<HeaderValue> {
 /// Form data for the upload API
 ///
 /// ref: https://docs.pypi.org/api/upload/
-#[derive(Debug)]
+#[derive(Debug, Eq, PartialEq)]
 struct UploadForm {
     filename: String,
     content: Vec<u8>,
     labels: HashMap<String, String>,
     sha256: Option<String>,
+    project_urls: HashMap<String, String>,
 }
 
 impl UploadForm {
@@ -334,6 +351,7 @@ impl UploadForm {
         let mut filename = None;
         let mut sha256 = None;
         let mut labels = HashMap::new();
+        let mut project_urls = HashMap::new();
 
         while let Some(field) = multipart.next_field().await? {
             let Some(field_name) = field.name().map(|f| f.to_owned()) else {
@@ -359,6 +377,15 @@ impl UploadForm {
                     } else {
                         debug!("Discarding field 'classifiers': {classifier}");
                     };
+                }
+                "project_urls" => {
+                    let project_url = field.text().await?;
+                    if let [key, value] = project_url.splitn(2, ", ").collect::<Vec<_>>()[..] {
+                        project_urls.insert(key.to_string(), value.to_string());
+                        debug!("Found Project-URL '{key}={value}'");
+                    } else {
+                        debug!("Invalid Project-URL '{project_url}'");
+                    }
                 }
                 "sha256_digest" => sha256 = Some(field.text().await?),
                 name => debug!("Discarding field '{name}': {}", field.text().await?),
@@ -438,6 +465,7 @@ impl UploadForm {
             content: content.into(),
             labels,
             sha256,
+            project_urls,
         })
     }
 }
@@ -794,6 +822,59 @@ mod tests {
                 ),
                 ("other-label".to_string(), "foobar".to_string())
             ])
+        );
+    }
+
+    #[tokio::test]
+    /// Check if project URLs are properly parsed
+    async fn upload_form_project_urls() {
+        let form = "--foobar\r\n\
+            Content-Disposition: form-data; name=\":action\"\r\n\
+            \r\n\
+            file_upload\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"protocol_version\"\r\n\
+            \r\n\
+            1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"project_urls\"\r\n\
+            \r\n\
+            Repository, https://github/allexveldman/pyoci\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"project_urls\"\r\n\
+            \r\n\
+            Homepage, https://pyoci.com\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
+            \r\n\
+            someawesomepackagedata\r\n\
+            --foobar--\r\n";
+        let req: Request<Body> = Request::builder()
+            .method("POST")
+            .uri("/pypi/pytest/")
+            .header("Content-Type", "multipart/form-data; boundary=foobar")
+            .body(form.to_string().into())
+            .unwrap();
+        let multipart = Multipart::from_request(req, &()).await.unwrap();
+
+        let result = UploadForm::from_multipart(multipart)
+            .await
+            .expect("Valid Form");
+        assert_eq!(
+            result,
+            UploadForm {
+                filename: "foobar-1.0.0.tar.gz".to_string(),
+                content: String::from("someawesomepackagedata").into_bytes(),
+                labels: HashMap::new(),
+                sha256: None,
+                project_urls: HashMap::from([
+                    (
+                        "Repository".to_string(),
+                        "https://github/allexveldman/pyoci".to_string()
+                    ),
+                    ("Homepage".to_string(), "https://pyoci.com".to_string())
+                ])
+            }
         );
     }
 
@@ -1546,12 +1627,47 @@ mod tests {
             .build()
             .unwrap();
 
+        let index = ImageIndexBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.index.v1+json")
+            .artifact_type("application/pyoci.package.v1")
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest(digest("FooBar"))
+                .size(6_u64)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".tar.gz".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .annotations(HashMap::from([(
+                    "com.pyoci.project_urls".to_string(),
+                    r#"{"Repository": "https://github.com/allexveldman/pyoci"}"#.to_string(),
+                )]))
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
         let mocks = vec![
             // List tags
             server
                 .mock("GET", "/v2/mockserver/test_package/tags/list")
                 .with_status(200)
                 .with_body(serde_json::to_string::<TagList>(&tags_list).unwrap())
+                .create_async()
+                .await,
+            // Pull 1.2.3 manifest for project_urls
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/1.2.3")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.index.v1+json")
+                .with_body(serde_json::to_string::<ImageIndex>(&index).unwrap())
                 .create_async()
                 .await,
             server
@@ -1584,9 +1700,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body,
-            formatdoc!(
-                r#"{{"info":{{"name":"test_package"}},"releases":{{"0.1.0":[],"1.2.3":[]}}}}"#
-            )
+            r#"{"info":{"name":"test_package"},"project_urls":{"Repository":"https://github.com/allexveldman/pyoci"},"releases":{"0.1.0":[],"1.2.3":[]}}"#
         );
     }
 

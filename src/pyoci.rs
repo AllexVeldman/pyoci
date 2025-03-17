@@ -222,8 +222,7 @@ where
         package: &'a Package<'a, WithoutFileName>,
         mut n: usize,
     ) -> Result<Vec<Package<'a, WithFileName>>> {
-        let name = package.oci_name();
-        let tags = self.list_tags(&name).await?;
+        let tags = self.list_tags(&package.oci_name()).await?;
         let mut files: Vec<Package<WithFileName>> = Vec::new();
         let futures = FuturesUnordered::new();
 
@@ -248,7 +247,7 @@ where
         // so this will result in the wanted list of tags in most cases.
         for tag in tags.iter().rev().take(n) {
             let pyoci = self.clone();
-            futures.push(pyoci.package_info_for_ref(package, &name, tag));
+            futures.push(pyoci.package_info_for_ref(package, tag));
         }
         for result in futures
             .collect::<Vec<Result<Vec<Package<WithFileName>>, Error>>>()
@@ -259,13 +258,12 @@ where
         Ok(files)
     }
 
-    async fn package_info_for_ref<'a>(
+    pub async fn package_info_for_ref<'a>(
         mut self,
         package: &'a Package<'a, WithoutFileName>,
-        name: &str,
         reference: &str,
     ) -> Result<Vec<Package<'a, WithFileName>>> {
-        let manifest = self.pull_manifest(name, reference).await?;
+        let manifest = self.pull_manifest(&package.oci_name(), reference).await?;
         let index = match manifest {
             Some(Manifest::Index(index)) => index,
             Some(Manifest::Manifest(_)) => {
@@ -293,16 +291,20 @@ where
         for manifest in index.manifests() {
             match manifest.platform().as_ref().unwrap().architecture() {
                 oci_spec::image::Arch::Other(arch) => {
-                    let sha256_digest = if let Some(annotations) = manifest.annotations() {
-                        annotations
+                    let mut sha256_digest = None;
+                    let mut project_urls = None;
+                    if let Some(annotations) = manifest.annotations() {
+                        sha256_digest = annotations
                             .get("com.pyoci.sha256_digest")
+                            .map(|v| v.to_string());
+                        project_urls = annotations
+                            .get("com.pyoci.project_urls")
                             .map(|v| v.to_string())
-                    } else {
-                        None
                     };
                     let file = package
                         .with_oci_file(reference, arch)
-                        .with_sha256(sha256_digest);
+                        .with_sha256(sha256_digest)
+                        .with_project_urls(project_urls);
                     files.push(file);
                 }
                 arch => bail!("Unsupported architecture '{}'", arch),
@@ -402,6 +404,7 @@ where
         file: Vec<u8>,
         mut annotations: HashMap<String, String>,
         sha256_digest: Option<String>,
+        project_urls: HashMap<String, String>,
     ) -> Result<()> {
         let name = package.oci_name();
         let tag = package.oci_tag();
@@ -425,6 +428,10 @@ where
 
         annotations.extend(creation_annotation.clone());
         index_manifest_annotations.extend(creation_annotation.clone());
+        index_manifest_annotations.insert(
+            "com.pyoci.project_urls".to_string(),
+            serde_json::to_string(&project_urls)?,
+        );
 
         // Build the Manifest
         let manifest = self.image_manifest(package, &layer, annotations);
@@ -1222,7 +1229,7 @@ mod tests {
         let package = Package::new("ghcr.io", "mockserver", "bar");
 
         let result = pyoci
-            .package_info_for_ref(&package, "mockserver/bar", "1")
+            .package_info_for_ref(&package, "1")
             .await
             .expect("Valid response");
 
@@ -1274,7 +1281,7 @@ mod tests {
         let package = Package::new("ghcr.io", "mockserver", "bar");
 
         let result = pyoci
-            .package_info_for_ref(&package, "mockserver/bar", "1")
+            .package_info_for_ref(&package, "1")
             .await
             .expect("Valid response");
 
