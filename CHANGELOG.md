@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.24](https://github.com/AllexVeldman/pyoci/compare/v0.1.23...v0.1.24) (2025-03-17)
+
+
+### Features
+
+* Include `project_urls` in `<package>/json` ([#192](https://github.com/AllexVeldman/pyoci/issues/192)) ([68e1fed](https://github.com/AllexVeldman/pyoci/commit/68e1fedf50f91ef8db7e5d3150262cc77422d823))
+
 ## [0.1.23](https://github.com/AllexVeldman/pyoci/compare/v0.1.22...v0.1.23) (2025-03-11)
 
 
