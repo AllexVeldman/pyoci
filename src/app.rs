@@ -183,7 +183,6 @@ async fn list_package(
 #[derive(Serialize)]
 struct ListJson {
     info: Info,
-    project_urls: HashMap<String, String>,
     #[serde(serialize_with = "ser_releases")]
     releases: BTreeSet<String>,
 }
@@ -206,6 +205,7 @@ where
 #[derive(Serialize)]
 struct Info {
     name: String,
+    project_urls: HashMap<String, String>,
 }
 
 /// List package JSON request handler
@@ -238,8 +238,8 @@ async fn list_package_json(
     let response = ListJson {
         info: Info {
             name: package.name().to_string(),
+            project_urls,
         },
-        project_urls,
         releases: versions,
     };
 
@@ -1700,7 +1700,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body,
-            r#"{"info":{"name":"test_package"},"project_urls":{"Repository":"https://github.com/allexveldman/pyoci"},"releases":{"0.1.0":[],"1.2.3":[]}}"#
+            r#"{"info":{"name":"test_package","project_urls":{"Repository":"https://github.com/allexveldman/pyoci"}},"releases":{"0.1.0":[],"1.2.3":[]}}"#
         );
     }
 
