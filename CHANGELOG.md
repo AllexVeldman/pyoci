@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.25](https://github.com/AllexVeldman/pyoci/compare/v0.1.24...v0.1.25) (2025-03-18)
+
+
+### Bug Fixes
+
+* `project_urls` not in correct location ([#194](https://github.com/AllexVeldman/pyoci/issues/194)) ([40455a0](https://github.com/AllexVeldman/pyoci/commit/40455a0c8f458fcb379573bb96c04acb7336c2fd))
+
 ## [0.1.24](https://github.com/AllexVeldman/pyoci/compare/v0.1.23...v0.1.24) (2025-03-17)
 
 
