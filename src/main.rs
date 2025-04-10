@@ -13,12 +13,10 @@ mod pyoci;
 mod templates;
 // HTTP Transport
 mod transport;
-// Services
+// HTTP Services
 mod service;
-
-// Test mocks
-#[cfg(test)]
-mod mocks;
+// Wrapper around time
+mod time;
 
 use pyoci::PyOci;
 use tokio::task::JoinHandle;

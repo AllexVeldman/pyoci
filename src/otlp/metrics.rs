@@ -3,7 +3,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use prost::Message;
-use time::OffsetDateTime;
 
 use opentelemetry_proto::tonic::collector::metrics::v1::ExportMetricsServiceRequest;
 use opentelemetry_proto::tonic::common::v1::any_value;
@@ -20,6 +19,7 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
 use crate::otlp::Toilet;
+use crate::time::now_utc;
 use crate::USER_AGENT;
 
 /// Set of metrics to track
@@ -56,12 +56,12 @@ struct UptimeMetric {
 impl UptimeMetric {
     fn new() -> Self {
         Self {
-            start_ns: OffsetDateTime::now_utc().unix_timestamp_nanos() as f64,
+            start_ns: now_utc().unix_timestamp_nanos() as f64,
         }
     }
 
     fn as_metric(&self, attributes: &[KeyValue]) -> Metric {
-        let now = OffsetDateTime::now_utc().unix_timestamp_nanos();
+        let now = now_utc().unix_timestamp_nanos();
         let now_u64: u64 = now.try_into().expect("timestamp does not fit in u64");
         let diff = (now as f64 - self.start_ns) / 1_000_000_000.0;
         Metric {
@@ -101,7 +101,7 @@ impl RequestsMetric {
     }
 
     fn as_metric(&self, attributes: &[KeyValue]) -> Metric {
-        let now: u64 = OffsetDateTime::now_utc()
+        let now: u64 = now_utc()
             .unix_timestamp_nanos()
             .try_into()
             .expect("timestamp does not fit in u64");

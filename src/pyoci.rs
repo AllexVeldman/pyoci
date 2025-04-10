@@ -23,10 +23,7 @@ use std::str::FromStr;
 use time::format_description::well_known::Rfc3339;
 use url::Url;
 
-#[cfg(test)]
-use crate::mocks::OffsetDateTime;
-#[cfg(not(test))]
-use time::OffsetDateTime;
+use crate::time::now_utc;
 
 use crate::package::{Package, WithFileName, WithoutFileName};
 use crate::transport::{HttpTransport, Transport};
@@ -423,7 +420,7 @@ where
 
         let creation_annotation = HashMap::from([(
             "org.opencontainers.image.created".to_string(),
-            OffsetDateTime::now_utc().format(&Rfc3339)?,
+            now_utc().format(&Rfc3339)?,
         )]);
 
         annotations.extend(creation_annotation.clone());
