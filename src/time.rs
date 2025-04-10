@@ -10,6 +10,16 @@ pub use mocks::now_utc;
 #[cfg(test)]
 pub use mocks::set_timestamp;
 
+// Get the unix time in nanoseconds
+// u64 is good until the year 2554.
+// if you crash here this project has exceeded my wildest expectations, congratulations to me!
+pub fn time_unix_ns() -> u64 {
+    now_utc()
+        .unix_timestamp_nanos()
+        .try_into()
+        .expect("Could not fit the current unix timestamp into a u64")
+}
+
 #[cfg(test)]
 mod mocks {
     use std::cell::Cell;

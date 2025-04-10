@@ -20,7 +20,7 @@ use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
 
 use crate::otlp::Toilet;
-use crate::time::now_utc;
+use crate::time::time_unix_ns;
 use crate::USER_AGENT;
 
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
@@ -238,16 +238,6 @@ impl Visit for OtelVisitor {
     }
 }
 
-fn time_unix_ns() -> Option<u64> {
-    match now_utc().unix_timestamp_nanos().try_into() {
-        Ok(value) => Some(value),
-        Err(_) => {
-            tracing::info!("SystemTime out of range for conversion to u64!");
-            None
-        }
-    }
-}
-
 /// Unix timestamp (ns) when this Span was first entered.
 #[derive(Debug)]
 pub struct SpanEnter(u64);
@@ -284,16 +274,12 @@ where
         if span.extensions().get::<SpanEnter>().is_some() {
             return;
         };
-        let Some(current_time) = time_unix_ns().map(SpanEnter) else {
-            return;
-        };
+        let current_time = SpanEnter(time_unix_ns());
         span.extensions_mut().replace::<SpanEnter>(current_time);
     }
     fn on_exit(&self, id: &Id, ctx: Context<'_, S>) {
         let Some(span) = ctx.span(id) else { return };
-        let Some(current_time) = time_unix_ns().map(SpanExit) else {
-            return;
-        };
+        let current_time = SpanExit(time_unix_ns());
         span.extensions_mut().replace::<SpanExit>(current_time);
     }
 }
