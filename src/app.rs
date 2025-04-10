@@ -976,7 +976,7 @@ mod tests {
         let encoded_url = urlencoding::encode(&url).into_owned();
 
         // Set timestamp to fixed time
-        crate::mocks::set_timestamp(1732134216);
+        crate::time::set_timestamp(1732134216);
 
         let mocks = vec![
             // Mock the server, in order of expected requests
@@ -1095,7 +1095,7 @@ mod tests {
         let encoded_url = urlencoding::encode(&url).into_owned();
 
         // Set timestamp to fixed time
-        crate::mocks::set_timestamp(1732134216);
+        crate::time::set_timestamp(1732134216);
 
         let mocks = vec![
             // Mock the server, in order of expected requests

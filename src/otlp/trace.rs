@@ -5,7 +5,6 @@ use std::time::Duration;
 use opentelemetry_proto::tonic::trace::v1::span::SpanKind;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
 use prost::Message;
-use time::OffsetDateTime;
 use tracing::field::{Field, Visit};
 use tracing::span::Attributes;
 use tracing::Id;
@@ -21,6 +20,7 @@ use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
 
 use crate::otlp::Toilet;
+use crate::time::now_utc;
 use crate::USER_AGENT;
 
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
@@ -239,7 +239,7 @@ impl Visit for OtelVisitor {
 }
 
 fn time_unix_ns() -> Option<u64> {
-    match OffsetDateTime::now_utc().unix_timestamp_nanos().try_into() {
+    match now_utc().unix_timestamp_nanos().try_into() {
         Ok(value) => Some(value),
         Err(_) => {
             tracing::info!("SystemTime out of range for conversion to u64!");

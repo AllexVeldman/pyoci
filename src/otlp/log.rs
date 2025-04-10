@@ -4,7 +4,6 @@ use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
 use prost::Message;
-use time::OffsetDateTime;
 use tracing::Subscriber;
 use tracing_core::Event;
 use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
@@ -19,6 +18,7 @@ use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use crate::otlp::Toilet;
+use crate::time::now_utc;
 use crate::USER_AGENT;
 
 /// Convert a batch of log records into a ExportLogsServiceRequest
@@ -177,7 +177,7 @@ where
 }
 
 fn time_unix_ns() -> Option<u64> {
-    match OffsetDateTime::now_utc().unix_timestamp_nanos().try_into() {
+    match now_utc().unix_timestamp_nanos().try_into() {
         Ok(value) => Some(value),
         Err(_) => {
             tracing::error!("SystemTime out of range for conversion to u64!");
