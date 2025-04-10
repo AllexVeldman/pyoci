@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.26](https://github.com/AllexVeldman/pyoci/compare/v0.1.25...v0.1.26) (2025-04-10)
+
+
+### Code Refactoring
+
+* Consolidate unix timestamp nano into the time module ([#200](https://github.com/AllexVeldman/pyoci/issues/200)) ([21c768e](https://github.com/AllexVeldman/pyoci/commit/21c768e7a639fe6d170cfc27c4d62ad65fad8128))
+* Move getting UTC time to a separate module ([#199](https://github.com/AllexVeldman/pyoci/issues/199)) ([7c1f9d7](https://github.com/AllexVeldman/pyoci/commit/7c1f9d7b2162483dd8cb47c6a205e96b088c2cab))
+
+
+### Dependency Updates
+
+* Bump bytes from 1.10.0 to 1.10.1 ([#191](https://github.com/AllexVeldman/pyoci/issues/191)) ([91bdcf9](https://github.com/AllexVeldman/pyoci/commit/91bdcf9596aac8c94c2410c6eef464729da03c6f))
+* Bump serde from 1.0.217 to 1.0.219 ([#190](https://github.com/AllexVeldman/pyoci/issues/190)) ([a532878](https://github.com/AllexVeldman/pyoci/commit/a5328789cff840b8fe5ac7bc0c2a12a93c5e0c64))
+* bump time from 0.3.37 to 0.3.41 ([#196](https://github.com/AllexVeldman/pyoci/issues/196)) ([a62c0db](https://github.com/AllexVeldman/pyoci/commit/a62c0db6bfa914814c378cd2a226403347517868))
+* bump tokio from 1.44.0 to 1.44.2 ([#197](https://github.com/AllexVeldman/pyoci/issues/197)) ([640b65b](https://github.com/AllexVeldman/pyoci/commit/640b65b2cb5a4e44aad5f6aeaafb1c4bcfc280d2))
+* Bump tokio-util from 0.7.13 to 0.7.14 ([#188](https://github.com/AllexVeldman/pyoci/issues/188)) ([16b6fac](https://github.com/AllexVeldman/pyoci/commit/16b6fac95be43677ee2891f47c8fafc14805c555))
+
 ## [0.1.25](https://github.com/AllexVeldman/pyoci/compare/v0.1.24...v0.1.25) (2025-03-18)
 
 
