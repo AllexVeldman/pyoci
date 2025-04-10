@@ -18,7 +18,7 @@ use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
 use crate::otlp::Toilet;
-use crate::time::now_utc;
+use crate::time::time_unix_ns;
 use crate::USER_AGENT;
 
 /// Convert a batch of log records into a ExportLogsServiceRequest
@@ -127,9 +127,7 @@ where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
     fn on_event(&self, event: &Event<'_>, ctx: Context<'_, S>) {
-        let Some(time_ns) = time_unix_ns() else {
-            return;
-        };
+        let time_ns = time_unix_ns();
 
         let metadata = event.metadata();
         // Drop any logs generated as part of the otlp module
@@ -173,16 +171,6 @@ where
         };
 
         self.records.write().unwrap().push(log_record);
-    }
-}
-
-fn time_unix_ns() -> Option<u64> {
-    match now_utc().unix_timestamp_nanos().try_into() {
-        Ok(value) => Some(value),
-        Err(_) => {
-            tracing::error!("SystemTime out of range for conversion to u64!");
-            None
-        }
     }
 }
 

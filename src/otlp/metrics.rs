@@ -19,7 +19,7 @@ use tracing_subscriber::registry::LookupSpan;
 use tracing_subscriber::Layer;
 
 use crate::otlp::Toilet;
-use crate::time::now_utc;
+use crate::time::time_unix_ns;
 use crate::USER_AGENT;
 
 /// Set of metrics to track
@@ -50,20 +50,19 @@ impl Metrics {
 #[derive(Debug)]
 struct UptimeMetric {
     /// Moment this metric started measuring
-    start_ns: f64,
+    start_ns: u64,
 }
 
 impl UptimeMetric {
     fn new() -> Self {
         Self {
-            start_ns: now_utc().unix_timestamp_nanos() as f64,
+            start_ns: time_unix_ns(),
         }
     }
 
     fn as_metric(&self, attributes: &[KeyValue]) -> Metric {
-        let now = now_utc().unix_timestamp_nanos();
-        let now_u64: u64 = now.try_into().expect("timestamp does not fit in u64");
-        let diff = (now as f64 - self.start_ns) / 1_000_000_000.0;
+        let now = time_unix_ns();
+        let diff = (now - self.start_ns) as f64 / 1_000_000_000.0;
         Metric {
             name: "pyoci_uptime".to_string(),
             description: "Time in seconds this instance has been running".to_string(),
@@ -71,8 +70,8 @@ impl UptimeMetric {
             data: Some(Data::Sum(Sum {
                 data_points: vec![NumberDataPoint {
                     attributes: attributes.to_vec(),
-                    start_time_unix_nano: now_u64,
-                    time_unix_nano: now_u64,
+                    start_time_unix_nano: now,
+                    time_unix_nano: now,
                     value: Some(Value::AsDouble(diff)),
                     ..NumberDataPoint::default()
                 }],
@@ -101,10 +100,7 @@ impl RequestsMetric {
     }
 
     fn as_metric(&self, attributes: &[KeyValue]) -> Metric {
-        let now: u64 = now_utc()
-            .unix_timestamp_nanos()
-            .try_into()
-            .expect("timestamp does not fit in u64");
+        let now = time_unix_ns();
         Metric {
             name: "pyoci_requests".to_string(),
             description: "Total number of requests handled by this instance".to_string(),
