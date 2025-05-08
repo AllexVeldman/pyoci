@@ -35,7 +35,7 @@ oci-spec = { version = "0.7.1", default-features = false, features = ["image", "
 url = "2.5.4"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
-reqwest = { version = "0.12.12", default-features = false, features = ["json", "rustls-tls"] }
+reqwest = { version = "0.12.15", default-features = false, features = ["json", "rustls-tls"] }
 askama = { version = "0.12.1", default-features = false }
 base64 = "0.22.1"
 serde = { version = "1.0.219", features = ["derive"] }
@@ -71,5 +71,5 @@ mockito = "1.7.0"
 test-case = "3.3.1"
 tokio = { version = "1.44.2", features = ["test-util"]}
 bytes = "1.10.1"
-reqwest = { version = "0.12.12", default-features = false, features = ["stream"] }
+reqwest = { version = "0.12.15", default-features = false, features = ["stream"] }
 pretty_assertions = "1.4.1"
