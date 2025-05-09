@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.27](https://github.com/AllexVeldman/pyoci/compare/v0.1.26...v0.1.27) (2025-05-09)
+
+
+### Documentation
+
+* Update coverage badge ([#210](https://github.com/AllexVeldman/pyoci/issues/210)) ([fe070dc](https://github.com/AllexVeldman/pyoci/commit/fe070dc74af85925d5c3fd655eedccbf29985da5))
+
+
+### Continuous Integration
+
+* Switch to SonarQube ([#209](https://github.com/AllexVeldman/pyoci/issues/209)) ([c530bf3](https://github.com/AllexVeldman/pyoci/commit/c530bf396c4af14f76b66d66431e84a48c874ab3))
+
+
+### Dependency Updates
+
+* bump anyhow from 1.0.95 to 1.0.98 ([#204](https://github.com/AllexVeldman/pyoci/issues/204)) ([2aa1141](https://github.com/AllexVeldman/pyoci/commit/2aa114108c142f9de1fee12d42718472356269bd))
+* bump indoc from 2.0.5 to 2.0.6 ([#205](https://github.com/AllexVeldman/pyoci/issues/205)) ([4c3c6e5](https://github.com/AllexVeldman/pyoci/commit/4c3c6e5dc1b8bb80fa89a17a8fd7067ac1cea3bf))
+* bump reqwest from 0.12.12 to 0.12.15 ([#202](https://github.com/AllexVeldman/pyoci/issues/202)) ([7c885d8](https://github.com/AllexVeldman/pyoci/commit/7c885d8e0d3b4973db84d4c1ca6e812a2e0ffc50))
+
 ## [0.1.26](https://github.com/AllexVeldman/pyoci/compare/v0.1.25...v0.1.26) (2025-04-10)
 
 
