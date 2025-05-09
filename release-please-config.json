@@ -4,6 +4,9 @@
   "packages": {
     ".": {}
   },
+  "extra-files": [
+    "sonar-project.properties"
+  ],
   "include-component-in-tag": false,
   "changelog-path": "CHANGELOG.md",
   "bump-minor-pre-major": true,
