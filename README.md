@@ -4,7 +4,7 @@ Publish and download (private) python packages using an OCI registry for storage
 [![Test](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/test.yaml)
 [![Examples](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/examples.yaml)
 [![Deploy](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml/badge.svg)](https://github.com/AllexVeldman/pyoci/actions/workflows/deploy.yaml)
-[![codecov](https://codecov.io/github/AllexVeldman/pyoci/graph/badge.svg?token=SXFCPX8M22)](https://codecov.io/github/AllexVeldman/pyoci)
+[![Coverage](https://sonarcloud.io/api/project_badges/measure?project=AllexVeldman_pyoci&metric=coverage)](https://sonarcloud.io/summary/new_code?id=AllexVeldman_pyoci)
 
 ## Why PyOCI
 To not have to rely on `yet-another-cloud-provider` for private Python packages, PyOCI, makes `ghcr.io` act like a python index.  
