@@ -1,27 +1,60 @@
+use std::cell::RefCell;
 use std::collections::HashMap;
 use std::sync::{Arc, RwLock};
 use std::time::Duration;
 
+use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
+use opentelemetry_proto::tonic::common::v1::any_value::Value;
+use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
+use opentelemetry_proto::tonic::resource::v1::Resource;
 use opentelemetry_proto::tonic::trace::v1::span::SpanKind;
 use opentelemetry_proto::tonic::trace::v1::{ResourceSpans, ScopeSpans, Span};
 use prost::Message;
+use rand::{rngs::SmallRng, Rng, SeedableRng};
 use tracing::field::{Field, Visit};
 use tracing::span::Attributes;
 use tracing::Id;
 use tracing::Subscriber;
 use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
 
-use opentelemetry::trace::{SpanId, TraceId};
-use opentelemetry::Value;
-use opentelemetry_proto::tonic::collector::trace::v1::ExportTraceServiceRequest;
-use opentelemetry_proto::tonic::common::v1::any_value;
-use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
-use opentelemetry_proto::tonic::resource::v1::Resource;
-use opentelemetry_sdk::trace::{IdGenerator, RandomIdGenerator};
-
 use crate::otlp::Toilet;
 use crate::time::time_unix_ns;
 use crate::USER_AGENT;
+
+thread_local! {
+    /// Store random number generator for each thread
+    static CURRENT_RNG: RefCell<SmallRng> = RefCell::new(SmallRng::from_rng(&mut rand::rng()));
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct SpanId(u64);
+
+impl From<&SpanId> for Vec<u8> {
+    fn from(value: &SpanId) -> Self {
+        value.0.to_be_bytes().to_vec()
+    }
+}
+
+impl SpanId {
+    fn new() -> SpanId {
+        CURRENT_RNG.with(|rng| SpanId(rng.borrow_mut().random()))
+    }
+}
+
+#[derive(Debug, Clone, Copy)]
+pub(crate) struct TraceId(u128);
+
+impl TraceId {
+    fn new() -> TraceId {
+        CURRENT_RNG.with(|rng| TraceId(rng.borrow_mut().random()))
+    }
+}
+
+impl From<&TraceId> for Vec<u8> {
+    fn from(value: &TraceId) -> Self {
+        value.0.to_be_bytes().to_vec()
+    }
+}
 
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
 fn build_trace_export_body(
@@ -42,7 +75,7 @@ fn build_trace_export_body(
         attrs.push(KeyValue {
             key: (*key).into(),
             value: Some(AnyValue {
-                value: Some(any_value::Value::StringValue(value.into())),
+                value: Some(Value::StringValue(value.into())),
             }),
         });
     }
@@ -149,16 +182,15 @@ where
 
             let parent_span_id = span
                 .parent()
-                .map(|p_span| p_span.extensions().get::<SpanId>().map(|id| id.to_bytes()))
+                .map(|p_span| p_span.extensions().get::<SpanId>().map(Vec::<u8>::from))
                 .unwrap_or_default()
-                .unwrap_or_default()
-                .into();
+                .unwrap_or_default();
             let mut visitor = OtelVisitor::default();
             attrs.record(&mut visitor);
 
             Span {
-                trace_id: trace_id.to_bytes().into(),
-                span_id: span_id.to_bytes().into(),
+                trace_id: trace_id.into(),
+                span_id: span_id.into(),
                 parent_span_id,
                 name: span.name().to_string(),
                 kind: visitor.kind.into(),
@@ -179,11 +211,11 @@ where
         let (start_time, end_time) = {
             let extensions = span.extensions();
             let Some(start_time) = extensions.get::<SpanEnter>() else {
-                tracing::info!("SpanStart not defined for Span {id:?}");
+                tracing::info!("SpanEnter not defined for Span {id:?}");
                 return;
             };
             let Some(end_time) = extensions.get::<SpanExit>() else {
-                tracing::info!("SpanEnd not defined for Span {id:?}");
+                tracing::info!("SpanExit not defined for Span {id:?}");
                 return;
             };
             (start_time.into(), end_time.into())
@@ -232,7 +264,9 @@ impl Visit for OtelVisitor {
         } else if let Some(key) = name.strip_prefix("otel.") {
             self.attributes.push(KeyValue {
                 key: key.into(),
-                value: Some(AnyValue::from(Value::from(value.to_string()))),
+                value: Some(AnyValue {
+                    value: Some(Value::StringValue(value.to_string())),
+                }),
             })
         }
     }
@@ -285,10 +319,9 @@ where
 }
 
 #[derive(Debug, Default)]
-pub struct SpanIdLayer {
-    rng: RandomIdGenerator,
-}
+pub struct SpanIdLayer {}
 
+/// Insert [SpanId] and [TraceId] into the span extensions
 impl<S> Layer<S> for SpanIdLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
@@ -299,10 +332,14 @@ where
             return;
         };
         let mut extensions = span.extensions_mut();
-        extensions.insert(self.rng.new_span_id());
+        // Add the SpanId to the extensions of this span
+        extensions.insert(SpanId::new());
 
+        // Add the TraceId to the extensions of this span
         match span.parent() {
-            None => extensions.insert(self.rng.new_trace_id()),
+            // This is the root span, generate a new TraceId
+            None => extensions.insert(TraceId::new()),
+            // This is a leaf span, add the parent TraceId as the TraceId for this span
             Some(parent) => extensions.insert(
                 *parent
                     .extensions()
