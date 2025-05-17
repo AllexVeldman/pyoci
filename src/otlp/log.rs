@@ -10,13 +10,13 @@ use tracing_subscriber::{layer::Context, registry::LookupSpan, Layer};
 
 use tracing::field::{Field, Visit};
 
-use opentelemetry::trace::{SpanId, TraceId};
 use opentelemetry_proto::tonic::collector::logs::v1::ExportLogsServiceRequest;
 use opentelemetry_proto::tonic::common::v1::any_value;
 use opentelemetry_proto::tonic::common::v1::{AnyValue, KeyValue};
 use opentelemetry_proto::tonic::logs::v1::{LogRecord, ResourceLogs, ScopeLogs};
 use opentelemetry_proto::tonic::resource::v1::Resource;
 
+use crate::otlp::trace::{SpanId, TraceId};
 use crate::otlp::Toilet;
 use crate::time::time_unix_ns;
 use crate::USER_AGENT;
@@ -58,8 +58,8 @@ fn build_logs_export_body(
     }
 }
 
-/// Tracing Layer for pushing logs to an OTLP consumer.
 /// Relies on [TraceId] and [SpanId] to be available in the Event's Span, see [crate::otlp::trace::SpanIdLayer]
+/// Tracing Layer for pushing logs to an OTLP consumer.
 #[derive(Debug, Clone)]
 pub struct OtlpLogLayer {
     otlp_endpoint: String,
@@ -165,8 +165,8 @@ where
                 )),
             }),
             attributes: vec![],
-            trace_id: trace_id.to_bytes().into(),
-            span_id: span_id.to_bytes().into(),
+            trace_id: trace_id.into(),
+            span_id: span_id.into(),
             ..LogRecord::default()
         };
 
