@@ -6,7 +6,3 @@ updates:
       interval: "weekly"
     commit-message:
       prefix: "deps"
-    groups:
-      opentelemetry:
-        patterns:
-        - "opentelemetry*"
