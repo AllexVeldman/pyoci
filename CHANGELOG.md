@@ -1,5 +1,37 @@
 # Changelog
 
+## [0.1.27](https://github.com/AllexVeldman/pyoci/compare/v0.1.26...v0.1.27) (2025-05-20)
+
+
+### Documentation
+
+* Update coverage badge ([#210](https://github.com/AllexVeldman/pyoci/issues/210)) ([fe070dc](https://github.com/AllexVeldman/pyoci/commit/fe070dc74af85925d5c3fd655eedccbf29985da5))
+
+
+### Miscellaneous Chores
+
+* **deps:** Remove opentelemetry group ([#217](https://github.com/AllexVeldman/pyoci/issues/217)) ([3737884](https://github.com/AllexVeldman/pyoci/commit/373788445a721bae26cc33d1861c78a40c53042e)), closes [#214](https://github.com/AllexVeldman/pyoci/issues/214)
+
+
+### Code Refactoring
+
+* **otlp:** Remove `opentelemetry_sdk` and `opentelemetry` deps ([#215](https://github.com/AllexVeldman/pyoci/issues/215)) ([37aca43](https://github.com/AllexVeldman/pyoci/commit/37aca43c182031c6d626523727a0cbd93147b9b2))
+
+
+### Continuous Integration
+
+* Switch to SonarQube ([#209](https://github.com/AllexVeldman/pyoci/issues/209)) ([c530bf3](https://github.com/AllexVeldman/pyoci/commit/c530bf396c4af14f76b66d66431e84a48c874ab3))
+
+
+### Dependency Updates
+
+* bump anyhow from 1.0.95 to 1.0.98 ([#204](https://github.com/AllexVeldman/pyoci/issues/204)) ([2aa1141](https://github.com/AllexVeldman/pyoci/commit/2aa114108c142f9de1fee12d42718472356269bd))
+* bump async-trait from 0.1.87 to 0.1.88 ([#212](https://github.com/AllexVeldman/pyoci/issues/212)) ([5cc64ff](https://github.com/AllexVeldman/pyoci/commit/5cc64ffbd592c32fe3c11f819b1deeb7bd53bb75))
+* bump indoc from 2.0.5 to 2.0.6 ([#205](https://github.com/AllexVeldman/pyoci/issues/205)) ([4c3c6e5](https://github.com/AllexVeldman/pyoci/commit/4c3c6e5dc1b8bb80fa89a17a8fd7067ac1cea3bf))
+* bump reqwest from 0.12.12 to 0.12.15 ([#202](https://github.com/AllexVeldman/pyoci/issues/202)) ([7c885d8](https://github.com/AllexVeldman/pyoci/commit/7c885d8e0d3b4973db84d4c1ca6e812a2e0ffc50))
+* bump sha2 from 0.10.8 to 0.10.9 ([#218](https://github.com/AllexVeldman/pyoci/issues/218)) ([2ed9f20](https://github.com/AllexVeldman/pyoci/commit/2ed9f2052e5fae6034c7ca82826db1aa8526fe6e))
+* bump tokio from 1.44.2 to 1.45.0 ([#211](https://github.com/AllexVeldman/pyoci/issues/211)) ([a28535b](https://github.com/AllexVeldman/pyoci/commit/a28535b1e7646876c4bb7ed1286d658c60a34fa8))
+
 ## [0.1.26](https://github.com/AllexVeldman/pyoci/compare/v0.1.25...v0.1.26) (2025-04-10)
 
 
