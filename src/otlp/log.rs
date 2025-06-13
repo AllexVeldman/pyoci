@@ -48,7 +48,7 @@ fn build_logs_export_body(
     let resource_logs = ResourceLogs {
         resource: Some(Resource {
             attributes: attrs,
-            dropped_attributes_count: 0,
+            ..Resource::default()
         }),
         scope_logs: vec![scope_logs],
         schema_url: "".to_string(),
