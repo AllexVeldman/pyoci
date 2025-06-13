@@ -147,7 +147,7 @@ fn build_metrics_export_body(
     let resource_metrics = ResourceMetrics {
         resource: Some(Resource {
             attributes: attrs,
-            dropped_attributes_count: 0,
+            ..Resource::default()
         }),
         scope_metrics: vec![scope_metrics],
         schema_url: "".to_string(),

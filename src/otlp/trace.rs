@@ -82,7 +82,7 @@ fn build_trace_export_body(
     let resource_spans = ResourceSpans {
         resource: Some(Resource {
             attributes: attrs,
-            dropped_attributes_count: 0,
+            ..Resource::default()
         }),
         scope_spans: vec![scope_spans],
         schema_url: "".to_string(),
