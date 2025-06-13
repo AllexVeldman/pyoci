@@ -18,7 +18,6 @@ RUN mkdir src && echo "fn main(){}" > src/main.rs
 RUN cargo build --release --target x86_64-unknown-linux-musl
 
 # Copy the actual sources
-COPY templates ./templates/
 COPY src ./src/
 RUN touch -a -m ./src/main.rs
 RUN cargo build --release --target x86_64-unknown-linux-musl
@@ -34,6 +33,7 @@ EXPOSE $PORT
 # Copy the binary from the builder stage
 WORKDIR /pyoci
 COPY LICENSE LICENCE
+COPY templates ./templates/
 COPY --from=builder /pyoci/target/x86_64-unknown-linux-musl/release/pyoci pyoci
 
 USER pyoci
