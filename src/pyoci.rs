@@ -1284,8 +1284,8 @@ mod tests {
 
         assert_eq!(result.len(), 1);
         assert_eq!(
-            result[0].py_uri(),
-            "/ghcr.io/mockserver/bar/bar-1.tar.gz#sha256=12345"
+            serde_json::to_string(&result).unwrap(),
+            r#"[{"py_uri":"/ghcr.io/mockserver/bar/bar-1.tar.gz","filename":"bar-1.tar.gz","sha256":"12345"}]"#
         );
     }
 

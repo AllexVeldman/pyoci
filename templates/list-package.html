@@ -5,8 +5,8 @@
     <title>PyOCI</title>
 </head>
 <body>
-{%- for file in files %}
-    <a href="{{ subpath }}{{ file.py_uri() }}">{{ file.filename() }}</a>
-{%- endfor %}
+{{#each files }}
+    <a href="{{../subpath}}{{this.py_uri}}{{#if this.sha256}}#sha256={{this.sha256}}{{/if}}">{{this.filename}}</a>
+{{/each}}
 </body>
 </html>

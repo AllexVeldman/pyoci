@@ -2,6 +2,7 @@ use std::{collections::HashMap, marker::PhantomData};
 
 use anyhow::{bail, Result};
 use http::StatusCode;
+use serde::{ser::SerializeMap, Serialize, Serializer};
 
 use crate::pyoci::PyOciError;
 
@@ -202,11 +203,7 @@ impl Package<'_, WithFileName> {
             self.name,
             self.filename()
         );
-        if let Some(sha256) = &self.sha256 {
-            format!("{}#sha256={}", uri, sha256)
-        } else {
-            uri
-        }
+        uri
     }
 
     /// Return the filename of this package
@@ -218,6 +215,20 @@ impl Package<'_, WithFileName> {
             true => format!("{}-{}-{}", self.name, version, arch),
             false => format!("{}-{}{}", self.name, version, arch),
         }
+    }
+}
+
+/// Serialize just the attributes we need to fill the HTML template
+impl Serialize for Package<'_, WithFileName> {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error>
+    where
+        S: Serializer,
+    {
+        let mut map = serializer.serialize_map(Some(3))?;
+        map.serialize_entry("py_uri", &self.py_uri())?;
+        map.serialize_entry("filename", &self.filename())?;
+        map.serialize_entry("sha256", &self.sha256)?;
+        map.end()
     }
 }
 
@@ -277,17 +288,6 @@ mod tests {
         assert_eq!(
             info.py_uri(),
             "/foo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
-        );
-    }
-
-    #[test]
-    fn test_info_py_uri_with_sha() {
-        let info = Package::from_filename("https://foo.example:4000", "bar", "baz-1.tar.gz")
-            .unwrap()
-            .with_sha256(Some("12345".into()));
-        assert_eq!(
-            info.py_uri(),
-            "/foo.example%3A4000/bar/baz/baz-1.tar.gz#sha256=12345".to_string()
         );
     }
 

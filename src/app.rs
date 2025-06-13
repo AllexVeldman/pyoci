@@ -1,6 +1,5 @@
 use std::collections::{BTreeSet, HashMap};
 
-use askama::Template;
 use axum::{
     debug_handler,
     extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, Path, State},
@@ -10,11 +9,16 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::{rejection::HostRejection, Host};
+use handlebars::Handlebars;
 use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tracing::{debug, info_span, Instrument};
 
-use crate::{package::Package, pyoci::PyOciError, templates, Env, PyOci};
+use crate::{
+    package::{Package, WithFileName},
+    pyoci::PyOciError,
+    Env, PyOci,
+};
 
 #[derive(Debug)]
 // Custom error type to translate between anyhow/axum
@@ -47,9 +51,13 @@ where
 }
 
 #[derive(Debug, Clone)]
-struct PyOciState {
+struct PyOciState<'a> {
+    /// Subpath PyOCI is hosted on
     subpath: Option<String>,
+    /// Maximum versions PyOCI will fetch when listing a package
     max_versions: usize,
+    /// HTML Template registry
+    templates: Handlebars<'a>,
 }
 
 /// Request Router
@@ -81,6 +89,18 @@ pub fn router(env: Env) -> Router {
         Some(ref subpath) => Router::new().nest(subpath, pyoci_routes),
         None => pyoci_routes,
     };
+
+    // Setup templates
+    let mut template_reg = Handlebars::new();
+    template_reg.set_strict_mode(true);
+
+    #[cfg(debug_assertions)]
+    template_reg.set_dev_mode(true);
+
+    template_reg
+        .register_template_file("html_list_pkg", "./templates/list-package.html")
+        .expect("Invalid template");
+
     router
         .layer(axum::middleware::from_fn(accesslog_middleware))
         .layer(axum::middleware::from_fn(trace_middleware))
@@ -88,6 +108,7 @@ pub fn router(env: Env) -> Router {
         .with_state(PyOciState {
             subpath: env.path,
             max_versions: env.max_versions,
+            templates: template_reg,
         })
 }
 
@@ -152,16 +173,22 @@ async fn trace_middleware(
     next.run(request).instrument(span).await
 }
 
+#[derive(serde::Serialize)]
+struct ListPkgTemplateData<'a> {
+    files: Vec<Package<'a, WithFileName>>,
+    subpath: Option<String>,
+}
+
 /// List package request handler
 ///
 /// (registry, namespace, package)
-#[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn list_package(
     State(PyOciState {
         subpath,
         max_versions,
-    }): State<PyOciState>,
+        templates,
+    }): State<PyOciState<'_>>,
     headers: HeaderMap,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
@@ -171,12 +198,9 @@ async fn list_package(
     // Fetch at most 100 package versions
     let files = client.list_package_files(&package, max_versions).await?;
 
-    // TODO: swap to application/vnd.pypi.simple.v1+json
-    let template = templates::ListPackageTemplate {
-        files,
-        subpath: &subpath.unwrap_or("".to_string()),
-    };
-    Ok(Html(template.render().expect("valid template")))
+    let data = ListPkgTemplateData { files, subpath };
+
+    Ok(Html(templates.render("html_list_pkg", &data)?))
 }
 
 /// JSON response for listing a package
@@ -1262,6 +1286,10 @@ mod tests {
                         .build()
                         .unwrap(),
                 )
+                .annotations(HashMap::from([(
+                    "com.pyoci.sha256_digest".to_string(),
+                    "1234".to_string(),
+                )]))
                 .build()
                 .unwrap()])
             .build()
@@ -1339,10 +1367,11 @@ mod tests {
                     <title>PyOCI</title>
                 </head>
                 <body>
-                    <a href="/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
+                    <a href="/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz#sha256=1234">test_package-1.2.3.tar.gz</a>
                     <a href="/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
                 </body>
-                </html>"#
+                </html>
+                "#
             )
         );
     }
@@ -1474,7 +1503,8 @@ mod tests {
                     <a href="/foo/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
                     <a href="/foo/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
                 </body>
-                </html>"#
+                </html>
+                "#
             )
         );
     }

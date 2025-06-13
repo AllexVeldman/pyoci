@@ -8,8 +8,6 @@ mod otlp;
 mod package;
 // PyOci client
 mod pyoci;
-// Askama templates
-mod templates;
 // HTTP Transport
 mod transport;
 // HTTP Services
@@ -39,16 +37,22 @@ const ARTIFACT_TYPE: &str = "application/pyoci.package.v1";
 /// Runtime environment variables
 #[derive(Debug, Clone)]
 struct Env {
+    /// Post PyOCI is listening on
     port: u16,
+    /// Log configuration
     rust_log: String,
+    /// Subpath PyOCI is hosted on
     path: Option<String>,
+    /// OTLP collector endpoint
     otlp_endpoint: Option<String>,
+    /// OTLP authentication header value
     otlp_auth: Option<String>,
     deployment_env: Option<String>,
     container_name: Option<String>,
     pod_name: Option<String>,
     replica_name: Option<String>,
     body_limit: usize,
+    /// Maximum number of version PyOCI will fetch when listing a package
     max_versions: usize,
 }
 
