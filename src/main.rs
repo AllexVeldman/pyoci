@@ -3,7 +3,6 @@
 // Webserver request handlers
 mod app;
 // OTLP handlers
-#[cfg(feature = "otlp")]
 mod otlp;
 // Helper for parsing and managing Python/OCI packages
 mod package;
@@ -30,8 +29,6 @@ use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
 use crate::app::router;
-
-#[cfg(feature = "otlp")]
 use crate::otlp::otlp;
 
 // crate constants
@@ -137,9 +134,13 @@ async fn main() {
         .unwrap();
 }
 
-/// Setup tracing with a console log and OTLP trace/log if the `otlp` feature is enabled.
+/// Setup tracing with a console log and OTLP trace/log.
+///
+/// OTLP tracing will only be set up if the environment contains an otlp_endpoint and otlp_auth.
+/// Otherwise the JoinHandle will be None.
+///
 /// If the JoinHandle is not None, ensure to await it before shutting down to send the remaining
-/// trace data to the OTLP collector
+/// trace data to the OTLP collector.
 fn setup_tracing(
     environ: &Env,
     cancel_token: CancellationToken,
@@ -153,7 +154,6 @@ fn setup_tracing(
         .with(EnvFilter::new(&environ.rust_log))
         .with(fmt_layer);
 
-    #[cfg(feature = "otlp")]
     let (el_reg, handle) = {
         let (el_reg, handle) = otlp(
             el_reg,
@@ -165,8 +165,6 @@ fn setup_tracing(
         );
         (el_reg, handle)
     };
-    #[cfg(not(feature = "otlp"))]
-    let handle = None;
 
     (el_reg, handle)
 }

@@ -28,6 +28,8 @@ use tracing_subscriber::registry::LookupSpan;
 ///
 /// Returns the amended Subscriber and a JoinHandle for the background Task.
 /// After canceling the cancel_token, await the JoinHandle to ensure everything gets flushed.
+///
+/// OTLP tracing won't be set up if otlp_endpoint or otlp_auth is None.
 pub fn otlp<S>(
     subscriber: S,
     otlp_endpoint: Option<String>,
