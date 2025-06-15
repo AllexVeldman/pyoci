@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.28](https://github.com/AllexVeldman/pyoci/compare/v0.1.27...v0.1.28) (2025-06-15)
+
+
+### Documentation
+
+* **examples:** Add `uv` examples ([#224](https://github.com/AllexVeldman/pyoci/issues/224)) ([8bc5dfd](https://github.com/AllexVeldman/pyoci/commit/8bc5dfd9505cd964cc04eee61e81f043f8093afc))
+
+
+### Miscellaneous Chores
+
+* **examples:** Add `uv` examples ([8bc5dfd](https://github.com/AllexVeldman/pyoci/commit/8bc5dfd9505cd964cc04eee61e81f043f8093afc))
+
 ## [0.1.27](https://github.com/AllexVeldman/pyoci/compare/v0.1.26...v0.1.27) (2025-06-13)
 
 
