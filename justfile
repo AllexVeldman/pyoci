@@ -15,7 +15,12 @@ refresh-registry:
 # Run a smoketest on a local pyoci instance and a local OCI registry
 [group("ci")]
 test-smoke: refresh-registry
-    just examples::poetry-publish "0.1.0+1234" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
-    just examples::poetry-install "0.1.0+1234" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+    just examples::poetry-publish "0.1.0+1234.poetry" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+    just examples::poetry-install "0.1.0+1234.poetry" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+
     just examples::curl-list-json "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
-    just examples::curl-delete "0.1.0+1234" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+    just examples::curl-delete "0.1.0+1234.poetry" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+
+    just examples::uv-publish "0.1.0+1234.uv" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+    just examples::uv-install "0.1.0+1234.uv" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+    just examples::curl-delete "0.1.0+1234.uv" "foo" "bar" "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"

@@ -45,6 +45,7 @@ pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.com/ghcr.io/al
 >
 > Pip does not have a proper way of indicating you only want to resolve `<package-name>` through PyOCI and it's dependencies through pypi.
 > Poetry does provide you with [a way](https://python-poetry.org/docs/repositories/#package-source-constraint) to do this.
+> [As does uv](https://docs.astral.sh/uv/concepts/projects/dependencies/#index).
 
 For more examples, including how to publish a package, see the [examples](/docs/examples).
 
