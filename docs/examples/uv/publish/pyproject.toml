@@ -1,0 +1,25 @@
+[project]
+name = "hello-world"
+version = "0.0.1"
+description = "Example project for PyOCI with uv"
+authors = [
+{name = "Allex Veldman", email = "allexveldman@gmail.com"}
+]
+classifiers = [
+    "PyOCI :: Label :: org.opencontainers.image.url :: https://github.com/allexveldman/pyoci",
+    "PyOCI :: Label :: org.opencontainers.image.description :: Published using PyOCI as part of the examples."
+]
+requires-python = ">=3.12"
+dependencies = []
+
+[project.urls]
+homepage = "https://pyoci.com"
+repository = "https://github.com/allexveldman/pyoci"
+documentation = "https://github.com/allexveldman/pyoci/README.md"
+
+
+[[tool.uv.index]]
+name = "pyoci"
+url = "http://localhost:8080/ghcr.io/pyoci/"
+publish-url = "http://localhost:8080/ghcr.io/pyoci/"
+explicit = true

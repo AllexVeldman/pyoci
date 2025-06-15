@@ -43,3 +43,28 @@ jobs:
       - name: Install
         run: |
           just examples poetry-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"
+
+  uv:
+    name: uv
+    runs-on: ubuntu-latest
+    timeout-minutes: 2
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+      - uses: extractions/setup-just@v2
+
+      - run: pip install uv
+
+      - name: Version
+        id: version
+        run: |
+          echo "VERSION=0.0.1+example-${{ github.run_attempt }}-uv-$(git rev-parse --short HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Publish
+        run: |
+          just examples uv-publish "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"
+
+      - name: Install
+        run: |
+          just examples uv-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"

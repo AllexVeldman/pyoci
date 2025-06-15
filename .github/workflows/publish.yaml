@@ -94,6 +94,7 @@ jobs:
       # step defines `load: true` the entire build will be from cache.
       - uses: extractions/setup-just@v2
       - uses: snok/install-poetry@v1
+      - uses: astral-sh/setup-uv@v5
       - run: just test-smoke
       - run: docker compose logs pyoci
         working-directory: ./docker

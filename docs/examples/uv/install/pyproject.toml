@@ -1,0 +1,16 @@
+[project]
+name = "install"
+version = "0.1.0"
+description = ""
+requires-python = ">=3.12"
+dependencies = [
+    "hello-world==0.0.1",
+]
+
+[[tool.uv.index]]
+name = "pyoci"
+url = "http://localhost:8080/http%3A%2F%2Fregistry%3A5000/pyoci/"
+explicit = true
+
+[tool.uv.sources]
+hello-world = { index = "pyoci" }

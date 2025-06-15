@@ -36,6 +36,34 @@ poetry-install version username token repository="http://localhost:8080/ghcr.io/
     poetry add "hello-world@{{version}}" --source pyoci --no-cache
     poetry run python -m hello_world
 
+[group("uv")]
+uv-publish version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "uv-publish") && _endgroup
+    #!/usr/bin/env bash
+    set -exuo pipefail
+
+    cd ./uv/publish
+    uv version "{{version}}"
+    uv build
+    uv publish --publish-url {{repository}} --username "{{username}}" --password "{{token}}"
+
+[group("uv")]
+uv-install version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "uv-install") && _endgroup
+    #!/usr/bin/env bash
+    set -exuo pipefail
+
+    cd ./uv/install
+
+    # Ensure we start with a clean venv
+    rm -rf ./.venv/
+    rm -f uv.lock
+
+    # Setup the registry source credentials
+    export UV_INDEX_PYOCI_USERNAME={{username}}
+    export UV_INDEX_PYOCI_PASSWORD={{token}}
+
+    uv add "hello-world=={{version}}" --index pyoci={{repository}} --no-cache
+    uv run python -m hello_world
+
 [group("curl")]
 curl-publish version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "curl-publish") && _endgroup
     #!/usr/bin/env bash
@@ -78,4 +106,6 @@ reset:
    git checkout -- \
    ./poetry/install/pyproject.toml \
    ./poetry/publish/poetry.toml \
-   ./poetry/publish/pyproject.toml
+   ./poetry/publish/pyproject.toml \
+   ./uv/install/pyproject.toml \
+   ./uv/publish/pyproject.toml
