@@ -20,7 +20,7 @@ strip = "symbols"
 
 [dependencies]
 exitcode = "1.1.2"
-oci-spec = { version = "0.7.1", default-features = false, features = ["image", "distribution"] }
+oci-spec = { version = "0.8.1", default-features = false, features = ["image", "distribution"] }
 url = "2.5.4"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.19", features = ["env-filter", "fmt"] }
