@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.28](https://github.com/AllexVeldman/pyoci/compare/v0.1.27...v0.1.28) (2025-07-30)
+
+
+### Documentation
+
+* **examples:** add `uv` examples ([#224](https://github.com/AllexVeldman/pyoci/issues/224)) ([8bc5dfd](https://github.com/AllexVeldman/pyoci/commit/8bc5dfd9505cd964cc04eee61e81f043f8093afc))
+
+
+### Dependency Updates
+
+* bump http from 1.2.0 to 1.3.1 ([#226](https://github.com/AllexVeldman/pyoci/issues/226)) ([f69b241](https://github.com/AllexVeldman/pyoci/commit/f69b241b330318724661b28d7efab8b25c8a962d))
+* bump oci-spec from 0.7.1 to 0.8.1 ([#227](https://github.com/AllexVeldman/pyoci/issues/227)) ([c265b02](https://github.com/AllexVeldman/pyoci/commit/c265b021144f43ff4dfebc8baf0dc62970051677))
+* bump rand from 0.9.1 to 0.9.2 ([#235](https://github.com/AllexVeldman/pyoci/issues/235)) ([2b01e2e](https://github.com/AllexVeldman/pyoci/commit/2b01e2e8ddddf03f00dd6f5e5d5d0b22b12d8cb6))
+* bump reqwest from 0.12.15 to 0.12.20 ([#228](https://github.com/AllexVeldman/pyoci/issues/228)) ([fb54ad3](https://github.com/AllexVeldman/pyoci/commit/fb54ad33ae6fceafb28a9791486fe140736c3371))
+* bump reqwest from 0.12.20 to 0.12.22 ([#233](https://github.com/AllexVeldman/pyoci/issues/233)) ([75f6b28](https://github.com/AllexVeldman/pyoci/commit/75f6b28bff47fcb7d5188b3b30eb2e5fa0208c33))
+* bump serde_json from 1.0.140 to 1.0.141 ([#234](https://github.com/AllexVeldman/pyoci/issues/234)) ([3752d15](https://github.com/AllexVeldman/pyoci/commit/3752d151dedb9bb5f6441d9cb31bfc0fe1362448))
+* bump tokio from 1.45.1 to 1.47.0 ([#232](https://github.com/AllexVeldman/pyoci/issues/232)) ([3949bf1](https://github.com/AllexVeldman/pyoci/commit/3949bf1363b7a8d1c1115e9cacfa7d7fe5d71db5))
+* bump tracing-core from 0.1.33 to 0.1.34 ([#229](https://github.com/AllexVeldman/pyoci/issues/229)) ([727e1b4](https://github.com/AllexVeldman/pyoci/commit/727e1b43844a00669615795b29ae77f25fa02c6f))
+
 ## [0.1.27](https://github.com/AllexVeldman/pyoci/compare/v0.1.26...v0.1.27) (2025-06-13)
 
 
