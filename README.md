@@ -54,7 +54,7 @@ If you don't want, or can't, use https://pyoci.com, you can host your own using 
 
 `docker run ghcr.io/allexveldman/pyoci:latest`
 
-Note that only HTTP is support at this moment,
+Note that only HTTP is supported at this moment,
 PyOCI is expected to run behind a reverse proxy that handles TLS termination, or a trusted environment.
 
 ### Environment variables
@@ -98,8 +98,9 @@ underlying registry's support for the [content management](https://github.com/op
 section of the OCI Distribution specification.
 
 ## Renovate + ghcr.io
-As PyOCI acts as a private pypi index, Renovate needs to be configured to use credentials for your private packages.
-(https://docs.renovatebot.com/getting-started/private-packages/)
+As PyOCI acts as a private pypi index, Renovate needs to be configured to use credentials for your private packages
+(https://docs.renovatebot.com/getting-started/private-packages/).
+
 To prevent having to check-in [encrypted secrets](https://docs.renovatebot.com/getting-started/private-packages/#encrypting-secrets)
 you can:
 1. Self-host renovate as a github workflow
