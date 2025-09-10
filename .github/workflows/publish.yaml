@@ -1,35 +1,13 @@
 name: Publish
 
 on:
-  # Tests docker build without pushing
   push:
     branches:
       - main
+    tags:
+      - "*"
+
   pull_request:
-
-  # Manually, or from another workflow, trigger build of a new version
-  workflow_call:
-    inputs:
-      version:
-        description: 'SemVer version to create'
-        required: true
-        type: string
-      publish:
-        description: 'Publish the new version'
-        required: true
-        type: boolean
-
-  workflow_dispatch:
-    inputs:
-      version:
-        description: "Manually create a new SemVer version, will not create a release or tag, use with caution"
-        required: true
-        type: string
-      publish:
-        description: 'Publish the new version'
-        required: false
-        type: boolean
-        default: false
 
 
 concurrency:
@@ -63,8 +41,8 @@ jobs:
             type=ref,event=branch
             type=ref,event=pr
             type=ref,event=tag
-            type=semver,value=${{ inputs.version }},pattern={{version}}
-            type=semver,value=${{ inputs.version }},pattern={{major}}.{{minor}}
+            type=semver,pattern={{version}}
+            type=semver,pattern={{major}}.{{minor}}
             type=sha
 
       - name: Set up Docker Buildx
@@ -85,7 +63,7 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           load: true
-          push: ${{ inputs.publish || false }}
+          push: ${{ github.ref_type == 'tag' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
 
@@ -98,3 +76,16 @@ jobs:
       - run: just test-smoke
       - run: docker compose logs pyoci
         working-directory: ./docker
+
+  deploy:
+    name: Deploy
+    needs: [build]
+    if: github.ref_type == 'tag'
+    uses: ./.github/workflows/deploy.yaml
+    with:
+      version: ${{ needs.build.outputs.version }}
+    secrets: inherit
+    permissions:
+      contents: read
+      id-token: write
+      packages: write

@@ -1,4 +1,4 @@
-name: Release
+name: Release Please
 
 on:
   push:
@@ -20,37 +20,9 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 10
 
-    outputs:
-      version: ${{ steps.release-please.outputs.major }}.${{ steps.release-please.outputs.minor }}.${{ steps.release-please.outputs.patch }}
-      publish: ${{ steps.release-please.outputs.release_created }}
-
     steps:
       - uses: googleapis/release-please-action@v4
         id: release-please
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
 
-  publish:
-    name: Publish
-    needs: [release]
-    if: ${{ needs.release.outputs.publish  == 'true'}}
-    uses: ./.github/workflows/publish.yaml
-    with:
-      version: ${{ needs.release.outputs.version }}
-      publish: ${{ needs.release.outputs.publish  == 'true'}}
-    permissions:
-      contents: read
-      packages: write
-
-  deploy:
-    name: Deploy
-    needs: [release, publish]
-    if: ${{ needs.release.outputs.publish  == 'true'}}
-    uses: ./.github/workflows/deploy.yaml
-    with:
-      version: ${{ needs.release.outputs.version }}
-    secrets: inherit
-    permissions:
-      contents: read
-      id-token: write
-      packages: write
