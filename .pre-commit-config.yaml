@@ -1,6 +1,6 @@
 repos:
   - repo: https://github.com/pre-commit/pre-commit-hooks
-    rev: v3.4.0
+    rev: v6.0.0
     hooks:
       - id: check-added-large-files
       - id: check-merge-conflict
@@ -9,7 +9,7 @@ repos:
         args: [--markdown-linebreak-ext=md]
 
   - repo: https://github.com/rhysd/actionlint
-    rev: v1.6.26
+    rev: v1.7.7
     hooks:
       - id: actionlint
 
@@ -24,7 +24,7 @@ repos:
 
       - id: clippy
         name: Clippy
-        stages: [ commit ]
+        stages: [ pre-commit ]
         types: [ file, rust ]
         pass_filenames: false
         language: system

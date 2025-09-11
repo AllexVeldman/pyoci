@@ -23,6 +23,7 @@ jobs:
       # pyoci.com scales down to 0 replicas
       # allow a longer request time if a cold start is needed
       POETRY_REQUESTS_TIMEOUT: 30
+      TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -38,16 +39,19 @@ jobs:
 
       - name: Publish
         run: |
-          just examples poetry-publish "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"
+          just examples poetry-publish "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "$TOKEN" "https://pyoci.com/ghcr.io/allexveldman/"
 
       - name: Install
         run: |
-          just examples poetry-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"
+          just examples poetry-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "$TOKEN" "https://pyoci.com/ghcr.io/allexveldman/"
 
   uv:
     name: uv
     runs-on: ubuntu-latest
     timeout-minutes: 2
+
+    env:
+      TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
       - uses: actions/checkout@v4
@@ -63,8 +67,8 @@ jobs:
 
       - name: Publish
         run: |
-          just examples uv-publish "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"
+          just examples uv-publish "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "$TOKEN" "https://pyoci.com/ghcr.io/allexveldman/"
 
       - name: Install
         run: |
-          just examples uv-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "${{ secrets.GITHUB_TOKEN }}" "https://pyoci.com/ghcr.io/allexveldman/"
+          just examples uv-install "${{ steps.version.outputs.VERSION }}" "${{ github.actor }}" "$TOKEN" "https://pyoci.com/ghcr.io/allexveldman/"
