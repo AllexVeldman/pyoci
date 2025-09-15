@@ -86,8 +86,12 @@ pub fn router(env: Env) -> Router {
             post(publish_package).layer(DefaultBodyLimit::max(env.body_limit)),
         );
     let router = match env.path {
-        Some(ref subpath) => Router::new().nest(subpath, pyoci_routes),
-        None => pyoci_routes,
+        // Router.nest() panics when there is no subpath, prevent the panic when
+        // `path` is empty or root instead of None
+        Some(ref subpath) if !["", "/"].contains(&subpath.as_str()) => {
+            Router::new().nest(subpath, pyoci_routes)
+        }
+        _ => pyoci_routes,
     };
 
     // Setup templates
@@ -2474,5 +2478,13 @@ mod tests {
 
         let status = response.status();
         assert_eq!(status, StatusCode::OK);
+    }
+
+    #[test]
+    fn router_empty_subpath() {
+        let _ = router(Env {
+            path: Some("".to_string()),
+            ..Env::default()
+        });
     }
 }
