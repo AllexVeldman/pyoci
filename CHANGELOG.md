@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.29](https://github.com/AllexVeldman/pyoci/compare/v0.1.28...v0.1.29) (2025-09-15)
+
+
+### Bug Fixes
+
+* Panic when PYOCI_PATH is empty or root ([#256](https://github.com/AllexVeldman/pyoci/issues/256)) ([fb90f17](https://github.com/AllexVeldman/pyoci/commit/fb90f170299c8eae40c90d27ac2460843004dd73)), closes [#251](https://github.com/AllexVeldman/pyoci/issues/251)
+
+
+### Miscellaneous Chores
+
+* **ci:** Be explicit about secrets used in reusable workflow ([#245](https://github.com/AllexVeldman/pyoci/issues/245)) ([3166b7e](https://github.com/AllexVeldman/pyoci/commit/3166b7ef953643403115d735115015f93cb48ac2))
+* **docker:** Add `--no-install-recommends` and clean cache ([#247](https://github.com/AllexVeldman/pyoci/issues/247)) ([a80c253](https://github.com/AllexVeldman/pyoci/commit/a80c2537dc9b4f466b3e65d78b276aac07516064))
+* **docker:** Don't cache when building a release ([#248](https://github.com/AllexVeldman/pyoci/issues/248)) ([d083772](https://github.com/AllexVeldman/pyoci/commit/d0837724aba454ed5a2d5f0aa643554350422f97))
+
+
+### Code Refactoring
+
+* **ci:** Trigger release build/deploy on tag ([#243](https://github.com/AllexVeldman/pyoci/issues/243)) ([41edf77](https://github.com/AllexVeldman/pyoci/commit/41edf7720617173811129664611e24513be2d55f))
+
 ## [0.1.28](https://github.com/AllexVeldman/pyoci/compare/v0.1.27...v0.1.28) (2025-09-10)
 
 
