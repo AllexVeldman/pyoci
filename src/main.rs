@@ -8,12 +8,16 @@ mod otlp;
 mod package;
 // PyOci client
 mod pyoci;
+// OCI protocol
+mod oci;
 // HTTP Transport
 mod transport;
 // HTTP Services
 mod service;
 // Wrapper around time
 mod time;
+// Error type
+mod error;
 
 use pyoci::PyOci;
 use tokio::task::JoinHandle;
