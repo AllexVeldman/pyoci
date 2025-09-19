@@ -15,8 +15,8 @@ use serde::{ser::SerializeMap, Serialize, Serializer};
 use tracing::{debug, info_span, Instrument};
 
 use crate::{
+    error::PyOciError,
     package::{Package, WithFileName},
-    pyoci::PyOciError,
     Env, PyOci,
 };
 
@@ -503,7 +503,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::pyoci::digest;
+    use crate::oci::digest;
 
     use axum::{
         body::{to_bytes, Body},

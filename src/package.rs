@@ -4,7 +4,7 @@ use anyhow::{bail, Result};
 use http::StatusCode;
 use serde::{ser::SerializeMap, Serialize, Serializer};
 
-use crate::pyoci::PyOciError;
+use crate::error::PyOciError;
 
 pub trait FileState {}
 

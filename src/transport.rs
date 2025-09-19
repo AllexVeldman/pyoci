@@ -11,39 +11,6 @@ use crate::service::AuthLayer;
 use crate::service::RequestLogLayer;
 use crate::USER_AGENT;
 
-pub trait Transport {
-    /// Send a request
-    ///
-    /// When authentication is required, this method will automatically authenticate
-    /// using the provided Basic auth string and caches the Bearer token for future requests within
-    /// this session.
-    async fn send(&mut self, request: reqwest::RequestBuilder) -> Result<reqwest::Response>;
-
-    /// Return the underlying client
-    fn client(&self) -> &reqwest::Client;
-
-    /// Create a new GET request
-    fn get(&self, url: url::Url) -> reqwest::RequestBuilder {
-        self.client().get(url)
-    }
-    /// Create a new POST request
-    fn post(&self, url: url::Url) -> reqwest::RequestBuilder {
-        self.client().post(url)
-    }
-    /// Create a new PUT request
-    fn put(&self, url: url::Url) -> reqwest::RequestBuilder {
-        self.client().put(url)
-    }
-    /// Create a new HEAD request
-    fn head(&self, url: url::Url) -> reqwest::RequestBuilder {
-        self.client().head(url)
-    }
-    /// Create a new DELETE request
-    fn delete(&self, url: url::Url) -> reqwest::RequestBuilder {
-        self.client().delete(url)
-    }
-}
-
 /// HTTP Transport
 ///
 /// This struct is responsible for sending HTTP requests to the upstream OCI registry.
@@ -93,15 +60,13 @@ impl HttpTransport {
             auth_layer: AuthLayer::new(auth)?,
         })
     }
-}
 
-impl Transport for HttpTransport {
     /// Send a request
     ///
     /// When authentication is required, this method will automatically authenticate
     /// using the provided Basic auth string and caches the Bearer token for future requests within
     /// this session.
-    async fn send(&mut self, request: reqwest::RequestBuilder) -> Result<reqwest::Response> {
+    pub async fn send(&mut self, request: reqwest::RequestBuilder) -> Result<reqwest::Response> {
         let request = request.build()?;
 
         let mut service = ServiceBuilder::new()
@@ -114,8 +79,25 @@ impl Transport for HttpTransport {
         Ok(response)
     }
 
-    fn client(&self) -> &reqwest::Client {
-        &self.client
+    /// Create a new GET request
+    pub fn get(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.get(url)
+    }
+    /// Create a new POST request
+    pub fn post(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.post(url)
+    }
+    /// Create a new PUT request
+    pub fn put(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.put(url)
+    }
+    /// Create a new HEAD request
+    pub fn head(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.head(url)
+    }
+    /// Create a new DELETE request
+    pub fn delete(&self, url: url::Url) -> reqwest::RequestBuilder {
+        self.client.delete(url)
     }
 }
 

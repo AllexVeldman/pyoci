@@ -2,6 +2,7 @@ use anyhow::{anyhow, bail, Context as _, Result};
 use futures::{ready, FutureExt};
 use http::{HeaderValue, StatusCode};
 use pin_project::pin_project;
+use serde::Deserialize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
@@ -9,7 +10,14 @@ use std::task::{Context, Poll};
 use tower::{Layer, Service};
 use url::Url;
 
-use crate::pyoci::{AuthResponse, PyOciError};
+use crate::error::PyOciError;
+
+/// Response deserializer for the authentication request
+#[derive(Deserialize)]
+pub struct AuthResponse {
+    #[serde(alias = "access_token")]
+    pub token: String,
+}
 
 /// Authentication layer for the OCI registry
 /// This layer will handle [token authentication](https://distribution.github.io/distribution/spec/auth/token/)
