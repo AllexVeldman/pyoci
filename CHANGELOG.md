@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.1.30](https://github.com/AllexVeldman/pyoci/compare/v0.1.29...v0.1.30) (2025-09-19)
+
+
+### Bug Fixes
+
+* **release:** Tag workflow not triggered ([#260](https://github.com/AllexVeldman/pyoci/issues/260)) ([62a0088](https://github.com/AllexVeldman/pyoci/commit/62a0088e7d91b91d08d836f40bfabe40600b0e3e))
+
+
+### Code Refactoring
+
+* Split the OCI implementation from PyOci. ([#261](https://github.com/AllexVeldman/pyoci/issues/261)) ([8a8b946](https://github.com/AllexVeldman/pyoci/commit/8a8b94699ac69b0e24a339ea8865053874b39c3a))
+
+
+### Dependency Updates
+
+* bump anyhow from 1.0.98 to 1.0.99 ([#252](https://github.com/AllexVeldman/pyoci/issues/252)) ([bfd95a0](https://github.com/AllexVeldman/pyoci/commit/bfd95a0776beb50be261030379d11c7b2656bc1f))
+* bump async-trait from 0.1.88 to 0.1.89 ([#254](https://github.com/AllexVeldman/pyoci/issues/254)) ([a5e5564](https://github.com/AllexVeldman/pyoci/commit/a5e5564c8d8479314b316ca0c5d8ff1f8242f671))
+* bump oci-spec from 0.8.1 to 0.8.2 ([#253](https://github.com/AllexVeldman/pyoci/issues/253)) ([86ad1d1](https://github.com/AllexVeldman/pyoci/commit/86ad1d1df9d9e8741e2293f7ba03f5c4cb0603bb))
+* bump serde from 1.0.219 to 1.0.223 ([#255](https://github.com/AllexVeldman/pyoci/issues/255)) ([4f2da87](https://github.com/AllexVeldman/pyoci/commit/4f2da874f5cb6f27dde52bcd75289f3054817f88))
+
 ## [0.1.29](https://github.com/AllexVeldman/pyoci/compare/v0.1.28...v0.1.29) (2025-09-15)
 
 
