@@ -12,6 +12,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write  # needed for creating labels
   pull-requests: write
 
 jobs:
@@ -24,5 +25,5 @@ jobs:
       - uses: googleapis/release-please-action@v4
         id: release-please
         with:
-          token: ${{ secrets.GITHUB_TOKEN }}
+          token: ${{ secrets.RELEASE_PLEASE_PAT }}
 
