@@ -55,7 +55,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Build and push
+      - name: Build and load
         uses: docker/build-push-action@v6
         with:
           context: ./
@@ -67,6 +67,20 @@ jobs:
           push: ${{ github.ref_type == 'tag' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: ./
+          file: docker/Dockerfile
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          no-cache: ${{ github.ref_type == 'tag' }}
+          load: false
+          push: ${{ github.ref_type == 'tag' }}
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          platforms: linux/amd64,linux/arm64
 
       # Smoke-test the image
       # The smoke test contains a build of the image but because the previous
