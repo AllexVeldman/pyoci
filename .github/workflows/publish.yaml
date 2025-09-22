@@ -23,7 +23,7 @@ jobs:
   build:
     runs-on: ubuntu-latest
     name: Build
-    timeout-minutes: 15
+    timeout-minutes: 30
 
     outputs:
       version: ${{ steps.meta.outputs.version }}
@@ -63,14 +63,19 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           no-cache: ${{ github.ref_type == 'tag' }}
-          load: true
+          load: false
           push: ${{ github.ref_type == 'tag' }}
           tags: ${{ steps.meta.outputs.tags }}
           labels: ${{ steps.meta.outputs.labels }}
+          platforms: 'linux/amd64,linux/arm64'
 
-      # Smoke-test the image
-      # The smoke test contains a build of the image but because the previous
-      # step defines `load: true` the entire build will be from cache.
+  smoke-test:
+    runs-on: ubuntu-latest
+    name: Smoke Test
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
       - uses: extractions/setup-just@v2
       - uses: snok/install-poetry@v1
       - uses: astral-sh/setup-uv@v5

@@ -5,7 +5,11 @@ ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
 FROM rust:1.81.0 AS builder
 
-RUN rustup target add x86_64-unknown-linux-musl
+COPY docker/target-platform.sh /target-platform.sh
+
+ARG TARGETPLATFORM
+
+RUN rustup target add $(/target-platform.sh)
 RUN apt update \
     && apt install --no-install-recommends -y \
     musl-tools \
@@ -19,12 +23,13 @@ WORKDIR /pyoci
 # Build the dependencies as a separate step so they get cached.
 COPY Cargo.toml Cargo.lock ./
 RUN mkdir src && echo "fn main(){}" > src/main.rs
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release --target $(/target-platform.sh)
 
 # Copy the actual sources
 COPY src ./src/
 RUN touch -a -m ./src/main.rs
-RUN cargo build --release --target x86_64-unknown-linux-musl
+RUN cargo build --release --target $(/target-platform.sh) && \
+    mv /pyoci/target/$(/target-platform.sh)/release/pyoci /pyoci/target/pyoci
 
 
 FROM scratch
@@ -38,7 +43,7 @@ EXPOSE $PORT
 WORKDIR /pyoci
 COPY LICENSE LICENCE
 COPY templates ./templates/
-COPY --from=builder /pyoci/target/x86_64-unknown-linux-musl/release/pyoci pyoci
+COPY --from=builder /pyoci/target/pyoci pyoci
 
 USER pyoci
 
