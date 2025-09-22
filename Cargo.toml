@@ -21,7 +21,7 @@ strip = "symbols"
 [dependencies]
 exitcode = "1.1.2"
 oci-spec = { version = "0.8.2", default-features = false, features = ["image", "distribution"] }
-url = "2.5.4"
+url = "2.5.7"
 tracing = "0.1.41"
 tracing-subscriber = { version = "0.3.20", features = ["env-filter", "fmt"] }
 reqwest = { version = "0.12.23", default-features = false, features = ["json", "rustls-tls"] }
