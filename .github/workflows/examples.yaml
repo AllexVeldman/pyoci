@@ -26,7 +26,7 @@ jobs:
       TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
       - uses: extractions/setup-just@v2
 
@@ -54,7 +54,7 @@ jobs:
       TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
       - uses: extractions/setup-just@v2
 
