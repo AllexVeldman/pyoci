@@ -19,23 +19,118 @@ permissions:
   contents: read
   packages: write
 
+env:
+  REGISTRY_IMAGE: ghcr.io/allexveldman/pyoci
+
 jobs:
   build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform:
+          - linux/amd64
+          - linux/arm64
+        include:
+          - platform: linux/amd64
+            runner: ubuntu-24.04
+
+          - platform: linux/arm64
+            runner: ubuntu-24.04-arm
+
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v4
+      - name: Prepare
+        run: |
+          platform=${{ matrix.platform }}
+          echo "PLATFORM_PAIR=${platform//\//-}" >> $GITHUB_ENV
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build and push by digest
+        id: build
+        uses: docker/build-push-action@v6
+        with:
+          context: ./
+          file: docker/Dockerfile
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          no-cache: ${{ github.ref_type == 'tag' }}
+          platforms: ${{ matrix.platform }}
+          labels: ${{ steps.meta.outputs.labels }}
+          tags: ${{ env.REGISTRY_IMAGE }}
+          outputs: |
+            type=image,push-by-digest=true,name-canonical=true,push=true
+
+      - name: Export digest
+        run: |
+          mkdir -p ${{ runner.temp }}/digests
+          digest="${{ steps.build.outputs.digest }}"
+          touch "${{ runner.temp }}/digests/${digest#sha256:}"
+
+      - name: Upload digest
+        uses: actions/upload-artifact@v4
+        with:
+          name: digests-${{ env.PLATFORM_PAIR }}
+          path: ${{ runner.temp }}/digests/*
+          if-no-files-found: error
+          retention-days: 1
+
+      # Smoke-test the image
+      - uses: extractions/setup-just@v2
+      - uses: snok/install-poetry@v1
+      - uses: astral-sh/setup-uv@v5
+      - run: just test-smoke
+      - run: docker compose logs pyoci
+        working-directory: ./docker
+
+  merge:
     runs-on: ubuntu-latest
-    name: Build
-    timeout-minutes: 15
+    needs:
+      - build
 
     outputs:
       version: ${{ steps.meta.outputs.version }}
 
     steps:
-      - uses: actions/checkout@v4
-      - uses: docker/metadata-action@v5
-        name: Docker meta
-        id: meta
+      - name: Download digests
+        uses: actions/download-artifact@v4
         with:
-          images: |
-            ghcr.io/allexveldman/pyoci
+          path: ${{ runner.temp }}/digests
+          pattern: digests-*
+          merge-multiple: true
+
+      - name: Login to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Docker meta
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.REGISTRY_IMAGE }}
           tags: |
             type=schedule
             type=ref,event=branch
@@ -45,46 +140,24 @@ jobs:
             type=semver,pattern={{major}}.{{minor}}
             type=sha
 
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
+      - name: Create manifest list and push
+        working-directory: ${{ runner.temp }}/digests
+        run: |
+          docker buildx imagetools create ${{ github.ref_type != 'tag' && '--dry-run' || '' }} $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+            $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
 
-      - name: Login to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push
-        uses: docker/build-push-action@v6
-        with:
-          context: ./
-          file: docker/Dockerfile
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          no-cache: ${{ github.ref_type == 'tag' }}
-          load: true
-          push: ${{ github.ref_type == 'tag' }}
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-
-      # Smoke-test the image
-      # The smoke test contains a build of the image but because the previous
-      # step defines `load: true` the entire build will be from cache.
-      - uses: extractions/setup-just@v2
-      - uses: snok/install-poetry@v1
-      - uses: astral-sh/setup-uv@v5
-      - run: just test-smoke
-      - run: docker compose logs pyoci
-        working-directory: ./docker
+      - name: Inspect image
+        if: github.ref_type == 'tag'
+        run: |
+          docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
 
   deploy:
     name: Deploy
-    needs: [build]
+    needs: [merge]
     if: github.ref_type == 'tag'
     uses: ./.github/workflows/deploy.yaml
     with:
-      version: ${{ needs.build.outputs.version }}
+      version: ${{ needs.merge.outputs.version }}
     secrets:
       AZURE_CLIENT_ID: ${{ secrets.AZURE_CLIENT_ID }}
       AZURE_TENANT_ID: ${{ secrets.AZURE_TENANT_ID }}
