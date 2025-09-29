@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.1.30](https://github.com/AllexVeldman/pyoci/compare/v0.1.29...v0.1.30) (2025-09-29)
+
+
+### Features
+
+* **release:** Allow building for multiple architectures ([#266](https://github.com/AllexVeldman/pyoci/issues/266)) ([90aebe9](https://github.com/AllexVeldman/pyoci/commit/90aebe9ecf887a622416cbba25f53fa4efecdcc8))
+
+
+### Bug Fixes
+
+* **release:** Tag workflow not triggered ([#260](https://github.com/AllexVeldman/pyoci/issues/260)) ([62a0088](https://github.com/AllexVeldman/pyoci/commit/62a0088e7d91b91d08d836f40bfabe40600b0e3e))
+
+
+### Miscellaneous Chores
+
+* Configure Renovate ([#272](https://github.com/AllexVeldman/pyoci/issues/272)) ([fd255a3](https://github.com/AllexVeldman/pyoci/commit/fd255a3d5b4761f6a0b7dd5a096d8376d2ff5f7a))
+* **deps:** update actions/checkout action to v5 ([#279](https://github.com/AllexVeldman/pyoci/issues/279)) ([174574c](https://github.com/AllexVeldman/pyoci/commit/174574cfb73c3c028910e30244e314f0d1cabd0c))
+* **deps:** update actions/download-artifact action to v5 ([#281](https://github.com/AllexVeldman/pyoci/issues/281)) ([6a06cd6](https://github.com/AllexVeldman/pyoci/commit/6a06cd65442b618cfd564817865e0e5386d89444))
+* **deps:** update actions/setup-python action to v6 ([#280](https://github.com/AllexVeldman/pyoci/issues/280)) ([813d799](https://github.com/AllexVeldman/pyoci/commit/813d7992414d90fc9cb755fc98e280a54d72ee29))
+* **deps:** update amannn/action-semantic-pull-request action to v6 ([#282](https://github.com/AllexVeldman/pyoci/issues/282)) ([68bab75](https://github.com/AllexVeldman/pyoci/commit/68bab758b250e9c71e9c5e46e8e1c83f4b6f4e19))
+* Switch to Renovate ([#278](https://github.com/AllexVeldman/pyoci/issues/278)) ([b4b2127](https://github.com/AllexVeldman/pyoci/commit/b4b212703e4bc3f93ecb5106263395ef69ce6eb2))
+
+
+### Code Refactoring
+
+* Split the OCI implementation from PyOci. ([#261](https://github.com/AllexVeldman/pyoci/issues/261)) ([8a8b946](https://github.com/AllexVeldman/pyoci/commit/8a8b94699ac69b0e24a339ea8865053874b39c3a))
+
+
+### Dependency Updates
+
+* bump anyhow from 1.0.98 to 1.0.99 ([#252](https://github.com/AllexVeldman/pyoci/issues/252)) ([bfd95a0](https://github.com/AllexVeldman/pyoci/commit/bfd95a0776beb50be261030379d11c7b2656bc1f))
+* bump anyhow from 1.0.99 to 1.0.100 ([#265](https://github.com/AllexVeldman/pyoci/issues/265)) ([24ae0ae](https://github.com/AllexVeldman/pyoci/commit/24ae0ae2a9c4542803965aef76e8d7dfd26e1494))
+* bump async-trait from 0.1.88 to 0.1.89 ([#254](https://github.com/AllexVeldman/pyoci/issues/254)) ([a5e5564](https://github.com/AllexVeldman/pyoci/commit/a5e5564c8d8479314b316ca0c5d8ff1f8242f671))
+* bump axum from 0.8.4 to 0.8.5 ([#271](https://github.com/AllexVeldman/pyoci/issues/271)) ([a257776](https://github.com/AllexVeldman/pyoci/commit/a2577763315ceeffb9bb2dd633bbd22e42ca5971))
+* bump axum-extra from 0.10.1 to 0.10.2 ([#268](https://github.com/AllexVeldman/pyoci/issues/268)) ([efcafd6](https://github.com/AllexVeldman/pyoci/commit/efcafd6dd89663abfbffa307f061ef2f6de24b05))
+* bump oci-spec from 0.8.1 to 0.8.2 ([#253](https://github.com/AllexVeldman/pyoci/issues/253)) ([86ad1d1](https://github.com/AllexVeldman/pyoci/commit/86ad1d1df9d9e8741e2293f7ba03f5c4cb0603bb))
+* bump serde from 1.0.219 to 1.0.223 ([#255](https://github.com/AllexVeldman/pyoci/issues/255)) ([4f2da87](https://github.com/AllexVeldman/pyoci/commit/4f2da874f5cb6f27dde52bcd75289f3054817f88))
+* bump serde from 1.0.223 to 1.0.228 ([#269](https://github.com/AllexVeldman/pyoci/issues/269)) ([da9f3b3](https://github.com/AllexVeldman/pyoci/commit/da9f3b3aca4337d1c3ad9b73ac3ae8daefe93755))
+* bump serde_json from 1.0.143 to 1.0.145 ([#264](https://github.com/AllexVeldman/pyoci/issues/264)) ([fa231ab](https://github.com/AllexVeldman/pyoci/commit/fa231abe4f3038581fb4fb483bc9deb161796f77))
+* bump time from 0.3.41 to 0.3.44 ([#263](https://github.com/AllexVeldman/pyoci/issues/263)) ([171a30c](https://github.com/AllexVeldman/pyoci/commit/171a30cb2079eba062aaad81cdbf0f9f2f829a07))
+* bump url from 2.5.4 to 2.5.7 ([#262](https://github.com/AllexVeldman/pyoci/issues/262)) ([8a81a63](https://github.com/AllexVeldman/pyoci/commit/8a81a63d8193e13bd5b5314c9f7ca7c33b47b8b7))
+
 ## [0.1.29](https://github.com/AllexVeldman/pyoci/compare/v0.1.28...v0.1.29) (2025-09-15)
 
 
