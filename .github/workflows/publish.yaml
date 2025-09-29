@@ -72,11 +72,11 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
           no-cache: ${{ github.ref_type == 'tag' }}
-          load: false
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ env.REGISTRY_IMAGE }}
-          outputs: type=image,push-by-digest=true,name-canonical=true,push=true
+          outputs: |
+            type=image,push-by-digest=true,name-canonical=true,push=true
 
       - name: Export digest
         run: |
@@ -91,6 +91,14 @@ jobs:
           path: ${{ runner.temp }}/digests/*
           if-no-files-found: error
           retention-days: 1
+
+      # Smoke-test the image
+      - uses: extractions/setup-just@v2
+      - uses: snok/install-poetry@v1
+      - uses: astral-sh/setup-uv@v5
+      - run: just test-smoke
+      - run: docker compose logs pyoci
+        working-directory: ./docker
 
   merge:
     runs-on: ubuntu-latest
@@ -142,20 +150,6 @@ jobs:
         if: github.ref_type == 'tag'
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
-
-  smoke-test:
-    runs-on: ubuntu-latest
-    name: Smoke Test
-    timeout-minutes: 15
-
-    steps:
-      - uses: actions/checkout@v4
-      - uses: extractions/setup-just@v2
-      - uses: snok/install-poetry@v1
-      - uses: astral-sh/setup-uv@v5
-      - run: just test-smoke
-      - run: docker compose logs pyoci
-        working-directory: ./docker
 
   deploy:
     name: Deploy
