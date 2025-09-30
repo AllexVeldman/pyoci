@@ -93,7 +93,7 @@ jobs:
           retention-days: 1
 
       # Smoke-test the image
-      - uses: extractions/setup-just@v2
+      - uses: extractions/setup-just@v3
       - uses: snok/install-poetry@v1
       - uses: astral-sh/setup-uv@v6
       - run: just test-smoke
