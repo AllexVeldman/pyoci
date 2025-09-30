@@ -10,7 +10,7 @@ services:
       - 8080:8080
 
   registry:
-    image: docker.io/library/registry:2
+    image: docker.io/library/registry:3
     ports:
       - 5000:5000
     restart: always
