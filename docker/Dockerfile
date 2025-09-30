@@ -3,7 +3,7 @@
 ARG BUILDKIT_SBOM_SCAN_CONTEXT=true
 ARG BUILDKIT_SBOM_SCAN_STAGE=true
 
-FROM rust:1.81.0 AS builder
+FROM rust:1.90.0 AS builder
 
 COPY docker/target-platform.sh /target-platform.sh
 
