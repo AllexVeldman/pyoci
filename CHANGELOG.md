@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.1.31](https://github.com/AllexVeldman/pyoci/compare/v0.1.30...v0.1.31) (2025-09-30)
+
+
+### Miscellaneous Chores
+
+* **deps:** update sonarsource/sonarqube-scan-action action to v6 ([#285](https://github.com/AllexVeldman/pyoci/issues/285)) ([f6e27f1](https://github.com/AllexVeldman/pyoci/commit/f6e27f154022d5a3a5a432c9f0c2b91e58a80ac7))
+* Update renovate config ([#288](https://github.com/AllexVeldman/pyoci/issues/288)) ([33a516c](https://github.com/AllexVeldman/pyoci/commit/33a516c5904bc31f2689292c1ba11ce97d79c150))
+
+
+### Dependency Updates
+
+* update astral-sh/setup-uv action to v6 ([#283](https://github.com/AllexVeldman/pyoci/issues/283)) ([900e5a4](https://github.com/AllexVeldman/pyoci/commit/900e5a46e34f8afd7099210fbc61f112ff86e34d))
+* update docker.io/library/registry docker tag to v3 ([#284](https://github.com/AllexVeldman/pyoci/issues/284)) ([458d5fd](https://github.com/AllexVeldman/pyoci/commit/458d5fd3ee9079fcddf1bab3501f31cd2b2005c2))
+* update extractions/setup-just action to v3 ([#287](https://github.com/AllexVeldman/pyoci/issues/287)) ([26530b9](https://github.com/AllexVeldman/pyoci/commit/26530b9159007e32da90c6ca6fee27f7c544a2b5))
+
 ## [0.1.30](https://github.com/AllexVeldman/pyoci/compare/v0.1.29...v0.1.30) (2025-09-29)
 
 
