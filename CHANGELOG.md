@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.31](https://github.com/AllexVeldman/pyoci/compare/v0.1.30...v0.1.31) (2025-10-10)
+
+
+### Miscellaneous Chores
+
+* **deps:** update sonarsource/sonarqube-scan-action action to v6 ([#285](https://github.com/AllexVeldman/pyoci/issues/285)) ([f6e27f1](https://github.com/AllexVeldman/pyoci/commit/f6e27f154022d5a3a5a432c9f0c2b91e58a80ac7))
+* Update renovate config ([#288](https://github.com/AllexVeldman/pyoci/issues/288)) ([33a516c](https://github.com/AllexVeldman/pyoci/commit/33a516c5904bc31f2689292c1ba11ce97d79c150))
+
+
+### Dependency Updates
+
+* update astral-sh/setup-uv action to v6 ([#283](https://github.com/AllexVeldman/pyoci/issues/283)) ([900e5a4](https://github.com/AllexVeldman/pyoci/commit/900e5a46e34f8afd7099210fbc61f112ff86e34d))
+* update astral-sh/setup-uv action to v7 ([#289](https://github.com/AllexVeldman/pyoci/issues/289)) ([33987f5](https://github.com/AllexVeldman/pyoci/commit/33987f5391042f769e0e067198e34431ba6bf0e2))
+* update axum monorepo ([#290](https://github.com/AllexVeldman/pyoci/issues/290)) ([2d7132d](https://github.com/AllexVeldman/pyoci/commit/2d7132d3fcb6c84cb11d17d79d985ea119abf331))
+* update docker.io/library/registry docker tag to v3 ([#284](https://github.com/AllexVeldman/pyoci/issues/284)) ([458d5fd](https://github.com/AllexVeldman/pyoci/commit/458d5fd3ee9079fcddf1bab3501f31cd2b2005c2))
+* update extractions/setup-just action to v3 ([#287](https://github.com/AllexVeldman/pyoci/issues/287)) ([26530b9](https://github.com/AllexVeldman/pyoci/commit/26530b9159007e32da90c6ca6fee27f7c544a2b5))
+* update rust crate oci-spec to v0.8.3 ([#291](https://github.com/AllexVeldman/pyoci/issues/291)) ([f9c8b70](https://github.com/AllexVeldman/pyoci/commit/f9c8b702f9be2afdbc296a3ead1137f29fb47770))
+* update rust docker tag to v1.90.0 ([#273](https://github.com/AllexVeldman/pyoci/issues/273)) ([f925519](https://github.com/AllexVeldman/pyoci/commit/f9255199fc3e6d12af7952a3862fbc5ca78890a7))
+
 ## [0.1.30](https://github.com/AllexVeldman/pyoci/compare/v0.1.29...v0.1.30) (2025-09-29)
 
 
