@@ -2,6 +2,8 @@
 
 // Webserver request handlers
 mod app;
+// App middleware
+mod middleware;
 // OTLP handlers
 mod otlp;
 // Helper for parsing and managing Python/OCI packages
@@ -19,6 +21,7 @@ mod time;
 // Error type
 mod error;
 
+use axum::ServiceExt;
 use pyoci::PyOci;
 use tokio::task::JoinHandle;
 
@@ -30,7 +33,7 @@ use tracing::Subscriber;
 use tracing_subscriber::prelude::*;
 use tracing_subscriber::EnvFilter;
 
-use crate::app::router;
+use crate::app::pyoci_service;
 use crate::otlp::otlp;
 
 // crate constants
@@ -104,6 +107,16 @@ impl Env {
         }
     }
 
+    // Return the optional subpath, taking into account "empty" subpaths as None
+    fn subpath(&self) -> Option<&str> {
+        // Router.nest() panics when there is no subpath, prevent the panic when
+        // `path` is empty or root instead of None
+        match self.path {
+            Some(ref subpath) if !["", "/"].contains(&subpath.as_str()) => Some(subpath),
+            _ => None,
+        }
+    }
+
     fn trace_attributes(&self) -> HashMap<&'static str, Option<String>> {
         HashMap::from([
             ("service.name", Some("pyoci".to_string())),
@@ -136,7 +149,7 @@ async fn main() {
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", environ.port))
         .await
         .unwrap();
-    axum::serve(listener, router(environ))
+    axum::serve(listener, pyoci_service(environ).into_make_service())
         .with_graceful_shutdown(shutdown_signal(cancel_token, otlp_handle))
         .await
         .unwrap();
