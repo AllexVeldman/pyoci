@@ -88,7 +88,7 @@ impl Env {
                 .parse()
                 .expect("Failed to parse PORT"),
             rust_log: env::var("RUST_LOG").unwrap_or("info".to_string()),
-            path: env::var("PYOCI_PATH").ok(),
+            path: clean_subpath(env::var("PYOCI_PATH").ok()),
             body_limit: env::var("PYOCI_MAX_BODY")
                 .map(|f| f.parse().expect("PYOCI_MAX_BODY is not a valid integer"))
                 .unwrap_or(50_000_000),
@@ -108,16 +108,6 @@ impl Env {
         }
     }
 
-    // Return the optional subpath, taking into account "empty" subpaths as None
-    fn subpath(&self) -> Option<&str> {
-        // Router.nest() panics when there is no subpath, prevent the panic when
-        // `path` is empty or root instead of None
-        match self.path {
-            Some(ref subpath) if !["", "/"].contains(&subpath.as_str()) => Some(subpath),
-            _ => None,
-        }
-    }
-
     fn trace_attributes(&self) -> HashMap<&'static str, Option<String>> {
         HashMap::from([
             ("service.name", Some("pyoci".to_string())),
@@ -128,6 +118,23 @@ impl Env {
             ("k8s.replicaset.name", self.replica_name.clone()),
         ])
     }
+}
+
+// Return the optional subpath, taking into account "empty" subpaths as None
+// Also strips a trailing "/" if present.
+fn clean_subpath(subpath: Option<String>) -> Option<String> {
+    let subpath = subpath?;
+    // Strip trailing "/" if it is in the subpath
+    let subpath = subpath
+        .strip_suffix('/')
+        .map(|v| v.to_string())
+        .unwrap_or(subpath);
+    // Router.nest() panics when there is no subpath, prevent the panic when
+    // `path` is empty or root instead of None
+    if ["", "/"].contains(&subpath.as_str()) {
+        return None;
+    }
+    Some(subpath)
 }
 
 static ENV: LazyLock<Env> = LazyLock::new(Env::new);
@@ -223,6 +230,16 @@ async fn shutdown_signal(cancel_token: CancellationToken, handle: Option<JoinHan
 #[cfg(test)]
 mod tests {
     use super::*;
+    use test_case::test_case;
+
+    #[test_case(Some("/foo".to_string()), Some("/foo".to_string()) ; "Valid, no change")]
+    #[test_case(Some("/foo/".to_string()), Some("/foo".to_string()) ; "Trailing slash")]
+    #[test_case(Some("/".to_string()), None ; "Root only")]
+    #[test_case(Some("//".to_string()), None ; "Double slash")]
+    #[test_case(Some("".to_string()), None ; "Empty")]
+    fn clean_subpath(input: Option<String>, expected: Option<String>) {
+        assert_eq!(super::clean_subpath(input), expected);
+    }
 
     #[tokio::test]
     async fn test_setup_tracing() {
