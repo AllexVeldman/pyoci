@@ -27,6 +27,7 @@ use tokio::task::JoinHandle;
 
 use std::collections::HashMap;
 use std::env;
+use std::sync::LazyLock;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 use tracing::Subscriber;
@@ -129,11 +130,13 @@ impl Env {
     }
 }
 
+static ENV: LazyLock<Env> = LazyLock::new(Env::new);
+
 #[tokio::main]
 async fn main() {
-    let environ = Env::new();
+    let environ = &*ENV;
     let cancel_token = CancellationToken::new();
-    let (tracing, otlp_handle) = setup_tracing(&environ, cancel_token.clone());
+    let (tracing, otlp_handle) = setup_tracing(environ, cancel_token.clone());
     tracing.init();
     tracing::info!("Tracing initialized");
     if otlp_handle.is_some() {

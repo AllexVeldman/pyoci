@@ -67,9 +67,9 @@ struct PyOciState<'a> {
 
 // The PyOCI Service
 pub fn pyoci_service(
-    env: Env,
-) -> impl Service<Request, Response = Response, Error = Infallible, Future: Send> + Clone {
-    EncodeNamespace::new(router(&env), env.subpath())
+    env: &Env,
+) -> impl Service<Request, Response = Response, Error = Infallible, Future: Send> + '_ + Clone {
+    EncodeNamespace::new(router(env), env.subpath())
 }
 
 /// Request Router
@@ -951,10 +951,11 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_body_limit() {
-        let service = pyoci_service(Env {
+        let env = Env {
             body_limit: 10,
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
 
         let form = "Exceeds max body limit";
         let req = Request::builder()
@@ -970,7 +971,8 @@ mod tests {
 
     #[tokio::test]
     async fn publish_package_content_filename_invalid() {
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1084,7 +1086,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1203,10 +1206,11 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env {
+        let env = Env {
             path: Some("/foo".to_string()),
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
 
         let form = "--foobar\r\n\
             Content-Disposition: form-data; name=\":action\"\r\n\
@@ -1343,10 +1347,11 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env {
+        let env = Env {
             max_versions: 2,
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1476,10 +1481,11 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env {
+        let env = Env {
             path: Some("/foo".to_string()),
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/foo/{encoded_url}/mockserver/test-package/"))
@@ -1618,10 +1624,11 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env {
+        let env = Env {
             max_versions: 2,
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1762,11 +1769,12 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env {
+        let env = Env {
             max_versions: 2,
             path: Some("/foo".to_string()),
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -1830,7 +1838,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -1921,7 +1930,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/"))
@@ -2007,7 +2017,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!("/{encoded_url}/mockserver/test-package/json"))
@@ -2135,7 +2146,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2256,10 +2268,11 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env {
+        let env = Env {
             path: Some("/foo".to_string()),
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2281,7 +2294,8 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_file() {
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/.env")
@@ -2304,7 +2318,8 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_whl() {
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.whl")
@@ -2327,7 +2342,8 @@ mod tests {
 
     #[tokio::test]
     async fn download_package_invalid_tar() {
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri("http://localhost.unittest/wp/mockserver/test_package/foo.tar.gz")
@@ -2418,7 +2434,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2490,7 +2507,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2540,7 +2558,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri(format!(
@@ -2638,7 +2657,8 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("DELETE")
             .uri(format!("/{encoded_url}/mockserver/test-package/0.1.0"))
@@ -2734,10 +2754,11 @@ mod tests {
                 .await,
         ];
 
-        let service = pyoci_service(Env {
+        let env = Env {
             path: Some("/foo".to_string()),
             ..Env::default()
-        });
+        };
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("DELETE")
             .uri(format!("/foo/{encoded_url}/mockserver/test-package/0.1.0"))
@@ -2764,7 +2785,8 @@ mod tests {
 
     #[tokio::test]
     async fn health() {
-        let service = pyoci_service(Env::default());
+        let env = Env::default();
+        let service = pyoci_service(&env);
         let req = Request::builder()
             .method("GET")
             .uri("/health")
