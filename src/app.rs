@@ -69,7 +69,7 @@ struct PyOciState<'a> {
 pub fn pyoci_service(
     env: &Env,
 ) -> impl Service<Request, Response = Response, Error = Infallible, Future: Send> + '_ + Clone {
-    EncodeNamespace::new(router(env), env.subpath())
+    EncodeNamespace::new(router(env), env.path.as_deref())
 }
 
 /// Request Router
@@ -97,8 +97,8 @@ fn router(env: &Env) -> Router {
             "/{registry}/{namespace}/",
             post(publish_package).layer(DefaultBodyLimit::max(env.body_limit)),
         );
-    let router = match env.subpath() {
-        Some(subpath) => Router::new().nest(subpath, pyoci_routes),
+    let router = match env.path {
+        Some(ref subpath) => Router::new().nest(subpath, pyoci_routes),
         _ => pyoci_routes,
     };
 
@@ -118,7 +118,7 @@ fn router(env: &Env) -> Router {
         .layer(axum::middleware::from_fn(trace_middleware))
         .route("/health", get(|| async { StatusCode::OK }))
         .with_state(PyOciState {
-            subpath: env.subpath().map(|v| v.to_owned()),
+            subpath: env.path.clone(),
             max_versions: env.max_versions,
             templates: template_reg,
         })
@@ -511,7 +511,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::oci::digest;
+    use crate::{clean_subpath, oci::digest};
 
     use axum::{
         body::{to_bytes, Body},
@@ -2801,7 +2801,7 @@ mod tests {
     #[test]
     fn router_empty_subpath() {
         let _ = router(&Env {
-            path: Some("".to_string()),
+            path: clean_subpath(Some("".to_string())),
             ..Env::default()
         });
     }
