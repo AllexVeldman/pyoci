@@ -28,6 +28,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
+        with:
+          python-version-file: .github/.python-version
       - uses: extractions/setup-just@v3
 
       - run: pip install poetry
@@ -56,6 +58,8 @@ jobs:
     steps:
       - uses: actions/checkout@v5
       - uses: actions/setup-python@v6
+        with:
+          python-version-file: .github/.python-version
       - uses: extractions/setup-just@v3
 
       - run: pip install uv

@@ -93,8 +93,11 @@ jobs:
           retention-days: 1
 
       # Smoke-test the image
+      - uses: actions/setup-python@v6
+        with:
+          python-version-file: .github/.python-version
       - uses: extractions/setup-just@v3
-      - uses: snok/install-poetry@v1
+      - run: pip install poetry
       - uses: astral-sh/setup-uv@v7
       - run: just test-smoke
       - run: docker compose logs pyoci
