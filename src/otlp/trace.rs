@@ -64,7 +64,7 @@ fn build_trace_export_body(
     let scope_spans = ScopeSpans {
         scope: None,
         spans,
-        schema_url: "".to_string(),
+        schema_url: String::new(),
     };
 
     let mut attrs = vec![];
@@ -85,7 +85,7 @@ fn build_trace_export_body(
             ..Resource::default()
         }),
         scope_spans: vec![scope_spans],
-        schema_url: "".to_string(),
+        schema_url: String::new(),
     };
     ExportTraceServiceRequest {
         resource_spans: vec![resource_spans],
@@ -93,8 +93,8 @@ fn build_trace_export_body(
 }
 
 /// Tracing Layer for pushing logs to an OTLP consumer.
-/// Requires a [TraceId] and [SpanId] to be present in Trace Extensions, see [SpanIdLayer].
-/// Requires [SpanStart] and [SpanEnd] to be present in the Trace Extensions, see [SpanTimeLayer].
+/// Requires a [`TraceId`] and [`SpanId`] to be present in Trace Extensions, see [`SpanIdLayer`].
+/// Requires [`SpanStart`] and [`SpanEnd`] to be present in the Trace Extensions, see [`SpanTimeLayer`].
 #[derive(Debug, Clone)]
 pub struct OtlpTraceLayer {
     otlp_endpoint: String,
@@ -144,17 +144,17 @@ impl Toilet for OtlpTraceLayer {
             .await
         {
             Ok(response) => {
-                if !response.status().is_success() {
+                if response.status().is_success() {
+                    tracing::info!("Traces sent to OTLP: {:?}", response);
+                } else {
                     tracing::info!("Failed to send traces to OTLP: {:?}", response);
                     tracing::info!("Response body: {:?}", response.text().await.unwrap());
-                } else {
-                    tracing::info!("Traces sent to OTLP: {:?}", response);
-                };
+                }
             }
             Err(err) => {
                 tracing::info!("Error sending traces to OTLP: {:?}", err);
             }
-        };
+        }
     }
 }
 
@@ -259,7 +259,7 @@ impl Visit for OtelVisitor {
             if let Some(kind) =
                 SpanKind::from_str_name(&format!("SPAN_KIND_{}", value.to_uppercase()))
             {
-                self.kind = kind
+                self.kind = kind;
             }
         } else if let Some(key) = name.strip_prefix("otel.") {
             self.attributes.push(KeyValue {
@@ -267,7 +267,7 @@ impl Visit for OtelVisitor {
                 value: Some(AnyValue {
                     value: Some(Value::StringValue(value.to_string())),
                 }),
-            })
+            });
         }
     }
 }
@@ -292,7 +292,7 @@ impl From<&SpanExit> for u64 {
     }
 }
 
-/// Inject span timings into the span extensions, required by OtlpTraceLayer
+/// Inject span timings into the span extensions, required by `OtlpTraceLayer`
 #[derive(Debug, Default)]
 pub struct SpanTimeLayer {}
 
@@ -300,14 +300,14 @@ impl<S> Layer<S> for SpanTimeLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,
 {
-    /// Insert the SpanStart when we enter this span
+    /// Insert the `SpanStart` when we enter this span
     /// note that a span is entered and exited when crossing await bounds
     /// so we should only set the start value once.
     fn on_enter(&self, id: &Id, ctx: Context<'_, S>) {
         let Some(span) = ctx.span(id) else { return };
         if span.extensions().get::<SpanEnter>().is_some() {
             return;
-        };
+        }
         let current_time = SpanEnter(time_unix_ns());
         span.extensions_mut().replace::<SpanEnter>(current_time);
     }
@@ -321,7 +321,7 @@ where
 #[derive(Debug, Default)]
 pub struct SpanIdLayer {}
 
-/// Insert [SpanId] and [TraceId] into the span extensions
+/// Insert [`SpanId`] and [`TraceId`] into the span extensions
 impl<S> Layer<S> for SpanIdLayer
 where
     S: Subscriber + for<'a> LookupSpan<'a>,

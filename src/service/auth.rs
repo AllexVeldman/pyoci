@@ -32,11 +32,11 @@ pub struct AuthLayer {
 }
 
 impl AuthLayer {
-    pub fn new(basic_token: Option<HeaderValue>) -> Result<Self> {
-        Ok(Self {
+    pub fn new(basic_token: Option<HeaderValue>) -> Self {
+        Self {
             basic: basic_token,
             bearer: Arc::new(RwLock::new(None)),
-        })
+        }
     }
 }
 
@@ -62,8 +62,8 @@ impl<S> AuthService<S> {
         service: S,
     ) -> Self {
         Self {
-            bearer,
             basic,
+            bearer,
             service,
         }
     }
@@ -98,7 +98,7 @@ where
     }
 }
 
-/// The Future returned by AuthService
+/// The Future returned by `AuthService`
 /// Implements the actual authentication logic
 #[pin_project]
 pub struct AuthFuture<S, Req>
@@ -115,7 +115,7 @@ where
     state: AuthState<S::Future>,
 }
 
-/// State machine for AuthFuture
+/// State machine for `AuthFuture`
 #[pin_project(project = AuthStateProj)]
 enum AuthState<F> {
     // Polling the original request or the retry after authentication
@@ -243,7 +243,7 @@ where
                         AuthError::Error(err) => return Poll::Ready(Err(err)),
                     },
                 },
-            };
+            }
         }
     }
 }
@@ -332,9 +332,8 @@ impl WwwAuth {
         let value = header
             .to_str()
             .context("Failed to parse WWW-Authenticate header")?;
-        let value = match value.strip_prefix("Bearer ") {
-            None => bail!("Not a Bearer token"),
-            Some(value) => value,
+        let Some(value) = value.strip_prefix("Bearer ") else {
+            bail!("Not a Bearer token")
         };
 
         let realm = {
@@ -361,7 +360,7 @@ impl WwwAuth {
                 Some(start) => {
                     let value = value[start..].strip_prefix(r#"scope=""#).unwrap();
                     let end = value.find('"').context("invalid scope value")?;
-                    Some(value[..end].split(' ').map(|s| s.to_string()).collect())
+                    Some(value[..end].split(' ').map(ToString::to_string).collect())
                 }
             }
         };
@@ -398,7 +397,7 @@ mod tests {
                     "some:value.with/things\\".to_string()
                 ])
             }
-        )
+        );
     }
 
     // Happy-flow
@@ -439,9 +438,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(
-                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
-            )
+            .layer(AuthLayer::new(Some(
+                HeaderValue::try_from("Basic mybasicauth").unwrap(),
+            )))
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -494,9 +493,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(
-                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
-            )
+            .layer(AuthLayer::new(Some(
+                HeaderValue::try_from("Basic mybasicauth").unwrap(),
+            )))
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -587,9 +586,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(
-                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
-            )
+            .layer(AuthLayer::new(Some(
+                HeaderValue::try_from("Basic mybasicauth").unwrap(),
+            )))
             .service(Client::default());
 
         // First request
@@ -635,9 +634,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(
-                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
-            )
+            .layer(AuthLayer::new(Some(
+                HeaderValue::try_from("Basic mybasicauth").unwrap(),
+            )))
             .service(Client::default());
 
         // Construct a request that can't be cloned
@@ -676,7 +675,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(None).unwrap())
+            .layer(AuthLayer::new(None))
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -707,9 +706,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(
-                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
-            )
+            .layer(AuthLayer::new(Some(
+                HeaderValue::try_from("Basic mybasicauth").unwrap(),
+            )))
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -753,9 +752,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(
-                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap())).unwrap(),
-            )
+            .layer(AuthLayer::new(Some(
+                HeaderValue::try_from("Basic mybasicauth").unwrap(),
+            )))
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -809,9 +808,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(
-                AuthLayer::new(Some(HeaderValue::try_from("Basic mybasictoken").unwrap())).unwrap(),
-            )
+            .layer(AuthLayer::new(Some(
+                HeaderValue::try_from("Basic mybasictoken").unwrap(),
+            )))
             .service(Client::default());
 
         let request = reqwest::Request::new(

@@ -31,10 +31,10 @@ pub struct PyOci {
 
 impl PyOci {
     /// Create a new Client
-    pub fn new(registry: Url, auth: Option<HeaderValue>) -> Result<PyOci> {
-        Ok(PyOci {
-            oci: Oci::new(registry, auth)?,
-        })
+    pub fn new(registry: Url, auth: Option<HeaderValue>) -> PyOci {
+        PyOci {
+            oci: Oci::new(registry, auth),
+        }
     }
 }
 
@@ -53,7 +53,7 @@ impl PyOci {
     /// List all files for the given package
     ///
     /// Limits the number of files to `n`
-    /// ref: https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
+    /// ref: <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags>
     pub async fn list_package_files<'a>(
         &mut self,
         package: &'a Package<'a, WithoutFileName>,
@@ -67,13 +67,13 @@ impl PyOci {
 
         if n == 0 {
             // Fetch all versions
-            n = tags.len()
+            n = tags.len();
         }
         if tags.len() > n {
             tracing::warn!(
                 "TagsList contains {} tags, only fetching the first {n}",
                 tags.len()
-            )
+            );
         }
 
         // We fetch a list of all tags from the OCI registry.
@@ -121,10 +121,10 @@ impl PyOci {
             // Artifact type is as expected, do nothing
             Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
             // Artifact type has unexpected value, err
-            Some(value) => bail!("Unknown artifact type: {}", value),
+            Some(value) => bail!("Unknown artifact type: {value}"),
             // Artifact type is not set, err
             None => bail!("No artifact type set"),
-        };
+        }
         let mut files: Vec<Package<WithFileName>> = Vec::new();
         for manifest in index.manifests() {
             match manifest.platform().as_ref().unwrap().architecture() {
@@ -134,19 +134,19 @@ impl PyOci {
                     if let Some(annotations) = manifest.annotations() {
                         sha256_digest = annotations
                             .get("com.pyoci.sha256_digest")
-                            .map(|v| v.to_string());
+                            .map(ToString::to_string);
                         project_urls = annotations
                             .get("com.pyoci.project_urls")
-                            .map(|v| v.to_string())
-                    };
+                            .map(ToString::to_string);
+                    }
                     let file = package
                         .with_oci_file(reference, arch)
                         .with_sha256(sha256_digest)
                         .with_project_urls(project_urls);
                     files.push(file);
                 }
-                arch => bail!("Unsupported architecture '{}'", arch),
-            };
+                arch => bail!("Unsupported architecture '{arch}'"),
+            }
         }
         Ok(files)
     }
@@ -177,10 +177,10 @@ impl PyOci {
             // Artifact type is as expected, do nothing
             Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
             // Artifact type has unexpected value, err
-            Some(value) => bail!("Unknown artifact type: {}", value),
+            Some(value) => bail!("Unknown artifact type: {value}"),
             // Artifact type is not set, err
             None => bail!("No artifact type set"),
-        };
+        }
         // Find manifest descriptor for platform
         let mut platform_manifest: Option<&oci_spec::image::Descriptor> = None;
         for manifest in index.manifests() {
@@ -194,18 +194,15 @@ impl PyOci {
                 }
             }
         }
-        let manifest_descriptor = match platform_manifest {
-            Some(descriptor) => descriptor,
-            None => {
-                return Err(PyOciError::from((
-                    StatusCode::NOT_FOUND,
-                    format!(
-                        "Requested architecture '{}' not available",
-                        package.oci_architecture()
-                    ),
-                ))
-                .into())
-            }
+        let Some(manifest_descriptor) = platform_manifest else {
+            return Err(PyOciError::from((
+                StatusCode::NOT_FOUND,
+                format!(
+                    "Requested architecture '{}' not available",
+                    package.oci_architecture()
+                ),
+            ))
+            .into());
         };
 
         let manifest = match self
@@ -240,7 +237,7 @@ impl PyOci {
     ///
     /// The `sha256_digest`, if provided, will be verified against the sha256 of the actual content.
     ///
-    /// The `annotations` will be added to the ImageManifest, mimicking the default docker CLI
+    /// The `annotations` will be added to the `ImageManifest`, mimicking the default docker CLI
     /// behaviour.
     pub async fn publish_package_file(
         &mut self,
@@ -300,7 +297,7 @@ impl PyOci {
             .await
     }
 
-    /// Create or Update the definition of a new ImageIndex
+    /// Create or Update the definition of a new `ImageIndex`
     async fn image_index(
         &mut self,
         package: &Package<'_, WithFileName>,
@@ -334,9 +331,9 @@ impl PyOci {
                 // Check artifact type
                 match index.artifact_type() {
                     Some(MediaType::Other(value)) if value == ARTIFACT_TYPE => {}
-                    Some(value) => bail!("Unknown artifact type: {}", value),
+                    Some(value) => bail!("Unknown artifact type: {value}"),
                     None => bail!("No artifact type set"),
-                };
+                }
                 for existing in index.manifests() {
                     match existing.platform() {
                         Some(platform) if *platform == manifest.platform => {
@@ -353,7 +350,7 @@ impl PyOci {
                         _ => {}
                     }
                 }
-                let mut manifests = index.manifests().to_vec();
+                let mut manifests = index.manifests().clone();
                 manifests.push(manifest.descriptor(index_manifest_annotations));
                 index.set_manifests(manifests);
                 *index
@@ -384,20 +381,20 @@ impl PyOci {
             // Artifact type is as expected, do nothing
             Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
             // Artifact type has unexpected value, err
-            Some(value) => bail!("Unknown artifact type: {}", value),
+            Some(value) => bail!("Unknown artifact type: {value}"),
             // Artifact type is not set, err
             None => bail!("No artifact type set"),
-        };
+        }
         for manifest in index.manifests() {
             let digest = manifest.digest().to_string();
             tracing::debug!("Deleting {name}:{digest}");
-            self.oci.delete_manifest(&name, &digest).await?
+            self.oci.delete_manifest(&name, &digest).await?;
         }
         Ok(())
     }
 }
 
-/// Get the definition of a new ImageManifest
+/// Get the definition of a new `ImageManifest`
 fn image_manifest(
     package: &Package<'_, WithFileName>,
     layer: &Blob,
@@ -435,7 +432,7 @@ fn verify_digest(layer: &Blob, expected_digest: Option<String>) -> Result<String
     Ok(package_digest.to_string())
 }
 
-/// static EmptyConfig Descriptor
+/// static `EmptyConfig` Descriptor
 fn empty_config() -> Blob {
     Blob::new("{}".into(), "application/vnd.oci.empty.v1+json")
 }
@@ -512,7 +509,7 @@ mod tests {
             .await;
 
         let pyoci = PyOci {
-            oci: Oci::new(Url::parse(&url).expect("valid url"), None).unwrap(),
+            oci: Oci::new(Url::parse(&url).expect("valid url"), None),
         };
 
         let package = Package::new("ghcr.io", "mockserver", "bar");
@@ -563,7 +560,7 @@ mod tests {
             .await;
 
         let pyoci = PyOci {
-            oci: Oci::new(Url::parse(&url).expect("valid url"), None).unwrap(),
+            oci: Oci::new(Url::parse(&url).expect("valid url"), None),
         };
 
         let package = Package::new("ghcr.io", "mockserver", "bar");
@@ -630,7 +627,7 @@ mod tests {
             .await;
 
         let mut pyoci = PyOci {
-            oci: Oci::new(Url::parse(&url).expect("valid url"), None).unwrap(),
+            oci: Oci::new(Url::parse(&url).expect("valid url"), None),
         };
 
         // Setup the objects we're publishing
@@ -727,7 +724,7 @@ mod tests {
             .await;
 
         let mut pyoci = PyOci {
-            oci: Oci::new(Url::parse(&url).expect("valid url"), None).unwrap(),
+            oci: Oci::new(Url::parse(&url).expect("valid url"), None),
         };
 
         // Setup the objects we're publishing
@@ -837,7 +834,7 @@ mod tests {
             .await;
 
         let mut pyoci = PyOci {
-            oci: Oci::new(Url::parse(&url).expect("valid url"), None).unwrap(),
+            oci: Oci::new(Url::parse(&url).expect("valid url"), None),
         };
 
         // Setup the objects we're publishing

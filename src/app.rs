@@ -12,6 +12,7 @@ use axum::{
     Json, Router,
 };
 use axum_extra::extract::{rejection::HostRejection, Host};
+use bytes::Bytes;
 use handlebars::Handlebars;
 use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
@@ -40,7 +41,7 @@ impl IntoResponse for AppError {
             Ok(err) => return err.into_response(),
             Err(err) => err,
         };
-        (StatusCode::INTERNAL_SERVER_ERROR, format!("{:#}", any_err)).into_response()
+        (StatusCode::INTERNAL_SERVER_ERROR, format!("{any_err:#}")).into_response()
     }
 }
 
@@ -57,9 +58,9 @@ where
 
 #[derive(Debug, Clone)]
 struct PyOciState<'a> {
-    /// Subpath PyOCI is hosted on
+    /// Subpath `PyOCI` is hosted on
     subpath: Option<String>,
-    /// Maximum versions PyOCI will fetch when listing a package
+    /// Maximum versions `PyOCI` will fetch when listing a package
     max_versions: usize,
     /// HTML Template registry
     templates: Handlebars<'a>,
@@ -159,7 +160,7 @@ async fn accesslog_middleware(
 
     tracing::debug!("Accept: {:?}", headers);
     tracing::info!(
-        host = host.map(|value| value.0).unwrap_or("".to_string()),
+        host = host.map(|value| value.0).unwrap_or_default(),
         "type" = "request",
         status,
         method = method.to_string(),
@@ -206,7 +207,7 @@ async fn list_package(
 ) -> Result<Html<String>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
     // Fetch at most 100 package versions
     let files = client.list_package_files(&package, max_versions).await?;
 
@@ -256,7 +257,7 @@ async fn list_package_json(
 ) -> Result<Json<ListJson>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
     let versions = client.list_package_versions(&package).await?;
 
     let mut project_urls = HashMap::new();
@@ -265,10 +266,10 @@ async fn list_package_json(
             .package_info_for_ref(&package, last_version)
             .await?
             .first()
-            .map(|p| p.project_urls())
+            .map(Package::project_urls)
             .unwrap()
         {
-            project_urls = package
+            project_urls = package;
         }
     }
     let response = ListJson {
@@ -291,7 +292,7 @@ async fn download_package(
 ) -> Result<impl IntoResponse, AppError> {
     let package = Package::from_filename(&registry, &namespace, &filename)?;
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
     let data = client
         .download_package_file(&package)
         .await?
@@ -319,14 +320,14 @@ async fn delete_package_version(
 ) -> Result<String, AppError> {
     let package = Package::new(&registry, &namespace, &name).with_oci_file(&version, "");
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
     client.delete_package_version(&package).await?;
     Ok("Deleted".into())
 }
 
 /// Publish package request handler
 ///
-/// ref: https://warehouse.pypa.io/api-reference/legacy.html#upload-api
+/// ref: <https://warehouse.pypa.io/api-reference/legacy.html#upload-api>
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn publish_package(
@@ -337,7 +338,7 @@ async fn publish_package(
     let form_data = UploadForm::from_multipart(multipart).await?;
 
     let package = Package::from_filename(&registry, &namespace, &form_data.filename)?;
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers))?;
+    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
 
     client
         .publish_package_file(
@@ -360,13 +361,13 @@ fn get_auth(headers: &HeaderMap) -> Option<HeaderValue> {
     });
     if auth.is_none() {
         tracing::warn!("No Authorization header provided");
-    };
+    }
     auth
 }
 
 /// Form data for the upload API
 ///
-/// ref: https://docs.pypi.org/api/upload/
+/// ref: <https://docs.pypi.org/api/upload/>
 #[derive(Debug, Eq, PartialEq)]
 struct UploadForm {
     filename: String,
@@ -377,9 +378,9 @@ struct UploadForm {
 }
 
 impl UploadForm {
-    /// Convert a Multipart into an UploadForm
+    /// Convert a Multipart into an `UploadForm`
     ///
-    /// Returns MultiPartError if the form can't be parsed
+    /// Returns `MultiPartError` if the form can't be parsed
     async fn from_multipart(mut multipart: Multipart) -> anyhow::Result<Self> {
         let mut action = None;
         let mut protocol_version = None;
@@ -389,8 +390,9 @@ impl UploadForm {
         let mut labels = HashMap::new();
         let mut project_urls = HashMap::new();
 
+        // Extract the fields from the form
         while let Some(field) = multipart.next_field().await? {
-            let Some(field_name) = field.name().map(|f| f.to_owned()) else {
+            let Some(field_name) = field.name().map(ToOwned::to_owned) else {
                 continue;
             };
 
@@ -398,103 +400,25 @@ impl UploadForm {
                 ":action" => action = Some(field.text().await?),
                 "protocol_version" => protocol_version = Some(field.text().await?),
                 "content" => {
-                    filename = field.file_name().map(|s| s.to_string());
-                    content = Some(field.bytes().await?)
+                    filename = field.file_name().map(ToString::to_string);
+                    content = Some(field.bytes().await?);
                 }
                 "classifiers" => {
                     let classifier = field.text().await?;
-                    if let Some(label) = classifier.strip_prefix("PyOCI :: Label :: ") {
-                        if let [key, value] = label.splitn(2, " :: ").collect::<Vec<_>>()[..] {
-                            labels.insert(key.to_string(), value.to_string());
-                            debug!("Found label '{key}={value}'");
-                        } else {
-                            debug!("Invalid PyOci label '{label}'");
-                        }
-                    } else {
-                        debug!("Discarding field 'classifiers': {classifier}");
-                    };
+                    Self::parse_classifier(&classifier, &mut labels);
                 }
                 "project_urls" => {
                     let project_url = field.text().await?;
-                    if let [key, value] = project_url.splitn(2, ", ").collect::<Vec<_>>()[..] {
-                        project_urls.insert(key.to_string(), value.to_string());
-                        debug!("Found Project-URL '{key}={value}'");
-                    } else {
-                        debug!("Invalid Project-URL '{project_url}'");
-                    }
+                    Self::parse_project_url(&project_url, &mut project_urls);
                 }
                 "sha256_digest" => sha256 = Some(field.text().await?),
                 name => debug!("Discarding field '{name}': {}", field.text().await?),
             }
         }
-
-        match action {
-            Some(action) if action == "file_upload" => (),
-            None => {
-                return Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    "Missing ':action' form-field",
-                ))
-                .into())
-            }
-            _ => {
-                return Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    "Invalid ':action' form-field",
-                ))
-                .into())
-            }
-        };
-
-        match protocol_version {
-            Some(protocol_version) if protocol_version == "1" => (),
-            None => {
-                return Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    "Missing 'protocol_version' form-field",
-                ))
-                .into())
-            }
-            _ => {
-                return Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    "Invalid 'protocol_version' form-field",
-                ))
-                .into())
-            }
-        };
-
-        let content = match content {
-            None => {
-                return Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    "Missing 'content' form-field",
-                ))
-                .into())
-            }
-            Some(content) if content.is_empty() => {
-                return Err(
-                    PyOciError::from((StatusCode::BAD_REQUEST, "No 'content' provided")).into(),
-                )
-            }
-            Some(content) => content,
-        };
-
-        let filename = match filename {
-            Some(filename) if filename.is_empty() => {
-                return Err(
-                    PyOciError::from((StatusCode::BAD_REQUEST, "No 'filename' provided")).into(),
-                )
-            }
-            Some(filename) => filename,
-            None => {
-                return Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    "'content' form-field is missing a 'filename'",
-                ))
-                .into())
-            }
-        };
+        Self::validate_action(action.as_deref())?;
+        Self::validate_protocol(protocol_version.as_deref())?;
+        let content = Self::unwrap_content(content)?;
+        let filename = Self::unwrap_filename(filename)?;
 
         Ok(Self {
             filename,
@@ -504,10 +428,103 @@ impl UploadForm {
             project_urls,
         })
     }
+
+    #[allow(clippy::doc_markdown)]
+    /// Parse a classifier and insert it into the labels map
+    ///
+    /// Classifier format:
+    /// `"PyOCI :: Label :: <Key> :: <Value>"`
+    ///
+    /// Any other format will be discarded
+    fn parse_classifier(classifier: &str, labels: &mut HashMap<String, String>) {
+        if let Some(label) = classifier.strip_prefix("PyOCI :: Label :: ") {
+            if let [key, value] = label.splitn(2, " :: ").collect::<Vec<_>>()[..] {
+                labels.insert(key.to_string(), value.to_string());
+                debug!("Found label '{key}={value}'");
+            } else {
+                debug!("Invalid PyOci label '{label}'");
+            }
+        } else {
+            debug!("Discarding field 'classifiers': {classifier}");
+        }
+    }
+
+    /// Parse a project URL and insert it into the project URLs map
+    ///
+    /// Project URL format:
+    /// `"<key>, <URL>"`
+    fn parse_project_url(project_url: &str, project_urls: &mut HashMap<String, String>) {
+        if let [key, value] = project_url.splitn(2, ", ").collect::<Vec<_>>()[..] {
+            project_urls.insert(key.to_string(), value.to_string());
+            debug!("Found Project-URL '{key}={value}'");
+        } else {
+            debug!("Invalid Project-URL '{project_url}'");
+        }
+    }
+
+    /// Validate the ":action" is "`file_upload`"
+    fn validate_action(action: Option<&str>) -> Result<(), PyOciError> {
+        match action {
+            Some("file_upload") => Ok(()),
+            None => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "Missing ':action' form-field",
+            ))),
+            _ => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "Invalid ':action' form-field",
+            ))),
+        }
+    }
+
+    // Validate the protocol version is "1"
+    fn validate_protocol(protocol_version: Option<&str>) -> Result<(), PyOciError> {
+        match protocol_version {
+            Some("1") => Ok(()),
+            None => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "Missing 'protocol_version' form-field",
+            ))),
+            _ => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "Invalid 'protocol_version' form-field",
+            ))),
+        }
+    }
+
+    fn unwrap_content(content: Option<Bytes>) -> Result<Bytes, PyOciError> {
+        match content {
+            None => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "Missing 'content' form-field",
+            ))),
+            Some(content) if content.is_empty() => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "No 'content' provided",
+            ))),
+            Some(content) => Ok(content),
+        }
+    }
+
+    fn unwrap_filename(filename: Option<String>) -> Result<String, PyOciError> {
+        match filename {
+            None => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "'content' form-field is missing a 'filename'",
+            ))),
+            Some(filename) if filename.is_empty() => Err(PyOciError::from((
+                StatusCode::BAD_REQUEST,
+                "No 'filename' provided",
+            ))),
+            Some(filename) => Ok(filename),
+        }
+    }
 }
 
+#[allow(clippy::doc_markdown, clippy::too_many_lines)]
 #[cfg(test)]
 mod tests {
+
     use std::collections::HashMap;
 
     use super::*;
@@ -543,7 +560,7 @@ mod tests {
     fn test_get_auth_none() {
         let headers = HeaderMap::new();
         let auth = get_auth(&headers);
-        assert_eq!(auth, None)
+        assert_eq!(auth, None);
     }
 
     #[tokio::test]
@@ -1013,7 +1030,7 @@ mod tests {
         let encoded_url = urlencoding::encode(&url).into_owned();
 
         // Set timestamp to fixed time
-        crate::time::set_timestamp(1732134216);
+        crate::time::set_timestamp(1_732_134_216);
 
         let mocks = vec![
             // Mock the server, in order of expected requests
@@ -1133,7 +1150,7 @@ mod tests {
         let encoded_url = urlencoding::encode(&url).into_owned();
 
         // Set timestamp to fixed time
-        crate::time::set_timestamp(1732134216);
+        crate::time::set_timestamp(1_732_134_216);
 
         let mocks = vec![
             // Mock the server, in order of expected requests
@@ -2801,7 +2818,7 @@ mod tests {
     #[test]
     fn router_empty_subpath() {
         let _ = router(&Env {
-            path: clean_subpath(Some("".to_string())),
+            path: clean_subpath(Some(String::new())),
             ..Env::default()
         });
     }

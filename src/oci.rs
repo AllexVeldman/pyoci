@@ -46,7 +46,7 @@ macro_rules! build_url {
 /// Returns an error if the string contains ".."
 fn sanitize(value: &str) -> Result<&str> {
     match value {
-        value if value.contains("..") => bail!("Invalid value: {}", value),
+        value if value.contains("..") => bail!("Invalid value: {value}"),
         value => Ok(value),
     }
 }
@@ -90,7 +90,7 @@ pub enum Manifest {
     Manifest(Box<ImageManifest>),
 }
 
-/// Container for a ImageManifest combined with a Platform
+/// Container for a `ImageManifest` combined with a Platform
 #[derive(Debug)]
 pub struct PlatformManifest {
     pub manifest: ImageManifest,
@@ -134,15 +134,15 @@ pub struct Oci {
 
 /// Low-level functionality for interacting with the OCI registry
 impl Oci {
-    pub fn new(registry: Url, auth: Option<HeaderValue>) -> Result<Oci> {
-        Ok(Oci {
+    pub fn new(registry: Url, auth: Option<HeaderValue>) -> Oci {
+        Oci {
             registry,
-            transport: HttpTransport::new(auth)?,
-        })
+            transport: HttpTransport::new(auth),
+        }
     }
     /// Push a blob to the registry using POST then PUT method
     ///
-    /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#post-then-put
+    /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#post-then-put>
     #[tracing::instrument(skip_all, fields(otel.name = name))]
     pub async fn push_blob(
         &mut self,
@@ -243,7 +243,7 @@ impl Oci {
 
     /// List the available tags for a package
     ///
-    /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags
+    /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags>
     #[tracing::instrument(skip_all, fields(otel.name = name))]
     pub async fn list_tags(&mut self, name: &str) -> anyhow::Result<BTreeSet<String>> {
         let url = build_url!(&self.registry, "/v2/{}/tags/list", name);
@@ -262,7 +262,7 @@ impl Oci {
             .await?
             .tags()
             .iter()
-            .map(|f| f.to_owned())
+            .map(ToOwned::to_owned)
             .collect();
         while let Some(ref link) = link_header {
             // Follow the link headers as long as a Link header is returned
@@ -280,7 +280,7 @@ impl Oci {
                 None => None,
             };
             let tag_list = response.json::<TagList>().await?;
-            tags.extend(tag_list.tags().iter().map(|f| f.to_owned()));
+            tags.extend(tag_list.tags().iter().map(ToOwned::to_owned));
         }
 
         Ok(tags)
@@ -288,8 +288,8 @@ impl Oci {
 
     /// Push a manifest to the registry
     ///
-    /// ImageIndex will be pushed with a version tag if version is set
-    /// ImageManifest will always be pushed with a digest reference
+    /// `ImageIndex` will be pushed with a version tag if version is set
+    /// `ImageManifest` will always be pushed with a digest reference
     #[tracing::instrument(skip_all, fields(otel.name = name, otel.version = version))]
     pub async fn push_manifest(
         &mut self,
@@ -373,7 +373,7 @@ impl Oci {
     /// Delete a tag or manifest
     ///
     /// reference: tag or digest of the manifest to delete
-    /// https://github.com/opencontainers/distribution-spec/blob/main/spec.md#content-management
+    /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#content-management>
     #[tracing::instrument(skip_all, fields(otel.name = name, otel.reference = reference))]
     pub async fn delete_manifest(&mut self, name: &str, reference: &str) -> Result<()> {
         let url = build_url!(&self.registry, "/v2/{}/manifests/{}", name, reference);
@@ -392,14 +392,11 @@ impl TryFrom<&HeaderValue> for Link {
     type Error = PyOciError;
 
     fn try_from(value: &HeaderValue) -> std::result::Result<Self, Self::Error> {
-        let value = match value.to_str() {
-            Ok(value) => value,
-            _ => {
-                return Err(PyOciError::from((
-                    StatusCode::BAD_GATEWAY,
-                    "OCI registry provided invalid Link header",
-                )))
-            }
+        let Ok(value) = value.to_str() else {
+            return Err(PyOciError::from((
+                StatusCode::BAD_GATEWAY,
+                "OCI registry provided invalid Link header",
+            )));
         };
         let parts = value.split(';').collect::<Vec<_>>();
         tracing::debug!("{parts:?}");
@@ -420,7 +417,7 @@ impl TryFrom<&HeaderValue> for Link {
         for param in &parts[1..] {
             match param.split_once('=') {
                 Some((key, value)) if key.trim() == "rel" && value.trim() == "\"next\"" => {
-                    valid_rel = true
+                    valid_rel = true;
                 }
                 _ => {}
             }
@@ -519,7 +516,7 @@ mod tests {
                 .await,
         );
 
-        let mut client = Oci::new(Url::parse(&url).expect("valid url"), None).unwrap();
+        let mut client = Oci::new(Url::parse(&url).expect("valid url"), None);
         let blob = Blob::new("hello".into(), "application/octet-stream");
         let _ = client.push_blob("mockserver/foobar", blob).await;
 
@@ -571,7 +568,7 @@ mod tests {
                 .await,
         );
 
-        let mut client = Oci::new(Url::parse(&url).expect("valid url"), None).unwrap();
+        let mut client = Oci::new(Url::parse(&url).expect("valid url"), None);
         let blob = Blob::new("hello".into(), "application/octet-stream");
         let _ = client.push_blob("mockserver/foobar", blob).await;
 
@@ -600,7 +597,7 @@ mod tests {
             .create_async()
             .await;
 
-        let mut pyoci = Oci::new(Url::parse(&url).expect("valid url"), None).unwrap();
+        let mut pyoci = Oci::new(Url::parse(&url).expect("valid url"), None);
 
         let result = pyoci
             .list_tags("mockserver/bar")
@@ -672,7 +669,7 @@ mod tests {
             .create_async()
             .await;
 
-        let mut pyoci = Oci::new(Url::parse(&url).expect("valid url"), None).unwrap();
+        let mut pyoci = Oci::new(Url::parse(&url).expect("valid url"), None);
 
         let result = pyoci
             .list_tags("mockserver/bar")
@@ -699,6 +696,6 @@ mod tests {
         assert_eq!(
             link.0,
             "/v2/allexveldman/hello_world/tags/list?last=0.0.1-example.1.poetry.2824051&n=5"
-        )
+        );
     }
 }
