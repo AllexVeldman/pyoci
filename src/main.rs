@@ -1,4 +1,5 @@
 #![warn(unused_extern_crates)]
+#![warn(clippy::pedantic, clippy::complexity)]
 
 // Webserver request handlers
 mod app;
@@ -45,22 +46,23 @@ const ARTIFACT_TYPE: &str = "application/pyoci.package.v1";
 /// Runtime environment variables
 #[derive(Debug, Clone)]
 struct Env {
-    /// Post PyOCI is listening on
+    /// Post `PyOCI` is listening on
     port: u16,
     /// Log configuration
     rust_log: String,
-    /// Subpath PyOCI is hosted on
+    /// Subpath `PyOCI` is hosted on
     path: Option<String>,
     /// OTLP collector endpoint
     otlp_endpoint: Option<String>,
     /// OTLP authentication header value
     otlp_auth: Option<String>,
+    #[allow(clippy::struct_field_names)]
     deployment_env: Option<String>,
     container_name: Option<String>,
     pod_name: Option<String>,
     replica_name: Option<String>,
     body_limit: usize,
-    /// Maximum number of version PyOCI will fetch when listing a package
+    /// Maximum number of version `PyOCI` will fetch when listing a package
     max_versions: usize,
 }
 
@@ -127,7 +129,7 @@ fn clean_subpath(subpath: Option<String>) -> Option<String> {
     // Strip trailing "/" if it is in the subpath
     let subpath = subpath
         .strip_suffix('/')
-        .map(|v| v.to_string())
+        .map(ToString::to_string)
         .unwrap_or(subpath);
     // Router.nest() panics when there is no subpath, prevent the panic when
     // `path` is empty or root instead of None
@@ -154,7 +156,7 @@ async fn main() {
     tracing::info!(
         "Listening on 0.0.0.0:{}{}",
         environ.port,
-        &environ.path.clone().unwrap_or("".to_string())
+        &environ.path.clone().unwrap_or_default()
     );
     let listener = tokio::net::TcpListener::bind(("0.0.0.0", environ.port))
         .await
@@ -167,10 +169,10 @@ async fn main() {
 
 /// Setup tracing with a console log and OTLP trace/log.
 ///
-/// OTLP tracing will only be set up if the environment contains an otlp_endpoint and otlp_auth.
-/// Otherwise the JoinHandle will be None.
+/// OTLP tracing will only be set up if the environment contains an `otlp_endpoint` and `otlp_auth`.
+/// Otherwise the `JoinHandle` will be None.
 ///
-/// If the JoinHandle is not None, ensure to await it before shutting down to send the remaining
+/// If the `JoinHandle` is not None, ensure to await it before shutting down to send the remaining
 /// trace data to the OTLP collector.
 fn setup_tracing(
     environ: &Env,
@@ -216,9 +218,9 @@ async fn shutdown_signal(cancel_token: CancellationToken, handle: Option<JoinHan
     };
 
     tokio::select! {
-        _ = ctrl_c => {},
-        _ = terminate => {},
-        _ = cancel_token.cancelled() => {},
+        () = ctrl_c => {},
+        () = terminate => {},
+        () = cancel_token.cancelled() => {},
     }
     tracing::info!("Gracefully shutting down");
     cancel_token.cancel();
@@ -232,13 +234,16 @@ mod tests {
     use super::*;
     use test_case::test_case;
 
-    #[test_case(Some("/foo".to_string()), Some("/foo".to_string()) ; "Valid, no change")]
-    #[test_case(Some("/foo/".to_string()), Some("/foo".to_string()) ; "Trailing slash")]
+    #[test_case(Some("/foo".to_string()), Some("/foo") ; "Valid, no change")]
+    #[test_case(Some("/foo/".to_string()), Some("/foo") ; "Trailing slash")]
     #[test_case(Some("/".to_string()), None ; "Root only")]
     #[test_case(Some("//".to_string()), None ; "Double slash")]
-    #[test_case(Some("".to_string()), None ; "Empty")]
-    fn clean_subpath(input: Option<String>, expected: Option<String>) {
-        assert_eq!(super::clean_subpath(input), expected);
+    #[test_case(Some(String::new()), None ; "Empty")]
+    fn clean_subpath(input: Option<String>, expected: Option<&str>) {
+        assert_eq!(
+            super::clean_subpath(input),
+            expected.map(ToString::to_string)
+        );
     }
 
     #[tokio::test]
@@ -293,8 +298,8 @@ mod tests {
         // Create a handle to join in `shutdown_signal`
         let handle = tokio::spawn(async move {
             tokio::select! {
-                _ = std::future::pending() => {},
-                _ = upstream_cancel_token.cancelled() => {},
+                () = std::future::pending() => {},
+                () = upstream_cancel_token.cancelled() => {},
             }
         });
         // spawn `shutdown_signal`

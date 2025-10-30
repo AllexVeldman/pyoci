@@ -1,4 +1,4 @@
-use std::{collections::HashMap, marker::PhantomData};
+use std::{collections::HashMap, marker::PhantomData, path::Path};
 
 use anyhow::{bail, Result};
 use http::StatusCode;
@@ -39,7 +39,7 @@ impl<'a, T: FileState> Package<'a, T> {
         Package {
             registry: self.registry,
             namespace: self.namespace,
-            name: self.name.to_owned(),
+            name: self.name.clone(),
             version: Some(tag.replace('-', "+")),
             arch: Some(arch.to_string()),
             sha256: None,
@@ -76,7 +76,7 @@ fn registry_url(registry: &str) -> Result<url::Url> {
     let registry = if registry.starts_with("http://") || registry.starts_with("https://") {
         registry.into_owned()
     } else {
-        format!("https://{}", registry)
+        format!("https://{registry}")
     };
 
     let url = url::Url::parse(&registry)?;
@@ -109,7 +109,7 @@ impl Package<'_, WithFileName> {
     ///
     /// The filename is expected to be normalized, specifically there should be no '-' in any of
     /// it's components.
-    /// ref: https://packaging.python.org/en/latest/specifications/binary-distribution-format/#escaping-and-unicode
+    /// ref: <https://packaging.python.org/en/latest/specifications/binary-distribution-format/#escaping-and-unicode>
     pub fn from_filename<'a>(
         registry: &'a str,
         namespace: &'a str,
@@ -123,22 +123,28 @@ impl Package<'_, WithFileName> {
                 [name, version] => (name, version, ".tar.gz"),
                 _ => Err(PyOciError::from((
                     StatusCode::BAD_REQUEST,
-                    format!("Invalid source distribution filename '{}'", filename),
+                    format!("Invalid source distribution filename '{filename}'"),
                 )))?,
             },
-            None => match filename.ends_with(".whl") {
-                true => match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
-                    [name, version, arch] => (name, version, arch),
-                    _ => Err(PyOciError::from((
+            None => {
+                if Path::new(filename)
+                    .extension()
+                    .is_some_and(|ext| ext.eq_ignore_ascii_case("whl"))
+                {
+                    match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
+                        [name, version, arch] => (name, version, arch),
+                        _ => Err(PyOciError::from((
+                            StatusCode::BAD_REQUEST,
+                            format!("Invalid binary distribution filename '{filename}'"),
+                        )))?,
+                    }
+                } else {
+                    Err(PyOciError::from((
                         StatusCode::BAD_REQUEST,
-                        format!("Invalid binary distribution filename '{}'", filename),
-                    )))?,
-                },
-                false => Err(PyOciError::from((
-                    StatusCode::BAD_REQUEST,
-                    format!("Unkown filetype '{}'", filename),
-                )))?,
-            },
+                        format!("Unkown filetype '{filename}'"),
+                    )))?
+                }
+            }
         };
         Ok(Package {
             registry,
@@ -211,9 +217,13 @@ impl Package<'_, WithFileName> {
     pub fn filename(&self) -> String {
         let version = self.version.as_ref().unwrap();
         let arch = self.arch.as_ref().unwrap();
-        match arch.ends_with(".whl") {
-            true => format!("{}-{}-{}", self.name, version, arch),
-            false => format!("{}-{}{}", self.name, version, arch),
+        if Path::new(arch)
+            .extension()
+            .is_some_and(|ext| ext.eq_ignore_ascii_case("whl"))
+        {
+            format!("{}-{}-{}", self.name, version, arch)
+        } else {
+            format!("{}-{}{}", self.name, version, arch)
         }
     }
 }
@@ -281,7 +291,7 @@ mod tests {
     }
 
     #[test]
-    /// Test if Info.py_uri() url-encodes the registry
+    /// Test if `Info.py_uri()` url-encodes the registry
     fn test_info_py_uri() {
         let info =
             Package::from_filename("https://foo.example:4000", "bar", "baz-1.tar.gz").unwrap();
@@ -292,7 +302,7 @@ mod tests {
     }
 
     #[test]
-    /// Test Info.with_oci_file() return an Info object with the new version
+    /// Test `Info.with_oci_file()` return an Info object with the new version
     fn test_info_with_oci_file() {
         let info = Package::new("https://foo.example", "bar", "baz");
         let info = info.with_oci_file("0.1.pre3-1234.foobar", "tar.gz");

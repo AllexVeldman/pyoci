@@ -21,7 +21,7 @@ use crate::otlp::Toilet;
 use crate::time::time_unix_ns;
 use crate::USER_AGENT;
 
-/// Convert a batch of log records into a ExportLogsServiceRequest
+/// Convert a batch of log records into a `ExportLogsServiceRequest`
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
 fn build_logs_export_body(
     logs: Vec<LogRecord>,
@@ -30,7 +30,7 @@ fn build_logs_export_body(
     let scope_logs = ScopeLogs {
         scope: None,
         log_records: logs,
-        schema_url: "".to_string(),
+        schema_url: String::new(),
     };
 
     let mut attrs = vec![];
@@ -51,20 +51,20 @@ fn build_logs_export_body(
             ..Resource::default()
         }),
         scope_logs: vec![scope_logs],
-        schema_url: "".to_string(),
+        schema_url: String::new(),
     };
     ExportLogsServiceRequest {
         resource_logs: vec![resource_logs],
     }
 }
 
-/// Relies on [TraceId] and [SpanId] to be available in the Event's Span, see [crate::otlp::trace::SpanIdLayer]
+/// Relies on [`TraceId`] and [`SpanId`] to be available in the Event's Span, see [`crate::otlp::trace::SpanIdLayer`]
 /// Tracing Layer for pushing logs to an OTLP consumer.
 #[derive(Debug, Clone)]
 pub struct OtlpLogLayer {
     otlp_endpoint: String,
     otlp_auth: String,
-    /// Buffer of LogRecords, each (log) event during a request will be added to this buffer
+    /// Buffer of `LogRecords`, each (log) event during a request will be added to this buffer
     records: Arc<RwLock<Vec<LogRecord>>>,
 }
 
@@ -108,17 +108,17 @@ impl Toilet for OtlpLogLayer {
             .await
         {
             Ok(response) => {
-                if !response.status().is_success() {
+                if response.status().is_success() {
+                    tracing::info!("Logs sent to OTLP: {:?}", response);
+                } else {
                     tracing::info!("Failed to send logs to OTLP: {:?}", response);
                     tracing::info!("Response body: {:?}", response.text().await.unwrap());
-                } else {
-                    tracing::info!("Logs sent to OTLP: {:?}", response);
-                };
+                }
             }
             Err(err) => {
                 tracing::info!("Error sending logs to OTLP: {:?}", err);
             }
-        };
+        }
     }
 }
 

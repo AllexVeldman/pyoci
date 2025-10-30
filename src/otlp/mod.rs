@@ -18,18 +18,18 @@ use tracing_subscriber::registry::LookupSpan;
 
 /// Wrap `subscriber` with OTLP tracing.
 /// Note that this adds 4 types to every trace's extensions:
-/// - [TraceId](opentelemetry::trace::TraceId) - ID shared by all nested spans
-/// - [SpanId](opentelemetry::trace::SpanId) - ID of this span
-/// - [SpanStart](trace::SpanStart) - Unix timestamp [ns] when the span was first entered
-/// - [SpanEnd](trace::SpanEnd) - Unix timestamp [ns] when the span was last exited
+/// - [`TraceId`](opentelemetry::trace::TraceId) - ID shared by all nested spans
+/// - [`SpanId`](opentelemetry::trace::SpanId) - ID of this span
+/// - [`SpanStart`](trace::SpanStart) - Unix timestamp [ns] when the span was first entered
+/// - [`SpanEnd`](trace::SpanEnd) - Unix timestamp [ns] when the span was last exited
 ///
 /// A background Task is spawned that will flush the records every `flush_interval`,
-/// or when the cancel_token is canceled.
+/// or when the `cancel_token` is canceled.
 ///
-/// Returns the amended Subscriber and a JoinHandle for the background Task.
-/// After canceling the cancel_token, await the JoinHandle to ensure everything gets flushed.
+/// Returns the amended Subscriber and a `JoinHandle` for the background Task.
+/// After canceling the `cancel_token`, await the `JoinHandle` to ensure everything gets flushed.
 ///
-/// OTLP tracing won't be set up if otlp_endpoint or otlp_auth is None.
+/// OTLP tracing won't be set up if `otlp_endpoint` or `otlp_auth` is None.
 pub fn otlp<S>(
     subscriber: S,
     otlp_endpoint: Option<String>,
@@ -63,7 +63,7 @@ where
         loop {
             tokio::select! {
                 _ = interval.tick() => {},
-                _ = cancel_token.cancelled() => {
+                () = cancel_token.cancelled() => {
                     otlp_layer.flush(&attributes).await;
                     break;
                 }

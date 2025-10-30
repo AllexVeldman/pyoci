@@ -11,7 +11,7 @@ impl<S> EncodeNamespace<S> {
     pub fn new(inner: S, subpath: Option<&str>) -> Self {
         EncodeNamespace {
             inner,
-            subpath: subpath.map(|v| v.to_owned()),
+            subpath: subpath.map(ToOwned::to_owned),
         }
     }
 }
@@ -32,7 +32,7 @@ where
     }
 
     fn call(&mut self, req: Request<Body>) -> Self::Future {
-        let req = urlencode_namespace(req, &self.subpath);
+        let req = urlencode_namespace(req, self.subpath.as_deref());
         self.inner.call(req)
     }
 }
@@ -43,8 +43,8 @@ where
 // what the OCI registry should support.
 //
 // By URL-encoding the namespace we allow Axum Router to route like regular
-fn urlencode_namespace<B>(mut req: Request<B>, subpath: &Option<String>) -> Request<B> {
-    let Some(uri) = _urlencode_namespace(req.method() == Method::POST, req.uri().path(), subpath)
+fn urlencode_namespace<B>(mut req: Request<B>, subpath: Option<&str>) -> Request<B> {
+    let Some(uri) = urlencode_namespace_(req.method() == Method::POST, req.uri().path(), subpath)
     else {
         return req;
     };
@@ -63,7 +63,7 @@ fn urlencode_namespace<B>(mut req: Request<B>, subpath: &Option<String>) -> Requ
 //  /{registry}/{namespace with extra paths}/{package}/{filename}
 // POST:
 //  /{registry}/{namespace with extra paths}/
-fn _urlencode_namespace(is_post_request: bool, uri: &str, subpath: &Option<String>) -> Option<Uri> {
+fn urlencode_namespace_(is_post_request: bool, uri: &str, subpath: Option<&str>) -> Option<Uri> {
     let subpath_len = if let Some(value) = subpath {
         value.len()
     } else {
@@ -153,9 +153,7 @@ mod tests {
             .body(Body::empty())
             .unwrap();
         assert_eq!(
-            super::urlencode_namespace(req, &prefix.map(|v| v.to_string()))
-                .uri()
-                .path(),
+            super::urlencode_namespace(req, prefix).uri().path(),
             expected
         );
     }

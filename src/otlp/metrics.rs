@@ -62,6 +62,7 @@ impl UptimeMetric {
 
     fn as_metric(&self, attributes: &[KeyValue]) -> Metric {
         let now = time_unix_ns();
+        #[allow(clippy::cast_precision_loss)]
         let diff = (now - self.start_ns) as f64 / 1_000_000_000.0;
         Metric {
             name: "pyoci_uptime".to_string(),
@@ -110,7 +111,7 @@ impl RequestsMetric {
                     attributes: attributes.to_vec(),
                     start_time_unix_nano: now,
                     time_unix_nano: now,
-                    value: Some(Value::AsInt(*self.count.read().unwrap() as i64)),
+                    value: Some(Value::AsInt(i64::from(*self.count.read().unwrap()))),
                     ..NumberDataPoint::default()
                 }],
                 aggregation_temporality: AggregationTemporality::Cumulative.into(),
@@ -121,7 +122,7 @@ impl RequestsMetric {
     }
 }
 
-/// Convert metrics into a ExportMetricsServiceRequest
+/// Convert metrics into a `ExportMetricsServiceRequest`
 /// <https://opentelemetry.io/docs/specs/otlp/#otlpgrpc>
 fn build_metrics_export_body(
     metrics: &Metrics,
@@ -142,7 +143,7 @@ fn build_metrics_export_body(
     let scope_metrics = ScopeMetrics {
         scope: None,
         metrics: metrics.as_metrics(&attrs),
-        schema_url: "".to_string(),
+        schema_url: String::new(),
     };
     let resource_metrics = ResourceMetrics {
         resource: Some(Resource {
@@ -150,7 +151,7 @@ fn build_metrics_export_body(
             ..Resource::default()
         }),
         scope_metrics: vec![scope_metrics],
-        schema_url: "".to_string(),
+        schema_url: String::new(),
     };
     ExportMetricsServiceRequest {
         resource_metrics: vec![resource_metrics],
@@ -217,16 +218,16 @@ impl Toilet for OtlpMetricsLayer {
             .await
         {
             Ok(response) => {
-                if !response.status().is_success() {
+                if response.status().is_success() {
+                    tracing::info!("Metrics sent to OTLP: {:?}", response);
+                } else {
                     tracing::info!("Failed to send metrics to OTLP: {:?}", response);
                     tracing::info!("Response body: {:?}", response.text().await.unwrap());
-                } else {
-                    tracing::info!("Metrics sent to OTLP: {:?}", response);
-                };
+                }
             }
             Err(err) => {
                 tracing::info!("Error sending metrics to OTLP: {:?}", err);
             }
-        };
+        }
     }
 }
