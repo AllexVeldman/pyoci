@@ -82,6 +82,17 @@ If the classifiers are found in the package upload request, the key-value pairs 
 
 Note that these classifiers are case-sensitive and [non-standard](https://pypi.org/classifiers/).
 
+## Package sub-paths
+OCI allows for images to contain paths, for example `python/team1/hello-world`.
+Python does not allow for such a prefix.
+
+To publish/use a package with a path prefix, append the path to the index url.
+
+So to install `hello-world` as part of the `python/team1/` path in the `allexveldman` orginisation on `ghcr.io`,
+use `pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.com/ghcr.io/allexveldman/python/team1/" hello-world`
+
+Note that this prefix is only reflected in the OCI registry, the package itself will be installed in your python environment as just `hello-world`.
+
 ## Authentication
 Pip's [Basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
 is forwarded as-is to the target registry as part of the [token authentication](https://distribution.github.io/distribution/spec/auth/token/) flow.
