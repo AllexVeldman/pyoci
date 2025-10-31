@@ -257,10 +257,8 @@ impl PyOci {
         // Annotations added to the manifest descriptor in the ImageIndex
         // We're adding the digest here so we don't need to pull the ImageManifest when listing
         // packages to get the package (blob) digest
-        let mut index_manifest_annotations = HashMap::from([(
-            "com.pyoci.sha256_digest".to_string(),
-            package_digest.to_string(),
-        )]);
+        let mut index_manifest_annotations =
+            HashMap::from([("com.pyoci.sha256_digest".to_string(), package_digest)]);
 
         let creation_annotation = HashMap::from([(
             "org.opencontainers.image.created".to_string(),
