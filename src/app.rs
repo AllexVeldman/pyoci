@@ -4,6 +4,7 @@ use std::{
 };
 
 use axum::{
+    body::Body,
     debug_handler,
     extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, Path, Request, State},
     http::{header, HeaderMap},
@@ -293,18 +294,14 @@ async fn download_package(
     let package = Package::from_filename(&registry, &namespace, &filename)?;
 
     let mut client = PyOci::new(package.registry()?, get_auth(&headers));
-    let data = client
-        .download_package_file(&package)
-        .await?
-        .bytes()
-        .await?;
+    let data = client.download_package_file(&package).await?.bytes_stream();
 
     Ok((
         [(
             header::CONTENT_DISPOSITION,
             format!("attachment; filename=\"{}\"", package.filename()),
         )],
-        data,
+        Body::from_stream(data),
     ))
 }
 
