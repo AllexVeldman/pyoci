@@ -1,5 +1,43 @@
 # Changelog
 
+## [0.1.32](https://github.com/AllexVeldman/pyoci/compare/v0.1.31...v0.1.32) (2025-11-04)
+
+
+### Features
+
+* Stream response for file download ([#312](https://github.com/AllexVeldman/pyoci/issues/312)) ([1fe44ac](https://github.com/AllexVeldman/pyoci/commit/1fe44acf7800abcfb2c993c4e779b63e8e78ec54))
+
+
+### Documentation
+
+* Add documentation for package sub-paths ([#305](https://github.com/AllexVeldman/pyoci/issues/305)) ([2cafc33](https://github.com/AllexVeldman/pyoci/commit/2cafc33661a2a73a61063e2e76b12ac78f42a50d))
+
+
+### Miscellaneous Chores
+
+* Add abandonments to Renovate config ([#301](https://github.com/AllexVeldman/pyoci/issues/301)) ([397c770](https://github.com/AllexVeldman/pyoci/commit/397c770a702ebb18f115535932b373d8507c7f32))
+* Remove unneeded clone ([#308](https://github.com/AllexVeldman/pyoci/issues/308)) ([5bdaac7](https://github.com/AllexVeldman/pyoci/commit/5bdaac7dd433cb175c4cdad7675ccf859cd95af3))
+
+
+### Code Refactoring
+
+* Make codebase pass `clippy::pedantic` ([#306](https://github.com/AllexVeldman/pyoci/issues/306)) ([02e7051](https://github.com/AllexVeldman/pyoci/commit/02e7051ddcdd3e6188d1908d0207233134abbf29))
+
+
+### Continuous Integration
+
+* Provide a Python version and pip install poetry ([#303](https://github.com/AllexVeldman/pyoci/issues/303)) ([4d18ba9](https://github.com/AllexVeldman/pyoci/commit/4d18ba9edeb81a5a2077d75bc444a4613115cf33))
+
+
+### Dependency Updates
+
+* update python docker tag to v3.14 ([#304](https://github.com/AllexVeldman/pyoci/issues/304)) ([038e554](https://github.com/AllexVeldman/pyoci/commit/038e554298fb0e3c462bfea183f98737a1f73879))
+* update rust crate axum-extra to 0.12.0 ([#309](https://github.com/AllexVeldman/pyoci/issues/309)) ([83c1567](https://github.com/AllexVeldman/pyoci/commit/83c1567330cd618b84f802fced489e876e000edf))
+* update rust crate base16ct to 0.3.0 ([#274](https://github.com/AllexVeldman/pyoci/issues/274)) ([3af868d](https://github.com/AllexVeldman/pyoci/commit/3af868d65e68b95e52c0c160a7d4bd33f22f5e8a))
+* update rust crate opentelemetry-proto to 0.31.0 ([#276](https://github.com/AllexVeldman/pyoci/issues/276)) ([4932445](https://github.com/AllexVeldman/pyoci/commit/4932445a563000646823daea552eb079b823d48b))
+* update rust crate tokio-util to v0.7.17 ([#311](https://github.com/AllexVeldman/pyoci/issues/311)) ([57ca848](https://github.com/AllexVeldman/pyoci/commit/57ca8483b6dcf762c8006fb3bb1b2a386f1569d0))
+* update rust docker tag to v1.91.0 ([#307](https://github.com/AllexVeldman/pyoci/issues/307)) ([0dfe645](https://github.com/AllexVeldman/pyoci/commit/0dfe64545529ecaef85444b90a52ab73dec41ae4))
+
 ## [0.1.31](https://github.com/AllexVeldman/pyoci/compare/v0.1.30...v0.1.31) (2025-10-27)
 
 
