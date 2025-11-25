@@ -1,7 +1,7 @@
 use axum::response::IntoResponse;
 use http::StatusCode;
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq, Eq)]
 pub struct PyOciError {
     pub status: StatusCode,
     pub message: String,
