@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.33](https://github.com/AllexVeldman/pyoci/compare/v0.1.32...v0.1.33) (2025-11-25)
+
+
+### Bug Fixes
+
+* **auth:** 502 when authenticating with `registry-1.docker.io` ([#321](https://github.com/AllexVeldman/pyoci/issues/321)) ([a78fe98](https://github.com/AllexVeldman/pyoci/commit/a78fe98c9f5501d2405ceae7654e04b80bb4aa12))
+
+
+### Dependency Updates
+
+* update actions/checkout action to v6 ([#316](https://github.com/AllexVeldman/pyoci/issues/316)) ([7211f32](https://github.com/AllexVeldman/pyoci/commit/7211f3253ea0c0afbc27e1d62471ff41052e7fd1))
+* update axum monorepo ([#315](https://github.com/AllexVeldman/pyoci/issues/315)) ([a158fee](https://github.com/AllexVeldman/pyoci/commit/a158fee9bc78c3e0ca078a63a362226ba3a9c52d))
+* update pre-commit hook rhysd/actionlint to v1.7.9 ([#317](https://github.com/AllexVeldman/pyoci/issues/317)) ([dbbdcf0](https://github.com/AllexVeldman/pyoci/commit/dbbdcf0d735c1e6e904c63a3ff9167983692e775))
+* update rust crate bytes to v1.11.0 ([#314](https://github.com/AllexVeldman/pyoci/issues/314)) ([f124825](https://github.com/AllexVeldman/pyoci/commit/f124825beba622303de3e6233d4668d678ffc0f8))
+* update rust crate http to v1.4.0 ([#320](https://github.com/AllexVeldman/pyoci/issues/320)) ([5e1b7e9](https://github.com/AllexVeldman/pyoci/commit/5e1b7e93458cb4a4ecc65342e2929e0a08c01cdb))
+* update rust docker tag to v1.91.1 ([#313](https://github.com/AllexVeldman/pyoci/issues/313)) ([999f3b9](https://github.com/AllexVeldman/pyoci/commit/999f3b9c6b6407e82e10d5b19b046090a52ee945))
+
 ## [0.1.32](https://github.com/AllexVeldman/pyoci/compare/v0.1.31...v0.1.32) (2025-11-04)
 
 
