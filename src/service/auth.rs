@@ -13,10 +13,29 @@ use url::Url;
 use crate::error::PyOciError;
 
 /// Response deserializer for the authentication request
+/// ref: <https://distribution.github.io/distribution/spec/auth/token/>
+///
+/// Servers may return both `token` and `access_token` in the response.
+/// Client behaviour is undefined per the spec, we'll use the `token`
 #[derive(Deserialize)]
 pub struct AuthResponse {
-    #[serde(alias = "access_token")]
-    pub token: String,
+    token: Option<String>,
+    access_token: Option<String>,
+}
+
+impl AuthResponse {
+    pub fn token(&self) -> Result<&str, PyOciError> {
+        if let Some(token) = &self.token {
+            return Ok(token);
+        }
+        if let Some(token) = &self.access_token {
+            return Ok(token);
+        }
+        Err(PyOciError::from((
+            StatusCode::BAD_GATEWAY,
+            "OCI registry provided invalid authentication response",
+        )))
+    }
 }
 
 /// Authentication layer for the OCI registry
@@ -306,7 +325,7 @@ where
         ))
     })?;
     let mut token =
-        http::HeaderValue::try_from(format!("Bearer {}", auth.token)).map_err(|err| {
+        http::HeaderValue::try_from(format!("Bearer {}", auth.token()?)).map_err(|err| {
             tracing::info!("Failed to create bearer token header");
             PyOciError::from((
                 StatusCode::BAD_GATEWAY,
@@ -382,6 +401,43 @@ mod tests {
     use reqwest::{Body, Client};
     use tower::ServiceBuilder;
     use url::Url;
+
+    // Check if the `token` key is used if present
+    #[test]
+    fn auth_response_token() {
+        let response = r#"{"token":"thisisatoken"}"#;
+        let result = serde_json::from_str::<AuthResponse>(response).unwrap();
+        assert_eq!(result.token().unwrap(), "thisisatoken");
+    }
+
+    // check if the `access_token` is used if present and `token` is not present
+    #[test]
+    fn auth_response_access_token() {
+        let response = r#"{"access_token":"thisisatoken"}"#;
+        let result = serde_json::from_str::<AuthResponse>(response).unwrap();
+        assert_eq!(result.token().unwrap(), "thisisatoken");
+    }
+
+    // Check that the `token` has priority over `access_token`
+    #[test]
+    fn auth_response_priority() {
+        let response = r#"{"token":"thisisatoken","access_token":"thisisanaccess_token"}"#;
+        let result = serde_json::from_str::<AuthResponse>(response).unwrap();
+        assert_eq!(result.token().unwrap(), "thisisatoken");
+    }
+
+    #[test]
+    fn auth_reponse_no_token() {
+        let response = "{}";
+        let result = serde_json::from_str::<AuthResponse>(response).unwrap();
+        assert_eq!(
+            result.token().unwrap_err(),
+            PyOciError::from((
+                StatusCode::BAD_GATEWAY,
+                "OCI registry provided invalid authentication response"
+            ))
+        );
+    }
 
     #[test]
     fn www_auth() {
@@ -829,9 +885,8 @@ mod tests {
         }
         assert_eq!(error.status, StatusCode::BAD_GATEWAY);
         assert_eq!(
-            error.message,
-            "Failed to parse authentication response: missing field `token` at line 1 column 23"
-                .to_string()
+            &error.message,
+            "OCI registry provided invalid authentication response"
         );
     }
 }
