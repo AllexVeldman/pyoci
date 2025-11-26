@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.1.34](https://github.com/AllexVeldman/pyoci/compare/v0.1.33...v0.1.34) (2025-11-26)
+
+
+### Features
+
+* Bind to IPv6 `[::]` ([#322](https://github.com/AllexVeldman/pyoci/issues/322)) ([e9cbb86](https://github.com/AllexVeldman/pyoci/commit/e9cbb862f9dc8a05b21119e7719fda608d6f3499))
+
+
+### Dependency Updates
+
+* update tokio-tracing monorepo ([#324](https://github.com/AllexVeldman/pyoci/issues/324)) ([527ed72](https://github.com/AllexVeldman/pyoci/commit/527ed727cb6aec950f3c6a2c6db685815685f4d8))
+
 ## [0.1.33](https://github.com/AllexVeldman/pyoci/compare/v0.1.32...v0.1.33) (2025-11-25)
 
 
