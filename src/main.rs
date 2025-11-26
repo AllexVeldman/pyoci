@@ -28,6 +28,7 @@ use tokio::task::JoinHandle;
 
 use std::collections::HashMap;
 use std::env;
+use std::net::Ipv6Addr;
 use std::sync::LazyLock;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
@@ -147,24 +148,19 @@ async fn main() {
     let cancel_token = CancellationToken::new();
     let (tracing, otlp_handle) = setup_tracing(environ, cancel_token.clone());
     tracing.init();
-    tracing::info!("Tracing initialized");
     if otlp_handle.is_some() {
         tracing::info!("Sending logs/traces to OTLP collector");
     }
 
     // Setup the webserver
-    tracing::info!(
-        "Listening on 0.0.0.0:{}{}",
-        environ.port,
-        &environ.path.clone().unwrap_or_default()
-    );
-    let listener = tokio::net::TcpListener::bind(("0.0.0.0", environ.port))
+    let listener = tokio::net::TcpListener::bind((Ipv6Addr::UNSPECIFIED, environ.port))
         .await
-        .unwrap();
+        .expect("Could not bind to socket");
+    tracing::info!("Listening on {}", listener.local_addr().unwrap());
     axum::serve(listener, pyoci_service(environ).into_make_service())
         .with_graceful_shutdown(shutdown_signal(cancel_token, otlp_handle))
         .await
-        .unwrap();
+        .expect("Failed to start the server");
 }
 
 /// Setup tracing with a console log and OTLP trace/log.
