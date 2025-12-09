@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.35](https://github.com/AllexVeldman/pyoci/compare/v0.1.34...v0.1.35) (2025-12-09)
+
+
+### Dependency Updates
+
+* update sonarsource/sonarqube-scan-action action to v7 ([#331](https://github.com/AllexVeldman/pyoci/issues/331)) ([3de2d72](https://github.com/AllexVeldman/pyoci/commit/3de2d72f0fce2e36fb428a802c54c679a81f577f))
+
 ## [0.1.34](https://github.com/AllexVeldman/pyoci/compare/v0.1.33...v0.1.34) (2025-11-26)
 
 
