@@ -76,6 +76,12 @@ Set by Azure Container App, can change if I every decide to move host:
 - `CONTAINER_APP_REVISION` -> `k8s.pod.name`
 - `CONTAINER_APP_REPLICA_NAME` -> `k8s.replicaset.name`
 
+### Health check
+PyOCI exposes the `/health` endpoint that returns HTTP 200 if the server is up and processing requests.
+
+> [!NOTE]
+> This endpoint is always `/health` and does not change with `PYOCI_PATH`.
+
 ## Add Labels to your package
 Labels can be added to your package by including them as a `PyOCI :: Label :: <Key> :: <Value>` [classifier](https://packaging.python.org/en/latest/specifications/core-metadata/#classifier-multiple-use) of the package.
 If the classifiers are found in the package upload request, the key-value pairs will be added as [annotations](https://github.com/opencontainers/image-spec/blob/main/annotations.md) (aka labels in docker terms) to the OCI image.
