@@ -100,7 +100,7 @@ Python does not allow for such a prefix.
 
 To publish/use a package with a path prefix, append the path to the index url.
 
-So to install `hello-world` as part of the `python/team1/` path in the `allexveldman` orginisation on `ghcr.io`,
+So to install `hello-world` as part of the `python/team1/` path in the `allexveldman` organisation on `ghcr.io`,
 use `pip install --index-url="https://$GITHUB_USER:$GITHUB_TOKEN@pyoci.com/ghcr.io/allexveldman/python/team1/" hello-world`
 
 Note that this prefix is only reflected in the OCI registry, the package itself will be installed in your python environment as just `hello-world`.
