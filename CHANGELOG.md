@@ -1,5 +1,31 @@
 # Changelog
 
+## [0.1.35](https://github.com/AllexVeldman/pyoci/compare/v0.1.34...v0.1.35) (2025-12-17)
+
+
+### Bug Fixes
+
+* package name not consistent in list results ([#338](https://github.com/AllexVeldman/pyoci/issues/338)) ([d3874de](https://github.com/AllexVeldman/pyoci/commit/d3874deded7cc710a7fbb73bc485dc97326ce968))
+* Return list of package files in order ([#340](https://github.com/AllexVeldman/pyoci/issues/340)) ([0b7f2bd](https://github.com/AllexVeldman/pyoci/commit/0b7f2bdc48cdbecd313e99353d54304800153ccf))
+
+
+### Documentation
+
+* Add section about the `/health` ([#336](https://github.com/AllexVeldman/pyoci/issues/336)) ([0b6e13c](https://github.com/AllexVeldman/pyoci/commit/0b6e13ca8e8ee78ff0f55919d8189251522666f6))
+
+
+### Dependency Updates
+
+* update actions/cache action to v5 ([#334](https://github.com/AllexVeldman/pyoci/issues/334)) ([ea4f2c6](https://github.com/AllexVeldman/pyoci/commit/ea4f2c62775008f59037c74644482e5b2e1b94b1))
+* update github artifact actions ([ca5aa72](https://github.com/AllexVeldman/pyoci/commit/ca5aa72e7ee7dc33f4153ea242dc0920b2c3a566))
+* update github artifact actions (major) ([#335](https://github.com/AllexVeldman/pyoci/issues/335)) ([ca5aa72](https://github.com/AllexVeldman/pyoci/commit/ca5aa72e7ee7dc33f4153ea242dc0920b2c3a566))
+* update rust crate mockito to v1.7.1 ([#327](https://github.com/AllexVeldman/pyoci/issues/327)) ([ca06204](https://github.com/AllexVeldman/pyoci/commit/ca06204b55c4374f70b4639e5f7c24bb29fbc0e5))
+* update rust crate oci-spec to v0.8.4 ([#339](https://github.com/AllexVeldman/pyoci/issues/339)) ([a485a79](https://github.com/AllexVeldman/pyoci/commit/a485a79d633141ca2f96dd80f23c40bc866bfa49))
+* update rust crate reqwest to v0.12.26 ([#330](https://github.com/AllexVeldman/pyoci/issues/330)) ([b43eaa8](https://github.com/AllexVeldman/pyoci/commit/b43eaa8fa58f28a9ee6270945b54df3795e6452d))
+* update rust docker tag to v1.92.0 ([#333](https://github.com/AllexVeldman/pyoci/issues/333)) ([d3d6be2](https://github.com/AllexVeldman/pyoci/commit/d3d6be2309591129828dbb982debf5708f732333))
+* update sonarsource/sonarqube-scan-action action to v7 ([#331](https://github.com/AllexVeldman/pyoci/issues/331)) ([3de2d72](https://github.com/AllexVeldman/pyoci/commit/3de2d72f0fce2e36fb428a802c54c679a81f577f))
+* update tokio-tracing monorepo ([#325](https://github.com/AllexVeldman/pyoci/issues/325)) ([6e8c440](https://github.com/AllexVeldman/pyoci/commit/6e8c440ab55468ef2b7a776ca5a05454b0e4cc0e))
+
 ## [0.1.34](https://github.com/AllexVeldman/pyoci/compare/v0.1.33...v0.1.34) (2025-11-26)
 
 
