@@ -19,7 +19,7 @@ impl FileState for WithoutFileName {}
 pub struct Package<'a, T: FileState> {
     registry: &'a str,
     namespace: &'a str,
-    name: String,
+    name: &'a str,
     version: Option<String>,
     arch: Option<String>,
     sha256: Option<String>,
@@ -39,7 +39,7 @@ impl<'a, T: FileState> Package<'a, T> {
         Package {
             registry: self.registry,
             namespace: self.namespace,
-            name: self.name.clone(),
+            name: self.name,
             version: Some(tag.replace('-', "+")),
             arch: Some(arch.to_string()),
             sha256: None,
@@ -50,15 +50,18 @@ impl<'a, T: FileState> Package<'a, T> {
 
     /// Name of the package
     pub fn name(&self) -> &str {
-        &self.name
+        self.name
     }
 
     /// Name of the package as used for the OCI registry
     ///
-    /// The package is in the format `<namespace>/<name>`
+    /// The package is in the format `<namespace>/<name>`.
+    ///
+    /// The package is stored with `_`'s instead of `-` for backward-compatibility.
+    ///
     /// Returns an error when the package name is not set
     pub fn oci_name(&self) -> String {
-        format!("{}/{}", self.namespace, self.name).to_lowercase()
+        format!("{}/{}", self.namespace, self.name.replace('-', "_")).to_lowercase()
     }
 
     pub fn registry(&self) -> Result<url::Url> {
@@ -90,7 +93,6 @@ impl Package<'_, WithoutFileName> {
         namespace: &'a str,
         name: &'a str,
     ) -> Package<'a, WithoutFileName> {
-        let name = name.replace('-', "_");
         Package {
             registry,
             namespace,
@@ -113,14 +115,15 @@ impl Package<'_, WithFileName> {
     pub fn from_filename<'a>(
         registry: &'a str,
         namespace: &'a str,
+        name: &'a str,
         filename: &str,
     ) -> Result<Package<'a, WithFileName>> {
         if filename.is_empty() {
             bail!("Empty filename")
         }
-        let (name, version, arch) = match filename.strip_suffix(".tar.gz") {
+        let (version, arch) = match filename.strip_suffix(".tar.gz") {
             Some(rest) => match rest.splitn(2, '-').collect::<Vec<_>>()[..] {
-                [name, version] => (name, version, ".tar.gz"),
+                [_name, version] => (version, ".tar.gz"),
                 _ => Err(PyOciError::from((
                     StatusCode::BAD_REQUEST,
                     format!("Invalid source distribution filename '{filename}'"),
@@ -132,7 +135,7 @@ impl Package<'_, WithFileName> {
                     .is_some_and(|ext| ext.eq_ignore_ascii_case("whl"))
                 {
                     match filename.splitn(3, '-').collect::<Vec<_>>()[..] {
-                        [name, version, arch] => (name, version, arch),
+                        [_name, version, arch] => (version, arch),
                         _ => Err(PyOciError::from((
                             StatusCode::BAD_REQUEST,
                             format!("Invalid binary distribution filename '{filename}'"),
@@ -149,7 +152,7 @@ impl Package<'_, WithFileName> {
         Ok(Package {
             registry,
             namespace,
-            name: name.to_string(),
+            name,
             version: Some(version.to_string()),
             arch: Some(arch.to_string()),
             sha256: None,
@@ -217,13 +220,14 @@ impl Package<'_, WithFileName> {
     pub fn filename(&self) -> String {
         let version = self.version.as_ref().unwrap();
         let arch = self.arch.as_ref().unwrap();
+        let name = self.name.replace('-', "_");
         if Path::new(arch)
             .extension()
             .is_some_and(|ext| ext.eq_ignore_ascii_case("whl"))
         {
-            format!("{}-{}-{}", self.name, version, arch)
+            format!("{name}-{version}-{arch}")
         } else {
-            format!("{}-{}{}", self.name, version, arch)
+            format!("{name}-{version}{arch}")
         }
     }
 }
@@ -286,15 +290,15 @@ mod tests {
     #[test_case("bar-1.0.0.tar.gz", "1.0.0"; "simple version")]
     #[test_case("bar-1.0.0.dev4+g1664eb2.d20231017.tar.gz", "1.0.0.dev4-g1664eb2.d20231017"; "full version")]
     fn test_info_oci_tag(filename: &str, expected: &str) {
-        let info = Package::from_filename("https://foo.example", "bar", filename).unwrap();
+        let info = Package::from_filename("https://foo.example", "foo", "bar", filename).unwrap();
         assert_eq!(info.oci_tag(), expected.to_string());
     }
 
     #[test]
     /// Test if `Info.py_uri()` url-encodes the registry
     fn test_info_py_uri() {
-        let info =
-            Package::from_filename("https://foo.example:4000", "bar", "baz-1.tar.gz").unwrap();
+        let info = Package::from_filename("https://foo.example:4000", "bar", "baz", "baz-1.tar.gz")
+            .unwrap();
         assert_eq!(
             info.py_uri(),
             "/foo.example%3A4000/bar/baz/baz-1.tar.gz".to_string()
@@ -315,7 +319,7 @@ mod tests {
     #[test_case("baz-2.5.1.dev4+g1664eb2.d20231017.tar.gz"; "sdist full version")]
     /// Test if we can convert from and to filenames
     fn test_info_filename(input: &str) {
-        let obj = Package::from_filename("foo", "bar", input).unwrap();
+        let obj = Package::from_filename("foo", "bar", "baz", input).unwrap();
         assert_eq!(obj.filename(), input);
     }
 }
