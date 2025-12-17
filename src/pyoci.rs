@@ -1,5 +1,5 @@
 use anyhow::{bail, Error, Result};
-use futures::stream::FuturesUnordered;
+use futures::stream::FuturesOrdered;
 use futures::stream::StreamExt;
 use http::HeaderValue;
 use http::StatusCode;
@@ -61,7 +61,7 @@ impl PyOci {
     ) -> Result<Vec<Package<'a, WithFileName>>> {
         let tags = self.oci.list_tags(&package.oci_name()).await?;
         let mut files: Vec<Package<WithFileName>> = Vec::new();
-        let futures = FuturesUnordered::new();
+        let mut futures = FuturesOrdered::new();
 
         tracing::info!("# of tags: {}", tags.len());
 
@@ -81,7 +81,7 @@ impl PyOci {
         // We fetch the last `n` tags and for each tag we fetch the file names.
         for tag in tags.iter().rev().take(n) {
             let pyoci = self.clone();
-            futures.push(pyoci.package_info_for_ref(package, tag));
+            futures.push_back(pyoci.package_info_for_ref(package, tag));
         }
         for result in futures
             .collect::<Vec<Result<Vec<Package<WithFileName>>, Error>>>()
