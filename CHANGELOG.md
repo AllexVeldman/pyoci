@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.36](https://github.com/AllexVeldman/pyoci/compare/v0.1.35...v0.1.36) (2025-12-17)
+
+
+### Documentation
+
+* Add an example of how to associate a package to a github repo ([#344](https://github.com/AllexVeldman/pyoci/issues/344)) ([45aef86](https://github.com/AllexVeldman/pyoci/commit/45aef868feab0c2e5d98b1b70238c6d78ac93158))
+* fix typo ([#346](https://github.com/AllexVeldman/pyoci/issues/346)) ([eb42abb](https://github.com/AllexVeldman/pyoci/commit/eb42abbfd8b61b0f3344e5ae355d2e1c7eaa2432))
+
+
+### Miscellaneous Chores
+
+* **examples:** Remove the `./dist/` folder in publish examples ([#342](https://github.com/AllexVeldman/pyoci/issues/342)) ([4d18631](https://github.com/AllexVeldman/pyoci/commit/4d18631833b173339b5273fdbdbbc402e586b7ea))
+
 ## [0.1.35](https://github.com/AllexVeldman/pyoci/compare/v0.1.34...v0.1.35) (2025-12-17)
 
 
