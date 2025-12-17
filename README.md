@@ -88,6 +88,12 @@ If the classifiers are found in the package upload request, the key-value pairs 
 
 Note that these classifiers are case-sensitive and [non-standard](https://pypi.org/classifiers/).
 
+For example, to [associate a package](https://docs.github.com/en/packages/working-with-a-github-packages-registry/working-with-the-container-registry#labelling-container-images)
+on `ghcr.io` with a repo on `github.com`, add the
+`PyOCI :: Label :: org.opencontainers.image.source :: https://github.com/<org>/<repo>`
+classifier to your project.
+See the [examples](/docs/examples) for how to add classifiers to your project.
+
 ## Package sub-paths
 OCI allows for images to contain paths, for example `python/team1/hello-world`.
 Python does not allow for such a prefix.
