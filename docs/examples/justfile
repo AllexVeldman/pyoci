@@ -13,6 +13,7 @@ poetry-publish version username token repository="http://localhost:8080/ghcr.io/
     set -exuo pipefail
 
     cd ./poetry/publish
+    rm -rf ./dist/
     poetry config --local repositories.pyoci "{{repository}}"
     poetry version "{{version}}"
     poetry build
@@ -42,6 +43,7 @@ uv-publish version username token repository="http://localhost:8080/ghcr.io/alle
     set -exuo pipefail
 
     cd ./uv/publish
+    rm -rf ./dist/
     uv version "{{version}}"
     uv build
     uv publish --publish-url {{repository}} --username "{{username}}" --password "{{token}}"
@@ -70,6 +72,7 @@ curl-publish version username token repository="http://localhost:8080/ghcr.io/al
     set -exuo pipefail
 
     cd ./poetry/publish
+    rm -rf ./dist/
     poetry version {{version}}
     poetry build -f sdist
     curl -v {{repository}} \
