@@ -288,10 +288,10 @@ async fn list_package_json(
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn download_package(
-    Path((registry, namespace, _distribution, filename)): Path<(String, String, String, String)>,
+    Path((registry, namespace, package_name, filename)): Path<(String, String, String, String)>,
     headers: HeaderMap,
 ) -> Result<impl IntoResponse, AppError> {
-    let package = Package::from_filename(&registry, &namespace, &filename)?;
+    let package = Package::from_filename(&registry, &namespace, &package_name, &filename)?;
 
     let mut client = PyOci::new(package.registry()?, get_auth(&headers));
     let data = client.download_package_file(&package).await?.bytes_stream();
@@ -324,7 +324,7 @@ async fn delete_package_version(
 
 /// Publish package request handler
 ///
-/// ref: <https://warehouse.pypa.io/api-reference/legacy.html#upload-api>
+/// ref: <https://docs.pypi.org/api/upload/>
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn publish_package(
@@ -334,7 +334,12 @@ async fn publish_package(
 ) -> Result<String, AppError> {
     let form_data = UploadForm::from_multipart(multipart).await?;
 
-    let package = Package::from_filename(&registry, &namespace, &form_data.filename)?;
+    let package = Package::from_filename(
+        &registry,
+        &namespace,
+        &form_data.package_name,
+        &form_data.filename,
+    )?;
     let mut client = PyOci::new(package.registry()?, get_auth(&headers));
 
     client
@@ -362,11 +367,28 @@ fn get_auth(headers: &HeaderMap) -> Option<HeaderValue> {
     auth
 }
 
+trait MaybeEmpty {
+    fn empty(&self) -> bool;
+}
+
+impl MaybeEmpty for String {
+    fn empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
+impl MaybeEmpty for Bytes {
+    fn empty(&self) -> bool {
+        self.is_empty()
+    }
+}
+
 /// Form data for the upload API
 ///
 /// ref: <https://docs.pypi.org/api/upload/>
 #[derive(Debug, Eq, PartialEq)]
 struct UploadForm {
+    package_name: String,
     filename: String,
     content: Vec<u8>,
     labels: HashMap<String, String>,
@@ -382,6 +404,7 @@ impl UploadForm {
         let mut action = None;
         let mut protocol_version = None;
         let mut content = None;
+        let mut package_name = None;
         let mut filename = None;
         let mut sha256 = None;
         let mut labels = HashMap::new();
@@ -400,6 +423,7 @@ impl UploadForm {
                     filename = field.file_name().map(ToString::to_string);
                     content = Some(field.bytes().await?);
                 }
+                "name" => package_name = Some(field.text().await?),
                 "classifiers" => {
                     let classifier = field.text().await?;
                     Self::parse_classifier(&classifier, &mut labels);
@@ -412,12 +436,15 @@ impl UploadForm {
                 name => debug!("Discarding field '{name}': {}", field.text().await?),
             }
         }
+
         Self::validate_action(action.as_deref())?;
         Self::validate_protocol(protocol_version.as_deref())?;
-        let content = Self::unwrap_content(content)?;
-        let filename = Self::unwrap_filename(filename)?;
+        let content = Self::not_empty(content, "content")?;
+        let filename = Self::not_empty(filename, "filename")?;
+        let package_name = Self::not_empty(package_name, "name")?;
 
         Ok(Self {
+            package_name,
             filename,
             content: content.into(),
             labels,
@@ -489,31 +516,22 @@ impl UploadForm {
         }
     }
 
-    fn unwrap_content(content: Option<Bytes>) -> Result<Bytes, PyOciError> {
-        match content {
+    // Change `Option<T>` into a `Result<T, PyOciError>`
+    // Returns an `Error` if the field is None or empty.
+    fn not_empty<T>(value: Option<T>, field_name: &str) -> Result<T, PyOciError>
+    where
+        T: MaybeEmpty,
+    {
+        match value {
             None => Err(PyOciError::from((
                 StatusCode::BAD_REQUEST,
-                "Missing 'content' form-field",
+                format!("Form missing '{field_name}'"),
             ))),
-            Some(content) if content.is_empty() => Err(PyOciError::from((
+            Some(content) if content.empty() => Err(PyOciError::from((
                 StatusCode::BAD_REQUEST,
-                "No 'content' provided",
+                format!("Form '{field_name}' is empty"),
             ))),
             Some(content) => Ok(content),
-        }
-    }
-
-    fn unwrap_filename(filename: Option<String>) -> Result<String, PyOciError> {
-        match filename {
-            None => Err(PyOciError::from((
-                StatusCode::BAD_REQUEST,
-                "'content' form-field is missing a 'filename'",
-            ))),
-            Some(filename) if filename.is_empty() => Err(PyOciError::from((
-                StatusCode::BAD_REQUEST,
-                "No 'filename' provided",
-            ))),
-            Some(filename) => Ok(filename),
         }
     }
 }
@@ -685,7 +703,7 @@ mod tests {
             .downcast::<PyOciError>()
             .expect("Expected PyOciError");
         assert_eq!(result.status, StatusCode::BAD_REQUEST);
-        assert_eq!(result.message, "Missing 'content' form-field");
+        assert_eq!(result.message, "Form missing 'content'");
     }
 
     #[tokio::test]
@@ -717,7 +735,7 @@ mod tests {
             .downcast::<PyOciError>()
             .expect("Expected PyOciError");
         assert_eq!(result.status, StatusCode::BAD_REQUEST);
-        assert_eq!(result.message, "No 'content' provided");
+        assert_eq!(result.message, "Form 'content' is empty");
     }
 
     #[tokio::test]
@@ -749,10 +767,7 @@ mod tests {
             .downcast::<PyOciError>()
             .expect("Expected PyOciError");
         assert_eq!(result.status, StatusCode::BAD_REQUEST);
-        assert_eq!(
-            result.message,
-            "'content' form-field is missing a 'filename'"
-        );
+        assert_eq!(result.message, "Form missing 'filename'");
     }
 
     #[tokio::test]
@@ -784,7 +799,7 @@ mod tests {
             .downcast::<PyOciError>()
             .expect("Expected PyOciError");
         assert_eq!(result.status, StatusCode::BAD_REQUEST);
-        assert_eq!(result.message, "No 'filename' provided");
+        assert_eq!(result.message, "Form 'filename' is empty");
     }
 
     #[tokio::test]
@@ -802,6 +817,10 @@ mod tests {
             Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
             \r\n\
             someawesomepackagedata\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"name\"\r\n\
+            \r\n\
+            foobar\r\n\
             --foobar--\r\n";
         let req: Request<Body> = Request::builder()
             .method("POST")
@@ -834,6 +853,10 @@ mod tests {
             Content-Disposition: form-data; name=\"protocol_version\"\r\n\
             \r\n\
             1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"name\"\r\n\
+            \r\n\
+            foobar\r\n\
             --foobar\r\n\
             Content-Disposition: form-data; name=\"classifiers\"\r\n\
             \r\n\
@@ -886,6 +909,10 @@ mod tests {
             \r\n\
             1\r\n\
             --foobar\r\n\
+            Content-Disposition: form-data; name=\"name\"\r\n\
+            \r\n\
+            foobar\r\n\
+            --foobar\r\n\
             Content-Disposition: form-data; name=\"project_urls\"\r\n\
             \r\n\
             Repository, https://github/allexveldman/pyoci\r\n\
@@ -912,6 +939,7 @@ mod tests {
         assert_eq!(
             result,
             UploadForm {
+                package_name: "foobar".to_string(),
                 filename: "foobar-1.0.0.tar.gz".to_string(),
                 content: String::from("someawesomepackagedata").into_bytes(),
                 labels: HashMap::new(),
@@ -996,6 +1024,10 @@ mod tests {
             Content-Disposition: form-data; name=\"protocol_version\"\r\n\
             \r\n\
             1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"name\"\r\n\
+            \r\n\
+            foobar\r\n\
             --foobar\r\n\
             Content-Disposition: form-data; name=\"content\"; filename=\".env\"\r\n\
             \r\n\
@@ -1111,6 +1143,10 @@ mod tests {
             Content-Disposition: form-data; name=\"protocol_version\"\r\n\
             \r\n\
             1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"name\"\r\n\
+            \r\n\
+            foobar\r\n\
             --foobar\r\n\
             Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
             \r\n\
@@ -1234,6 +1270,10 @@ mod tests {
             Content-Disposition: form-data; name=\"protocol_version\"\r\n\
             \r\n\
             1\r\n\
+            --foobar\r\n\
+            Content-Disposition: form-data; name=\"name\"\r\n\
+            \r\n\
+            foobar\r\n\
             --foobar\r\n\
             Content-Disposition: form-data; name=\"content\"; filename=\"foobar-1.0.0.tar.gz\"\r\n\
             \r\n\
@@ -1397,8 +1437,8 @@ mod tests {
                     <title>PyOCI</title>
                 </head>
                 <body>
-                    <a href="/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz#sha256=1234">test_package-1.2.3.tar.gz</a>
-                    <a href="/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
+                    <a href="/{encoded_url}/mockserver/test-package/test_package-1.2.3.tar.gz#sha256=1234">test_package-1.2.3.tar.gz</a>
+                    <a href="/{encoded_url}/mockserver/test-package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
                 </body>
                 </html>
                 "#
@@ -1531,8 +1571,8 @@ mod tests {
                     <title>PyOCI</title>
                 </head>
                 <body>
-                    <a href="/foo/{encoded_url}/mockserver/test_package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
-                    <a href="/foo/{encoded_url}/mockserver/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
+                    <a href="/foo/{encoded_url}/mockserver/test-package/test_package-1.2.3.tar.gz">test_package-1.2.3.tar.gz</a>
+                    <a href="/foo/{encoded_url}/mockserver/test-package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
                 </body>
                 </html>
                 "#
@@ -1676,8 +1716,8 @@ mod tests {
                     <title>PyOCI</title>
                 </head>
                 <body>
-                    <a href="/{encoded_url}/mockserver/subnamespace/test_package/test_package-1.2.3.tar.gz#sha256=1234">test_package-1.2.3.tar.gz</a>
-                    <a href="/{encoded_url}/mockserver/subnamespace/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
+                    <a href="/{encoded_url}/mockserver/subnamespace/test-package/test_package-1.2.3.tar.gz#sha256=1234">test_package-1.2.3.tar.gz</a>
+                    <a href="/{encoded_url}/mockserver/subnamespace/test-package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
                 </body>
                 </html>
                 "#
@@ -1822,8 +1862,8 @@ mod tests {
                     <title>PyOCI</title>
                 </head>
                 <body>
-                    <a href="/foo/{encoded_url}/mockserver/subnamespace/test_package/test_package-1.2.3.tar.gz#sha256=1234">test_package-1.2.3.tar.gz</a>
-                    <a href="/foo/{encoded_url}/mockserver/subnamespace/test_package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
+                    <a href="/foo/{encoded_url}/mockserver/subnamespace/test-package/test_package-1.2.3.tar.gz#sha256=1234">test_package-1.2.3.tar.gz</a>
+                    <a href="/foo/{encoded_url}/mockserver/subnamespace/test-package/test_package-0.1.0.tar.gz">test_package-0.1.0.tar.gz</a>
                 </body>
                 </html>
                 "#
@@ -2055,7 +2095,7 @@ mod tests {
         assert_eq!(status, StatusCode::OK);
         assert_eq!(
             body,
-            r#"{"info":{"name":"test_package","project_urls":{"Repository":"https://github.com/allexveldman/pyoci"}},"releases":{"0.1.0":[],"1.2.3":[]}}"#
+            r#"{"info":{"name":"test-package","project_urls":{"Repository":"https://github.com/allexveldman/pyoci"}},"releases":{"0.1.0":[],"1.2.3":[]}}"#
         );
     }
 

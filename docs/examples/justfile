@@ -94,7 +94,7 @@ curl-list-json username token repository="http://localhost:8080/ghcr.io/allexvel
 
 [group("curl")]
 curl-download version username token repository="http://localhost:8080/ghcr.io/allexveldman/": (_group "curl-download") && _endgroup
-    curl -vOJ --fail-with-body -u {{username}}:{{token}} {{repository}}hello_world/hello_world-{{version}}.tar.gz
+    curl -vOJ --fail-with-body -u {{username}}:{{token}} {{repository}}hello-world/hello_world-{{version}}.tar.gz
     rm hello_world-{{version}}.tar.gz
 
 [group("curl")]

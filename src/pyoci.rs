@@ -577,8 +577,8 @@ mod tests {
 
     #[test]
     fn image_manifest() {
-        let package =
-            Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").expect("Valid Package");
+        let package = Package::from_filename("ghcr.io", "mockserver", "bar", "bar-1.tar.gz")
+            .expect("Valid Package");
         let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
         let annotations = HashMap::from([(
             "test-annotation-key".to_string(),
@@ -629,7 +629,8 @@ mod tests {
         };
 
         // Setup the objects we're publishing
-        let package = Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").unwrap();
+        let package =
+            Package::from_filename("ghcr.io", "mockserver", "bar", "bar-1.tar.gz").unwrap();
         let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
         let manifest = ImageManifestBuilder::default()
             .schema_version(SCHEMA_VERSION)
@@ -726,7 +727,8 @@ mod tests {
         };
 
         // Setup the objects we're publishing
-        let package = Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").unwrap();
+        let package =
+            Package::from_filename("ghcr.io", "mockserver", "bar", "bar-1.tar.gz").unwrap();
         let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
         let manifest = ImageManifestBuilder::default()
             .schema_version(SCHEMA_VERSION)
@@ -836,7 +838,8 @@ mod tests {
         };
 
         // Setup the objects we're publishing
-        let package = Package::from_filename("ghcr.io", "mockserver", "bar-1.tar.gz").unwrap();
+        let package =
+            Package::from_filename("ghcr.io", "mockserver", "bar", "bar-1.tar.gz").unwrap();
         let layer = Blob::new(vec![b'q', b'w', b'e'], "test-artifact");
         let manifest = ImageManifestBuilder::default()
             .schema_version(SCHEMA_VERSION)
