@@ -209,7 +209,6 @@ async fn list_package(
     let package = Package::new(&registry, &namespace, &package_name);
 
     let mut client = PyOci::new(package.registry()?, get_auth(&headers));
-    // Fetch at most 100 package versions
     let files = client.list_package_files(&package, max_versions).await?;
 
     let data = ListPkgTemplateData { files, subpath };

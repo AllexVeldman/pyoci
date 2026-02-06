@@ -57,8 +57,9 @@ impl PyOci {
     pub async fn list_package_files<'a>(
         &mut self,
         package: &'a Package<'a, WithoutFileName>,
-        mut n: usize,
+        n: usize,
     ) -> Result<Vec<Package<'a, WithFileName>>> {
+        let mut n = n;
         let tags = self.oci.list_tags(&package.oci_name()).await?;
         let mut files: Vec<Package<WithFileName>> = Vec::new();
         let mut futures = FuturesOrdered::new();
