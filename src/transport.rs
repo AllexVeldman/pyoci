@@ -1,5 +1,6 @@
 use anyhow::Result;
-use http::HeaderValue;
+use headers::authorization::Basic;
+use headers::Authorization;
 use std::future::poll_fn;
 use tower::{Service, ServiceBuilder};
 
@@ -24,7 +25,7 @@ impl HttpTransport {
     ///
     /// auth: Basic auth string
     ///       Will be swapped for a Bearer token if needed
-    pub fn new(auth: Option<HeaderValue>) -> Self {
+    pub fn new(auth: Option<Authorization<Basic>>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .build()
@@ -125,7 +126,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice",
                 )
-                .match_header("Authorization", "Basic mybasicauth")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"token":"mytoken"}"#)
                 .create_async()
@@ -140,8 +141,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport =
-            HttpTransport::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap()));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
         let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -174,7 +174,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice",
                 )
-                .match_header("Authorization", "Basic mybasicauth")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"token":"mytoken"}"#)
                 .create_async()
@@ -197,8 +197,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport =
-            HttpTransport::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap()));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
         // clone the transport to check if they share the bearer token state
         let mut transport2 = transport.clone();
 
@@ -271,8 +270,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport =
-            HttpTransport::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap()));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
         let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -303,7 +301,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice",
                 )
-                .match_header("Authorization", "Basic mybasicauth")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"token":"mytoken"}"#)
                 .create_async()
@@ -318,8 +316,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport =
-            HttpTransport::new(Some(HeaderValue::try_from("Basic mybasicauth").unwrap()));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
         let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {

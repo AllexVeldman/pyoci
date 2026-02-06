@@ -7,14 +7,15 @@ use axum::{
     body::Body,
     debug_handler,
     extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, Path, Request, State},
-    http::{header, HeaderMap},
+    http::header,
     response::{Html, IntoResponse, Redirect, Response},
     routing::{get, post},
     Json, Router,
 };
-use axum_extra::extract::{rejection::HostRejection, Host};
+use axum_extra::TypedHeader;
 use bytes::Bytes;
 use handlebars::Handlebars;
+use headers::{authorization::Basic, Authorization, Host, UserAgent};
 use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tower::Service;
@@ -146,22 +147,20 @@ async fn cache_control_middleware(
 /// Log incoming requests
 async fn accesslog_middleware(
     method: axum::http::Method,
-    host: Result<Host, HostRejection>,
     uri: axum::http::Uri,
-    headers: axum::http::HeaderMap,
+    host: Option<TypedHeader<Host>>,
+    user_agent: Option<TypedHeader<UserAgent>>,
     request: axum::extract::Request,
     next: axum::middleware::Next,
 ) -> axum::response::Response {
     let response = next.run(request).await;
 
     let status: u16 = response.status().into();
-    let user_agent = headers
-        .get("user-agent")
-        .map(|ua| ua.to_str().unwrap_or(""));
+    let host = host.map(|h| h.to_string());
+    let user_agent = user_agent.map(|ua| ua.to_string());
 
-    tracing::debug!("Accept: {:?}", headers);
     tracing::info!(
-        host = host.map(|value| value.0).unwrap_or_default(),
+        host,
         "type" = "request",
         status,
         method = method.to_string(),
@@ -203,12 +202,12 @@ async fn list_package(
         max_versions,
         templates,
     }): State<PyOciState<'_>>,
-    headers: HeaderMap,
+    auth: Option<TypedHeader<Authorization<Basic>>>,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth));
     let files = client.list_package_files(&package, max_versions).await?;
 
     let data = ListPkgTemplateData { files, subpath };
@@ -252,12 +251,12 @@ struct Info {
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn list_package_json(
-    headers: HeaderMap,
+    auth: Option<TypedHeader<Authorization<Basic>>>,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Json<ListJson>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth));
     let versions = client.list_package_versions(&package).await?;
 
     let mut project_urls = HashMap::new();
@@ -288,11 +287,11 @@ async fn list_package_json(
 #[tracing::instrument(skip_all)]
 async fn download_package(
     Path((registry, namespace, package_name, filename)): Path<(String, String, String, String)>,
-    headers: HeaderMap,
+    auth: Option<TypedHeader<Authorization<Basic>>>,
 ) -> Result<impl IntoResponse, AppError> {
     let package = Package::from_filename(&registry, &namespace, &package_name, &filename)?;
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth));
     let data = client.download_package_file(&package).await?.bytes_stream();
 
     Ok((
@@ -312,11 +311,11 @@ async fn download_package(
 #[tracing::instrument(skip_all)]
 async fn delete_package_version(
     Path((registry, namespace, name, version)): Path<(String, String, String, String)>,
-    headers: HeaderMap,
+    auth: Option<TypedHeader<Authorization<Basic>>>,
 ) -> Result<String, AppError> {
     let package = Package::new(&registry, &namespace, &name).with_oci_file(&version, "");
 
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth));
     client.delete_package_version(&package).await?;
     Ok("Deleted".into())
 }
@@ -328,7 +327,7 @@ async fn delete_package_version(
 #[tracing::instrument(skip_all)]
 async fn publish_package(
     Path((registry, namespace)): Path<(String, String)>,
-    headers: HeaderMap,
+    auth: Option<TypedHeader<Authorization<Basic>>>,
     multipart: Multipart,
 ) -> Result<String, AppError> {
     let form_data = UploadForm::from_multipart(multipart).await?;
@@ -339,7 +338,7 @@ async fn publish_package(
         &form_data.package_name,
         &form_data.filename,
     )?;
-    let mut client = PyOci::new(package.registry()?, get_auth(&headers));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth));
 
     client
         .publish_package_file(
@@ -354,16 +353,11 @@ async fn publish_package(
 }
 
 /// Parse the Authentication header, if provided
-fn get_auth(headers: &HeaderMap) -> Option<HeaderValue> {
-    let auth = headers.get("Authorization").map(|auth| {
-        let mut auth = auth.to_owned();
-        auth.set_sensitive(true);
-        auth
-    });
+fn get_auth(auth: Option<TypedHeader<Authorization<Basic>>>) -> Option<Authorization<Basic>> {
     if auth.is_none() {
         tracing::warn!("No Authorization header provided");
     }
-    auth
+    auth.map(|h| (*h).clone())
 }
 
 trait MaybeEmpty {
@@ -563,17 +557,13 @@ mod tests {
 
     #[test]
     fn test_get_auth() {
-        let mut headers = HeaderMap::new();
-        headers.append("Authorization", "foo".try_into().unwrap());
-        let auth = get_auth(&headers);
-        assert_eq!(auth, Some(HeaderValue::try_from("foo").unwrap()));
-        assert!(auth.unwrap().is_sensitive());
+        let auth = get_auth(Some(TypedHeader(Authorization::basic("user", "pass"))));
+        assert_eq!(auth, Some(Authorization::basic("user", "pass")));
     }
 
     #[test]
     fn test_get_auth_none() {
-        let headers = HeaderMap::new();
-        let auth = get_auth(&headers);
+        let auth = get_auth(None);
         assert_eq!(auth, None);
     }
 
