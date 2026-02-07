@@ -1,7 +1,8 @@
 use anyhow::{bail, Error, Result};
 use futures::stream::FuturesOrdered;
 use futures::stream::StreamExt;
-use http::HeaderValue;
+use headers::authorization::Basic;
+use headers::Authorization;
 use http::StatusCode;
 use oci_spec::image::{
     ImageIndex, ImageIndexBuilder, ImageManifestBuilder, MediaType, SCHEMA_VERSION,
@@ -31,7 +32,7 @@ pub struct PyOci {
 
 impl PyOci {
     /// Create a new Client
-    pub fn new(registry: Url, auth: Option<HeaderValue>) -> PyOci {
+    pub fn new(registry: Url, auth: Option<Authorization<Basic>>) -> PyOci {
         PyOci {
             oci: Oci::new(registry, auth),
         }

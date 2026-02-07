@@ -1,5 +1,8 @@
 use anyhow::{anyhow, bail, Context as _, Result};
 use futures::{ready, FutureExt};
+use headers::authorization::{Basic, Bearer};
+use headers::Authorization;
+use headers::HeaderMapExt;
 use http::{HeaderValue, StatusCode};
 use pin_project::pin_project;
 use serde::Deserialize;
@@ -44,14 +47,14 @@ impl AuthResponse {
 #[derive(Debug, Default, Clone)]
 pub struct AuthLayer {
     // The Basic token to trade for a Bearer token
-    basic: Option<http::HeaderValue>,
+    basic: Option<Authorization<Basic>>,
     // The Bearer token to use for authentication
     // Will be set after successful authentication
-    bearer: Arc<RwLock<Option<http::HeaderValue>>>,
+    bearer: Arc<RwLock<Option<Authorization<Bearer>>>>,
 }
 
 impl AuthLayer {
-    pub fn new(basic_token: Option<HeaderValue>) -> Self {
+    pub fn new(basic_token: Option<Authorization<Basic>>) -> Self {
         Self {
             basic: basic_token,
             bearer: Arc::new(RwLock::new(None)),
@@ -69,15 +72,15 @@ impl<S> Layer<S> for AuthLayer {
 
 #[derive(Debug, Clone)]
 pub struct AuthService<S> {
-    basic: Option<http::HeaderValue>,
-    bearer: Arc<RwLock<Option<http::HeaderValue>>>,
+    basic: Option<Authorization<Basic>>,
+    bearer: Arc<RwLock<Option<Authorization<Bearer>>>>,
     service: S,
 }
 
 impl<S> AuthService<S> {
     fn new(
-        basic: Option<http::HeaderValue>,
-        bearer: Arc<RwLock<Option<http::HeaderValue>>>,
+        basic: Option<Authorization<Basic>>,
+        bearer: Arc<RwLock<Option<Authorization<Bearer>>>>,
         service: S,
     ) -> Self {
         Self {
@@ -105,9 +108,7 @@ where
     fn call(&mut self, mut request: reqwest::Request) -> Self::Future {
         if let Some(bearer) = self.bearer.read().expect("Failed to get read lock").clone() {
             // If we have a bearer token, add it to the request
-            request
-                .headers_mut()
-                .insert(http::header::AUTHORIZATION, bearer);
+            request.headers_mut().typed_insert(bearer);
         }
         AuthFuture::new(
             request.try_clone(),
@@ -145,7 +146,7 @@ enum AuthState<F> {
     // Polling the authentication request
     Authenticating {
         #[pin]
-        future: Pin<Box<dyn Future<Output = Result<http::HeaderValue, AuthError>> + Send>>,
+        future: Pin<Box<dyn Future<Output = Result<Authorization<Bearer>, AuthError>> + Send>>,
     },
 }
 
@@ -238,9 +239,7 @@ where
                             .request
                             .take()
                             .ok_or_else(|| anyhow!("Tried to retry twice after authentication"))?;
-                        request
-                            .headers_mut()
-                            .insert(http::header::AUTHORIZATION, bearer_token.clone());
+                        request.headers_mut().typed_insert(bearer_token.clone());
                         this.auth
                             .bearer
                             .write()
@@ -285,10 +284,10 @@ where
 // Returns the upstream response if not.
 #[tracing::instrument(skip_all)]
 async fn authenticate<S>(
-    basic_token: http::HeaderValue,
+    basic_token: Authorization<Basic>,
     www_auth: WwwAuth,
     mut service: S,
-) -> Result<http::HeaderValue, AuthError>
+) -> Result<Authorization<Bearer>, AuthError>
 where
     S: Service<reqwest::Request, Response = reqwest::Response>,
     <S as Service<reqwest::Request>>::Future: Send,
@@ -307,9 +306,7 @@ where
         }
     }
     let mut auth_request = reqwest::Request::new(http::Method::GET, auth_url);
-    auth_request
-        .headers_mut()
-        .append(http::header::AUTHORIZATION, basic_token);
+    auth_request.headers_mut().typed_insert(basic_token);
     let response = service.call(auth_request).await?;
     if response.status() != StatusCode::OK {
         return Err(AuthError::AuthResponse(response));
@@ -324,15 +321,13 @@ where
             format!("Failed to parse authentication response: {err}"),
         ))
     })?;
-    let mut token =
-        http::HeaderValue::try_from(format!("Bearer {}", auth.token()?)).map_err(|err| {
-            tracing::info!("Failed to create bearer token header");
-            PyOciError::from((
-                StatusCode::BAD_GATEWAY,
-                format!("Failed to create bearer token header: {err}"),
-            ))
-        })?;
-    token.set_sensitive(true);
+    let token = Authorization::bearer(auth.token()?).map_err(|err| {
+        tracing::info!("Failed to create bearer token header");
+        PyOciError::from((
+            StatusCode::BAD_GATEWAY,
+            format!("Failed to create bearer token header: {err}"),
+        ))
+    })?;
     Ok(token)
 }
 
@@ -478,7 +473,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice",
                 )
-                .match_header("Authorization", "Basic mybasicauth")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"token":"mytoken"}"#)
                 .create_async()
@@ -494,9 +489,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(
-                HeaderValue::try_from("Basic mybasicauth").unwrap(),
-            )))
+            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -533,7 +526,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice&scope=foo&scope=bar",
                 )
-                .match_header("Authorization", "Basic mybasicauth")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"token":"mytoken"}"#)
                 .create_async()
@@ -549,9 +542,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(
-                HeaderValue::try_from("Basic mybasicauth").unwrap(),
-            )))
+            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -591,7 +582,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice&scope=pull",
                 )
-                .match_header("Authorization", "Basic mybasicauth")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"token":"mytoken"}"#)
                 .create_async()
@@ -620,7 +611,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice&scope=pull%2Cpush",
                 )
-                .match_header("Authorization", "Basic mybasicauth")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"token":"mysecondtoken"}"#)
                 .create_async()
@@ -642,9 +633,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(
-                HeaderValue::try_from("Basic mybasicauth").unwrap(),
-            )))
+            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
             .service(Client::default());
 
         // First request
@@ -690,9 +679,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(
-                HeaderValue::try_from("Basic mybasicauth").unwrap(),
-            )))
+            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
             .service(Client::default());
 
         // Construct a request that can't be cloned
@@ -762,9 +749,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(
-                HeaderValue::try_from("Basic mybasicauth").unwrap(),
-            )))
+            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -808,9 +793,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(
-                HeaderValue::try_from("Basic mybasicauth").unwrap(),
-            )))
+            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -856,7 +839,7 @@ mod tests {
                     "GET",
                     "/token?grant_type=password&service=pyoci.fakeservice",
                 )
-                .match_header("Authorization", "Basic mybasictoken")
+                .match_header("Authorization", "Basic dXNlcjpwYXNz")
                 .with_status(200)
                 .with_body(r#"{"notatoken":"mytoken"}"#)
                 .create_async()
@@ -864,9 +847,7 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(
-                HeaderValue::try_from("Basic mybasictoken").unwrap(),
-            )))
+            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
             .service(Client::default());
 
         let request = reqwest::Request::new(

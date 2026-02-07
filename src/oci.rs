@@ -5,6 +5,7 @@ use std::{
 
 use anyhow::{bail, Context, Result};
 use base16ct::lower::encode_string as hex_encode;
+use headers::{authorization::Basic, Authorization};
 use http::{HeaderValue, StatusCode};
 use oci_spec::{
     distribution::TagList,
@@ -134,7 +135,7 @@ pub struct Oci {
 
 /// Low-level functionality for interacting with the OCI registry
 impl Oci {
-    pub fn new(registry: Url, auth: Option<HeaderValue>) -> Oci {
+    pub fn new(registry: Url, auth: Option<Authorization<Basic>>) -> Oci {
         Oci {
             registry,
             transport: HttpTransport::new(auth),
