@@ -101,6 +101,7 @@ jobs:
       - uses: astral-sh/setup-uv@v7
       - run: just test-smoke
       - run: docker compose logs pyoci
+        if: always()
         working-directory: ./docker
 
   merge:
