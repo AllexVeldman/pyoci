@@ -12,9 +12,11 @@ ARG TARGETPLATFORM
 RUN rustup target add $(/target-platform.sh)
 RUN apt update \
     && apt install --no-install-recommends -y \
-    musl-tools \
+    ca-certificates \
     musl-dev \
-    && rm -rf /var/lib/apt/lists/*
+    musl-tools \
+    && rm -rf /var/lib/apt/lists/* \
+    && update-ca-certificates
 
 RUN useradd -u 10001 pyoci
 
@@ -35,6 +37,7 @@ RUN cargo build --release --target $(/target-platform.sh) && \
 FROM scratch
 
 COPY --from=builder /etc/passwd /etc/passwd
+COPY --from=builder /etc/ssl/certs/ca-certificates.crt /etc/ssl/certs/ca-certificates.crt
 
 ENV PORT=8080
 EXPOSE $PORT
