@@ -36,16 +36,16 @@
       "section": "Reverts"
     },
     {
-      "type": "docs",
-      "section": "Documentation"
-    },
-    {
       "type": "chore",
       "section": "Miscellaneous Chores"
     },
     {
       "type": "refactor",
       "section": "Code Refactoring"
+    },
+    {
+      "type": "docs",
+      "section": "Documentation"
     },
     {
       "type": "test",
