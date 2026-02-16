@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.1.36](https://github.com/AllexVeldman/pyoci/compare/v0.1.35...v0.1.36) (2026-02-16)
+
+
+### Miscellaneous Chores
+
+* Update ca-certificates and include them in the final image ([61c3824](https://github.com/AllexVeldman/pyoci/commit/61c382419caa48dbd754dd81ba75f46751b6dc84))
+
+
+### Code Refactoring
+
+* **transport:** Construct `Service` stack only once per session ([#362](https://github.com/AllexVeldman/pyoci/issues/362)) ([391fa7c](https://github.com/AllexVeldman/pyoci/commit/391fa7cf9aeaa5a55c2f08a851a0ae0944101fb1))
+* Use typed headers instead of HeaderValue ([#365](https://github.com/AllexVeldman/pyoci/issues/365)) ([7aff2e0](https://github.com/AllexVeldman/pyoci/commit/7aff2e09af19683140241d92c3bfe94173cd9089))
+
+
+### Documentation
+
+* Add an example of how to associate a package to a github repo ([#344](https://github.com/AllexVeldman/pyoci/issues/344)) ([45aef86](https://github.com/AllexVeldman/pyoci/commit/45aef868feab0c2e5d98b1b70238c6d78ac93158))
+* **examples:** Remove the ./dist/ folder in publish examples ([4d18631](https://github.com/AllexVeldman/pyoci/commit/4d18631833b173339b5273fdbdbbc402e586b7ea))
+* fix typo ([#346](https://github.com/AllexVeldman/pyoci/issues/346)) ([eb42abb](https://github.com/AllexVeldman/pyoci/commit/eb42abbfd8b61b0f3344e5ae355d2e1c7eaa2432))
+
+
+### Continuous Integration
+
+* **release-please:** Change changelog order ([#374](https://github.com/AllexVeldman/pyoci/issues/374)) ([652062f](https://github.com/AllexVeldman/pyoci/commit/652062f32416cbf54bd72ea9dc4f54bfafd5d76c))
+* **smoke:** Always log smoke output ([530e905](https://github.com/AllexVeldman/pyoci/commit/530e905adf5d8ec1fb69a5eb357298fc8b3e5029))
+
+
+### Dependency Updates
+
+* update axum monorepo ([#348](https://github.com/AllexVeldman/pyoci/issues/348)) ([94aa441](https://github.com/AllexVeldman/pyoci/commit/94aa4418e5f8d0e91ae648ffdb984bf5e27b9fcf))
+* update pre-commit hook rhysd/actionlint to v1.7.10 ([#351](https://github.com/AllexVeldman/pyoci/issues/351)) ([f368745](https://github.com/AllexVeldman/pyoci/commit/f368745b067979902ab598c720bc2643ef095f2a))
+* update pre-commit hook rhysd/actionlint to v1.7.11 ([#371](https://github.com/AllexVeldman/pyoci/issues/371)) ([57c73ba](https://github.com/AllexVeldman/pyoci/commit/57c73bac94a33e651979143168a6a172f1ac2e73))
+* update rust crate anyhow to v1.0.101 ([#363](https://github.com/AllexVeldman/pyoci/issues/363)) ([5f597a6](https://github.com/AllexVeldman/pyoci/commit/5f597a6365c6824c8564d7a00a2d333fb7415512))
+* update rust crate base16ct to v1 ([#355](https://github.com/AllexVeldman/pyoci/issues/355)) ([f8b0d7d](https://github.com/AllexVeldman/pyoci/commit/f8b0d7d46d4678936c9055fa1163cfa1fb9ba1f1))
+* update rust crate bytes to v1.11.1 [security] ([#359](https://github.com/AllexVeldman/pyoci/issues/359)) ([ee2ab91](https://github.com/AllexVeldman/pyoci/commit/ee2ab91087aef4c1ed00cf0045f57ee1df29eb0c))
+* update rust crate handlebars to v6.4.0 ([#353](https://github.com/AllexVeldman/pyoci/issues/353)) ([ebb37e6](https://github.com/AllexVeldman/pyoci/commit/ebb37e624ffe8c386cc5c5cadf1772779379f5d9))
+* update rust crate mockito to v1.7.2 ([#364](https://github.com/AllexVeldman/pyoci/issues/364)) ([9f23195](https://github.com/AllexVeldman/pyoci/commit/9f2319532a781e5844aec8f1becf20de74a4d00e))
+* update rust crate prost to v0.14.3 ([#366](https://github.com/AllexVeldman/pyoci/issues/366)) ([5bd49d8](https://github.com/AllexVeldman/pyoci/commit/5bd49d8011d95aef7ee08e8e63d49ae40d003b43))
+* update rust crate reqwest to 0.13.0 ([#352](https://github.com/AllexVeldman/pyoci/issues/352)) ([61c3824](https://github.com/AllexVeldman/pyoci/commit/61c382419caa48dbd754dd81ba75f46751b6dc84))
+* update rust crate serde_json to v1.0.149 ([#349](https://github.com/AllexVeldman/pyoci/issues/349)) ([859744c](https://github.com/AllexVeldman/pyoci/commit/859744c438b3ebf2fc31053cfa13134f4f76188f))
+* update rust crate time to v0.3.47 [security] ([#361](https://github.com/AllexVeldman/pyoci/issues/361)) ([410efd5](https://github.com/AllexVeldman/pyoci/commit/410efd569e6bc559a276895f039860febf0ea1d0))
+* update rust crate tokio to v1.49.0 ([#354](https://github.com/AllexVeldman/pyoci/issues/354)) ([7d0a8f2](https://github.com/AllexVeldman/pyoci/commit/7d0a8f29b4ca7027c121f8465c5900f80880e6cb))
+* update rust crate tokio-util to v0.7.18 ([#356](https://github.com/AllexVeldman/pyoci/issues/356)) ([a3fb5e9](https://github.com/AllexVeldman/pyoci/commit/a3fb5e94cb689b2bfa8edfb3ac6b0cc8d5ebab75))
+* update rust crate tower to v0.5.3 ([#367](https://github.com/AllexVeldman/pyoci/issues/367)) ([24086ef](https://github.com/AllexVeldman/pyoci/commit/24086ef98c9ce87764a041dbb8b1791c268c479e))
+* update rust crate url to v2.5.8 ([#357](https://github.com/AllexVeldman/pyoci/issues/357)) ([542a3a5](https://github.com/AllexVeldman/pyoci/commit/542a3a50093474540c86a2ae983f79210f2fd6ba))
+* update rust docker tag to v1.93.0 ([#368](https://github.com/AllexVeldman/pyoci/issues/368)) ([5a84aa7](https://github.com/AllexVeldman/pyoci/commit/5a84aa7af84d6e29a14c93963550210c4bcd1a69))
+* update rust docker tag to v1.93.1 ([#370](https://github.com/AllexVeldman/pyoci/issues/370)) ([1339969](https://github.com/AllexVeldman/pyoci/commit/1339969ec68037dce780ae2b4ed96fb24e198cee))
+* update rust-futures monorepo to v0.3.32 ([#373](https://github.com/AllexVeldman/pyoci/issues/373)) ([f4e303e](https://github.com/AllexVeldman/pyoci/commit/f4e303e5b42c74cf3e947324df086929b5b63992))
+* update tokio-tracing monorepo ([#347](https://github.com/AllexVeldman/pyoci/issues/347)) ([f1ccba0](https://github.com/AllexVeldman/pyoci/commit/f1ccba0e7e2585db5c893a76e12b3bcd435591e9))
+
 ## [0.1.35](https://github.com/AllexVeldman/pyoci/compare/v0.1.34...v0.1.35) (2025-12-17)
 
 
