@@ -190,11 +190,7 @@ where
                         tracing::info!("No request to retry, skipping authentication");
                         return Poll::Ready(Ok(response));
                     }
-                    let Some(basic_token) = this.auth.basic.clone() else {
-                        // No basic token to trade for a bearer token
-                        tracing::info!("No basic token, skipping authentication");
-                        return Poll::Ready(Ok(response));
-                    };
+                    let basic_token = this.auth.basic.clone();
                     // If at this point we already have a bearer token, it did not have the correct
                     // scope for the current request. Drop it so it won't be used again
                     this.auth
@@ -224,7 +220,9 @@ where
                             }
                         }
                     };
-                    let srv = this.auth.clone();
+                    // Use the raw underlying service, not AuthService, so that a 401
+                    // from the token endpoint is not itself subject to re-authentication.
+                    let srv = this.auth.service.clone();
                     this.state.set(AuthState::Authenticating {
                         // No idea how to type this Future, lets just Pin<Box> it
                         future: authenticate(basic_token, www_auth, srv).boxed(),
@@ -284,7 +282,7 @@ where
 // Returns the upstream response if not.
 #[tracing::instrument(skip_all)]
 async fn authenticate<S>(
-    basic_token: Authorization<Basic>,
+    basic_token: Option<Authorization<Basic>>,
     www_auth: WwwAuth,
     mut service: S,
 ) -> Result<Authorization<Bearer>, AuthError>
@@ -306,7 +304,9 @@ where
         }
     }
     let mut auth_request = reqwest::Request::new(http::Method::GET, auth_url);
-    auth_request.headers_mut().typed_insert(basic_token);
+    if let Some(token) = basic_token {
+        auth_request.headers_mut().typed_insert(token);
+    }
     let response = service.call(auth_request).await?;
     if response.status() != StatusCode::OK {
         return Err(AuthError::AuthResponse(response));
@@ -699,7 +699,61 @@ mod tests {
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
     }
 
-    // Test if the original response is returned if there is no basic token to exchange.
+    // Test anonymous token exchange: no basic auth but registry supports public access.
+    #[tokio::test]
+    async fn auth_service_anonymous() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+            // Anonymous token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice",
+                )
+                .match_header("Authorization", mockito::Matcher::Missing)
+                .with_status(200)
+                .with_body(r#"{"token":"anonymoustoken"}"#)
+                .create_async()
+                .await,
+            // Re-submitted request, with bearer auth
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer anonymoustoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(None))
+            .service(Client::default());
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+    }
+
+    // Test that when no basic token is present and the registry also denies anonymous access,
+    // the token endpoint's original response is returned to the caller.
     #[tokio::test]
     async fn auth_service_missing_basic_token() {
         let mut server = Server::new_async().await;
@@ -713,6 +767,16 @@ mod tests {
                     "WWW-Authenticate",
                     &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
                 )
+                .create_async()
+                .await,
+            // Anonymous token exchange denied
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice",
+                )
+                .with_status(401)
+                .with_body("Unauthorized")
                 .create_async()
                 .await,
         ];
@@ -731,6 +795,7 @@ mod tests {
             mock.assert_async().await;
         }
         assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.text().await.unwrap(), "Unauthorized");
     }
 
     // Test if BAD_GATEWAY is returned on response of the upsteam server without a

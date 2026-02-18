@@ -217,7 +217,53 @@ mod tests {
             mock.assert_async().await;
         }
     }
-    /// Test missing authentication
+    /// Test happy-flow, with anonymous authentication
+    #[tokio::test]
+    async fn http_transport_send_anonymous_auth() {
+        let mut server = mockito::Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .create_async()
+                .await,
+            // Anonymous token exchange
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice",
+                )
+                .match_header("Authorization", mockito::Matcher::Missing)
+                .with_body(r#"{"token":"anonymoustoken"}"#)
+                .with_status(200)
+                .create_async()
+                .await,
+            // Re-submitted request, with bearer auth
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer anonymoustoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+        ];
+
+        let mut transport = HttpTransport::new(None);
+        let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
+        let response = transport.send(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+    }
+    /// Test missing authentication with anonymous token exchange denied
     #[tokio::test]
     async fn http_transport_send_missing_auth() {
         let mut server = mockito::Server::new_async().await;
@@ -230,6 +276,16 @@ mod tests {
                     "WWW-Authenticate",
                     &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
                 )
+                .with_body("Unauthorized")
+                .create_async()
+                .await,
+            // Anonymous token exchange denied
+            server
+                .mock(
+                    "GET",
+                    "/token?grant_type=password&service=pyoci.fakeservice",
+                )
+                .with_status(401)
                 .with_body("Unauthorized")
                 .create_async()
                 .await,
