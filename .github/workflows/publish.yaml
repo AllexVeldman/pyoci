@@ -70,16 +70,15 @@ jobs:
           context: ./
           file: docker/Dockerfile
           cache-from: type=gha
-          # Only write cache on main
-          cache-to: ${{ github.ref_name == 'main' && 'type=gha,mode=max' || '' }}
+          cache-to: type=gha,mode=max
           # Don't use cache when building a release
           no-cache: ${{ github.ref_type == 'tag' }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ env.REGISTRY_IMAGE }}
-          # Only push the image on push triggers, prevents pushing on (fork) PRs
+          # Only push the image on push triggers, prevents pushing on fork PRs
           outputs: |
-            type=image,push-by-digest=true,name-canonical=true,push=${{ github.event_name == 'push' }}
+            type=image,push-by-digest=true,name-canonical=true,push=${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.id != github.event.pull_request.base.repo.id) }}
 
       - name: Export digest
         run: |
