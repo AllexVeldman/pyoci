@@ -29,6 +29,8 @@ jobs:
         run: just test-coverage
 
       - name: SonarQube Scan
+        # Do not run on forks or on PRs from forks
+        if: ${{ !(github.event.repository.fork || (github.event_name == 'pull_request' && github.event.pull_request.head.repo.id != github.event.pull_request.base.repo.id)) }}
         uses: SonarSource/sonarqube-scan-action@v7
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

@@ -75,8 +75,9 @@ jobs:
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ env.REGISTRY_IMAGE }}
+          # Do not push for PRs from forks
           outputs: |
-            type=image,push-by-digest=true,name-canonical=true,push=true
+            type=image,push-by-digest=true,name-canonical=true,push=${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.id != github.event.pull_request.base.repo.id) }}
 
       - name: Export digest
         run: |
@@ -106,6 +107,8 @@ jobs:
 
   merge:
     runs-on: ubuntu-latest
+    # Do not run on PRs from forks
+    if: ${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.id != github.event.pull_request.base.repo.id) }}
     needs:
       - build
 
