@@ -1,0 +1,79 @@
+# This workflow allows the sonar scan to trigger on PR's from forks.
+# It is very important that nothing in this workflow executes or directly relies
+# on the content of the PR!
+name: Sonar Scan
+
+on:
+  workflow_run:
+    workflows: [Test]
+    types:
+      - completed
+
+permissions: {}
+
+jobs:
+  scan:
+    name: SonarQube Scan
+    runs-on: ubuntu-latest
+    if: github.event.workflow_run.conclusion == 'success'
+    timeout-minutes: 10
+
+    permissions:
+      # Check-out repo
+      contents: read
+      # Comment on PRs
+      pull-requests: write
+      # Download artifacts
+      actions: read
+      # Add workflow checks
+      checks: write
+      # Set commit status
+      statuses: write
+
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          # Checkout the PR branch
+          ref: ${{ github.event.workflow_run.head_sha }}
+          fetch-depth: 0
+
+      # Checkout the sonar config from main
+      # since it will be used by the scanner we don't want it to come from the PR
+      - run: git checkout origin/main -- sonar-project.properties
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: lcov
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{github.event.workflow_run.id }}
+
+      - uses: actions/download-artifact@v7
+        with:
+          name: pr
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          run-id: ${{  github.event.workflow_run.id }}
+          path: ${{ runner.temp }}
+
+      - run: echo "PR_NUMBER=$(cat ${{ runner.temp }}/pr.txt)" >> $GITHUB_ENV
+
+      # Triggered by PR
+      - name: SonarQube Scan
+        if: env.PR_NUMBER != ''
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+        with:
+          args: >
+            -Dsonar.pullrequest.provider=github
+            -Dsonar.pullrequest.github.repository=${{ github.repository }}
+            -Dsonar.pullrequest.branch=${{ github.event.workflow_run.head_branch }}
+            -Dsonar.pullrequest.key=${{ env.PR_NUMBER }}
+            -Dsonar.scm.provider=git
+            -Dsonar.scm.revision=${{ github.event.workflow_run.head_sha }}
+
+      # Triggered by push to main
+      - name: SonarQube Scan
+        if: env.PR_NUMBER == ''
+        uses: SonarSource/sonarqube-scan-action@v7
+        env:
+          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}

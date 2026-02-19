@@ -71,12 +71,14 @@ jobs:
           file: docker/Dockerfile
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Don't use cache when building a release
           no-cache: ${{ github.ref_type == 'tag' }}
           platforms: ${{ matrix.platform }}
           labels: ${{ steps.meta.outputs.labels }}
           tags: ${{ env.REGISTRY_IMAGE }}
+          # Only push the image on push triggers, prevents pushing on fork PRs
           outputs: |
-            type=image,push-by-digest=true,name-canonical=true,push=true
+            type=image,push-by-digest=true,name-canonical=true,push=${{ !(github.event_name == 'pull_request' && github.event.pull_request.head.repo.id != github.event.pull_request.base.repo.id) }}
 
       - name: Export digest
         run: |
@@ -106,6 +108,7 @@ jobs:
 
   merge:
     runs-on: ubuntu-latest
+    if: github.ref_type == 'tag'
     needs:
       - build
 
@@ -147,11 +150,10 @@ jobs:
       - name: Create manifest list and push
         working-directory: ${{ runner.temp }}/digests
         run: |
-          docker buildx imagetools create ${{ github.ref_type != 'tag' && '--dry-run' || '' }} $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
+          docker buildx imagetools create $(jq -cr '.tags | map("-t " + .) | join(" ")' <<< "$DOCKER_METADATA_OUTPUT_JSON") \
             $(printf '${{ env.REGISTRY_IMAGE }}@sha256:%s ' *)
 
       - name: Inspect image
-        if: github.ref_type == 'tag'
         run: |
           docker buildx imagetools inspect ${{ env.REGISTRY_IMAGE }}:${{ steps.meta.outputs.version }}
 

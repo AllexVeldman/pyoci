@@ -6,11 +6,16 @@ on:
       - main
   pull_request:
 
+permissions: {}
+
 jobs:
   test:
     runs-on: ubuntu-latest
     name: Test
     timeout-minutes: 10
+
+    permissions:
+      contents: read
 
     steps:
       - uses: extractions/setup-just@v3
@@ -28,7 +33,16 @@ jobs:
       - name: Test
         run: just test-coverage
 
-      - name: SonarQube Scan
-        uses: SonarSource/sonarqube-scan-action@v7
-        env:
-          SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
+      - name: Store coverage report
+        uses: actions/upload-artifact@v6
+        with:
+          name: lcov
+          path: lcov.info
+
+      - name: Save PR number
+        run: echo ${{ github.event.number }} > ./pr.txt
+
+      - uses: actions/upload-artifact@v6
+        with:
+          name: pr
+          path: pr.txt
