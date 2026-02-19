@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.1.37](https://github.com/AllexVeldman/pyoci/compare/v0.1.36...v0.1.37) (2026-02-19)
+
+
+### Features
+
+* **auth:** allow anonymous authentication to registries that support it ([#376](https://github.com/AllexVeldman/pyoci/issues/376)) ([5e5ebc4](https://github.com/AllexVeldman/pyoci/commit/5e5ebc4b006f895836f94d9735ecef4ac8d62311))
+
+
+### Continuous Integration
+
+* Prepare workflows for PRs from forks ([#378](https://github.com/AllexVeldman/pyoci/issues/378)) ([666e172](https://github.com/AllexVeldman/pyoci/commit/666e17201623ba44de4e6fbe9c1953a957d64ea0))
+
+
+### Dependency Updates
+
+* update rust crate oci-spec to 0.9.0 ([#375](https://github.com/AllexVeldman/pyoci/issues/375)) ([f44938d](https://github.com/AllexVeldman/pyoci/commit/f44938ddc84dc261ca8d6e5e8f12f5ed20106d24))
+
 ## [0.1.36](https://github.com/AllexVeldman/pyoci/compare/v0.1.35...v0.1.36) (2026-02-16)
 
 
