@@ -536,7 +536,7 @@ mod tests {
     use std::collections::HashMap;
 
     use super::*;
-    use crate::{clean_subpath, oci::digest};
+    use crate::{clean_subpath, oci::digest, ARTIFACT_TYPE};
 
     use axum::{
         body::{to_bytes, Body},
@@ -1312,7 +1312,7 @@ mod tests {
         let index_010 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1332,7 +1332,7 @@ mod tests {
         let index_123 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1450,7 +1450,7 @@ mod tests {
         let index_010 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1470,7 +1470,7 @@ mod tests {
         let index_123 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1589,7 +1589,7 @@ mod tests {
         let index_010 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1609,7 +1609,7 @@ mod tests {
         let index_123 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1734,7 +1734,7 @@ mod tests {
         let index_010 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1754,7 +1754,7 @@ mod tests {
         let index_123 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -1921,7 +1921,7 @@ mod tests {
         let index_010 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -2013,7 +2013,7 @@ mod tests {
         let index = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -2097,7 +2097,7 @@ mod tests {
         let index = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
@@ -2132,7 +2132,7 @@ mod tests {
         let manifest = ImageManifestBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.manifest.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .config(
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.empty.v1+json")
@@ -2142,7 +2142,7 @@ mod tests {
                     .unwrap(),
             )
             .layers(vec![DescriptorBuilder::default()
-                .media_type("application/pyoci.package.v1")
+                .media_type(ARTIFACT_TYPE)
                 .digest(digest("layer-digest")) // sha:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969
                 .size(42_u64)
                 .build()
@@ -2219,7 +2219,7 @@ mod tests {
         let index = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
@@ -2254,7 +2254,7 @@ mod tests {
         let manifest = ImageManifestBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.manifest.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .config(
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.empty.v1+json")
@@ -2264,7 +2264,7 @@ mod tests {
                     .unwrap(),
             )
             .layers(vec![DescriptorBuilder::default()
-                .media_type("application/pyoci.package.v1")
+                .media_type(ARTIFACT_TYPE)
                 .digest(digest("layer-digest")) // sha:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969
                 .size(42_u64)
                 .build()
@@ -2416,7 +2416,7 @@ mod tests {
         let index = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
@@ -2513,7 +2513,7 @@ mod tests {
         let index = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![DescriptorBuilder::default()
                 .media_type("application/vnd.oci.image.manifest.v1+json")
                 .digest(digest("FooBar"))
@@ -2637,7 +2637,7 @@ mod tests {
         let index_010 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
@@ -2734,7 +2734,7 @@ mod tests {
         let index_010 = ImageIndexBuilder::default()
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
-            .artifact_type("application/pyoci.package.v1")
+            .artifact_type(ARTIFACT_TYPE)
             .manifests(vec![
                 DescriptorBuilder::default()
                     .media_type("application/vnd.oci.image.manifest.v1+json")
