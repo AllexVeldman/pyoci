@@ -242,6 +242,21 @@ impl Oci {
         }
     }
 
+    /// Delete a blob
+    ///
+    /// digest: digest of the blob to delete
+    /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#content-management>
+    #[tracing::instrument(skip_all, fields(otel.name = name, otel.digest = digest))]
+    pub async fn delete_blob(&mut self, name: &str, digest: &str) -> Result<()> {
+        let url = build_url!(&self.registry, "/v2/{}/blobs/{}", name, digest);
+        let request = self.transport.delete(url);
+        let response = self.transport.send(request).await?;
+        match response.status() {
+            StatusCode::ACCEPTED => Ok(()),
+            status => Err(PyOciError::from((status, response.text().await?)).into()),
+        }
+    }
+
     /// List the available tags for a package
     ///
     /// <https://github.com/opencontainers/distribution-spec/blob/main/spec.md#listing-tags>

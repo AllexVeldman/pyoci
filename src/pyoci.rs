@@ -365,7 +365,8 @@ impl PyOci {
         package: &Package<'_, WithFileName>,
     ) -> Result<()> {
         let name = package.oci_name();
-        let index = match self.oci.pull_manifest(&name, &package.oci_tag()).await? {
+        let tag = package.oci_tag();
+        let index = match self.oci.pull_manifest(&name, &tag).await? {
             Some(Manifest::Index(index)) => index,
             Some(Manifest::Manifest(_)) => {
                 bail!("Expected ImageIndex, got ImageManifest");
@@ -385,11 +386,31 @@ impl PyOci {
             // Artifact type is not set, err
             None => bail!("No artifact type set"),
         }
+        // Delete the manifests included in the index
         for manifest in index.manifests() {
             let digest = manifest.digest().to_string();
+            let manifest = match self.oci.pull_manifest(&name, &digest).await? {
+                Some(Manifest::Manifest(manifest)) => manifest,
+                Some(Manifest::Index(_)) => bail!("Expected ImageManifest, got ImageIndex"),
+                None => {
+                    return Err(PyOciError::from((
+                        StatusCode::NOT_FOUND,
+                        "ImageManifest does not exist",
+                    ))
+                    .into())
+                }
+            };
+            let [blob_descriptor] = &manifest.layers()[..] else {
+                bail!("Image Manifest defines unexpected number of layers, was this package published by pyoci?");
+            };
+            let blob_digest = blob_descriptor.digest().to_string();
+            self.oci.delete_blob(&name, &blob_digest).await?;
+
             tracing::debug!("Deleting {name}:{digest}");
             self.oci.delete_manifest(&name, &digest).await?;
         }
+        // Delete the tag/index itself
+        self.oci.delete_manifest(&name, &tag).await?;
         Ok(())
     }
 }
