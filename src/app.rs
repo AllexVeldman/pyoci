@@ -2669,6 +2669,48 @@ mod tests {
             .build()
             .unwrap();
 
+        let mani1 = ImageManifestBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type(ARTIFACT_TYPE)
+            .config(
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.empty.v1+json")
+                    .digest(digest("config-digest")) // sha:7b6a7aed8c63f4480a863fa046048c4bfb77d4514212ad646a5fcadcf8f5da47
+                    .size(0_u64)
+                    .build()
+                    .unwrap(),
+            )
+            .layers(vec![DescriptorBuilder::default()
+                .media_type(ARTIFACT_TYPE)
+                .digest(digest("mani1-layer-digest")) // sha256:2a607d1b7c3a878331e060c762d78582321e62b40682f059a3cc4bcb82ec3083
+                .size(42_u64)
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let mani2 = ImageManifestBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type(ARTIFACT_TYPE)
+            .config(
+                DescriptorBuilder::default()
+                    .media_type("application/vnd.oci.empty.v1+json")
+                    .digest(digest("config-digest")) // sha:7b6a7aed8c63f4480a863fa046048c4bfb77d4514212ad646a5fcadcf8f5da47
+                    .size(0_u64)
+                    .build()
+                    .unwrap(),
+            )
+            .layers(vec![DescriptorBuilder::default()
+                .media_type(ARTIFACT_TYPE)
+                .digest(digest("mani2-layer-digest")) // sha256:218555aa0a47c8b81bfd6310b0582757923dfb806b6fffcf3fb1e7bc6fbeb916
+                .size(42_u64)
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
         let mocks = vec![
             // Pull 0.1.0 manifest
             server
@@ -2681,6 +2723,40 @@ mod tests {
                 .with_body(serde_json::to_string::<ImageIndex>(&index_010).unwrap())
                 .create_async()
                 .await,
+            // Pull mani1
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.manifest.v1+json")
+                .with_body(serde_json::to_string::<ImageManifest>(&mani1).unwrap())
+                .create_async()
+                .await,
+            // Pull mani2
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.manifest.v1+json")
+                .with_body(serde_json::to_string::<ImageManifest>(&mani2).unwrap())
+                .create_async()
+                .await,
+            // Delete blob mani1
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/blobs/sha256:2a607d1b7c3a878331e060c762d78582321e62b40682f059a3cc4bcb82ec3083")
+                .with_status(202)
+                .create_async()
+                .await,
+            // Delete blob mani2
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/blobs/sha256:218555aa0a47c8b81bfd6310b0582757923dfb806b6fffcf3fb1e7bc6fbeb916")
+                .with_status(202)
+                .create_async()
+                .await,
             // Delete 0.1.0 mani1 manifest
             server
                 .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85")
@@ -2690,6 +2766,12 @@ mod tests {
             // Delete 0.1.0 mani2 manifest
             server
                 .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198")
+                .with_status(202)
+                .create_async()
+                .await,
+            // Delete tag
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/manifests/0.1.0")
                 .with_status(202)
                 .create_async()
                 .await,
@@ -2735,34 +2817,40 @@ mod tests {
             .schema_version(2_u32)
             .media_type("application/vnd.oci.image.index.v1+json")
             .artifact_type(ARTIFACT_TYPE)
-            .manifests(vec![
+            .manifests(vec![DescriptorBuilder::default()
+                .media_type("application/vnd.oci.image.manifest.v1+json")
+                .digest(digest("mani1")) // sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85
+                .size(6_u64)
+                .platform(
+                    PlatformBuilder::default()
+                        .architecture(Arch::Other(".tar.gz".to_string()))
+                        .os(Os::Other("any".to_string()))
+                        .build()
+                        .unwrap(),
+                )
+                .build()
+                .unwrap()])
+            .build()
+            .unwrap();
+
+        let mani = ImageManifestBuilder::default()
+            .schema_version(2_u32)
+            .media_type("application/vnd.oci.image.manifest.v1+json")
+            .artifact_type(ARTIFACT_TYPE)
+            .config(
                 DescriptorBuilder::default()
-                    .media_type("application/vnd.oci.image.manifest.v1+json")
-                    .digest(digest("mani1")) // sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85
-                    .size(6_u64)
-                    .platform(
-                        PlatformBuilder::default()
-                            .architecture(Arch::Other(".tar.gz".to_string()))
-                            .os(Os::Other("any".to_string()))
-                            .build()
-                            .unwrap(),
-                    )
+                    .media_type("application/vnd.oci.empty.v1+json")
+                    .digest(digest("config-digest")) // sha:7b6a7aed8c63f4480a863fa046048c4bfb77d4514212ad646a5fcadcf8f5da47
+                    .size(0_u64)
                     .build()
                     .unwrap(),
-                DescriptorBuilder::default()
-                    .media_type("application/vnd.oci.image.manifest.v1+json")
-                    .digest(digest("mani2")) // sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198
-                    .size(6_u64)
-                    .platform(
-                        PlatformBuilder::default()
-                            .architecture(Arch::Other(".whl".to_string()))
-                            .os(Os::Other("any".to_string()))
-                            .build()
-                            .unwrap(),
-                    )
-                    .build()
-                    .unwrap(),
-            ])
+            )
+            .layers(vec![DescriptorBuilder::default()
+                .media_type(ARTIFACT_TYPE)
+                .digest(digest("layer-digest")) // sha256:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969
+                .size(42_u64)
+                .build()
+                .unwrap()])
             .build()
             .unwrap();
 
@@ -2778,15 +2866,32 @@ mod tests {
                 .with_body(serde_json::to_string::<ImageIndex>(&index_010).unwrap())
                 .create_async()
                 .await,
-            // Delete 0.1.0 mani1 manifest
+            // Pull manifest
+            server
+                .mock("GET", "/v2/mockserver/test_package/manifests/sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85")
+                .match_header(
+                    "accept",
+                    "application/vnd.oci.image.manifest.v1+json, application/vnd.oci.image.index.v1+json")
+                .with_status(200)
+                .with_header("content-type", "application/vnd.oci.image.manifest.v1+json")
+                .with_body(serde_json::to_string::<ImageManifest>(&mani).unwrap())
+                .create_async()
+                .await,
+            // Delete blob
+            server
+                .mock("DELETE", "/v2/mockserver/test_package/blobs/sha256:8a576772defc4006637b27e7b0bef2c8bb6f3f7465d27426f1684da58ea9f969")
+                .with_status(202)
+                .create_async()
+                .await,
+            // Delete manifest
             server
                 .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:81cbc3714a310e6a05cfab0000b1e58ddbf160b6e611b18fa532f19859eafe85")
                 .with_status(202)
                 .create_async()
                 .await,
-            // Delete 0.1.0 mani2 manifest
+            // Delete tag
             server
-                .mock("DELETE", "/v2/mockserver/test_package/manifests/sha256:f7e24eba171386f4939a205235f3ab0dc3b408368dbd3f3f106ddb9e05a32198")
+                .mock("DELETE", "/v2/mockserver/test_package/manifests/0.1.0")
                 .with_status(202)
                 .create_async()
                 .await,
