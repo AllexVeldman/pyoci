@@ -121,7 +121,7 @@ impl PyOci {
         let artifact_type = index.artifact_type();
         match artifact_type {
             // Artifact type is as expected, do nothing
-            Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
+            Some(MediaType::Other(value)) if value == ARTIFACT_TYPE => {}
             // Artifact type has unexpected value, err
             Some(value) => bail!("Unknown artifact type: {value}"),
             // Artifact type is not set, err
@@ -177,7 +177,7 @@ impl PyOci {
         // Check artifact type
         match index.artifact_type() {
             // Artifact type is as expected, do nothing
-            Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
+            Some(MediaType::Other(value)) if value == ARTIFACT_TYPE => {}
             // Artifact type has unexpected value, err
             Some(value) => bail!("Unknown artifact type: {value}"),
             // Artifact type is not set, err
@@ -379,7 +379,7 @@ impl PyOci {
         // Check artifact type
         match index.artifact_type() {
             // Artifact type is as expected, do nothing
-            Some(MediaType::Other(value)) if value == "application/pyoci.package.v1" => {}
+            Some(MediaType::Other(value)) if value == ARTIFACT_TYPE => {}
             // Artifact type has unexpected value, err
             Some(value) => bail!("Unknown artifact type: {value}"),
             // Artifact type is not set, err
