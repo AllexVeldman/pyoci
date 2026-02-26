@@ -41,13 +41,13 @@ jobs:
       # since it will be used by the scanner we don't want it to come from the PR
       - run: git checkout origin/main -- sonar-project.properties
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: lcov
           github-token: ${{ secrets.GITHUB_TOKEN }}
           run-id: ${{github.event.workflow_run.id }}
 
-      - uses: actions/download-artifact@v7
+      - uses: actions/download-artifact@v8
         with:
           name: pr
           github-token: ${{ secrets.GITHUB_TOKEN }}
