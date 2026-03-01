@@ -34,7 +34,7 @@ jobs:
         run: just test-coverage
 
       - name: Store coverage report
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: lcov
           path: lcov.info
@@ -42,7 +42,7 @@ jobs:
       - name: Save PR number
         run: echo ${{ github.event.number }} > ./pr.txt
 
-      - uses: actions/upload-artifact@v6
+      - uses: actions/upload-artifact@v7
         with:
           name: pr
           path: pr.txt
