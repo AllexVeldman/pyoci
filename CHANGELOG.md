@@ -1,5 +1,24 @@
 # Changelog
 
+## [0.1.38](https://github.com/AllexVeldman/pyoci/compare/v0.1.37...v0.1.38) (2026-03-05)
+
+
+### Bug Fixes
+
+* Delete does not delete all resources of a version ([#383](https://github.com/AllexVeldman/pyoci/issues/383)) ([4271910](https://github.com/AllexVeldman/pyoci/commit/4271910c26b170464250368f7f538e491ea95916)), closes [#337](https://github.com/AllexVeldman/pyoci/issues/337)
+
+
+### Miscellaneous Chores
+
+* Use `ARTIFACT_TYPE` instead of &str in more places ([#381](https://github.com/AllexVeldman/pyoci/issues/381)) ([ba831a7](https://github.com/AllexVeldman/pyoci/commit/ba831a7534aae8dd5db5ed6c713b292f3638eebf))
+
+
+### Dependency Updates
+
+* update docker/login-action action to v4 ([#387](https://github.com/AllexVeldman/pyoci/issues/387)) ([dcf4370](https://github.com/AllexVeldman/pyoci/commit/dcf43704c1470e81834849f52b6de3ebd8d7d299))
+* update github artifact actions ([84efce7](https://github.com/AllexVeldman/pyoci/commit/84efce7c91ceca63a533989cffe76224f5c0a693))
+* update github artifact actions (major) ([#384](https://github.com/AllexVeldman/pyoci/issues/384)) ([84efce7](https://github.com/AllexVeldman/pyoci/commit/84efce7c91ceca63a533989cffe76224f5c0a693))
+
 ## [0.1.37](https://github.com/AllexVeldman/pyoci/compare/v0.1.36...v0.1.37) (2026-02-19)
 
 
