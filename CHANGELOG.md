@@ -1,5 +1,32 @@
 # Changelog
 
+## [0.1.38](https://github.com/AllexVeldman/pyoci/compare/v0.1.37...v0.1.38) (2026-03-10)
+
+
+### Bug Fixes
+
+* Delete does not delete all resources of a version ([#383](https://github.com/AllexVeldman/pyoci/issues/383)) ([4271910](https://github.com/AllexVeldman/pyoci/commit/4271910c26b170464250368f7f538e491ea95916)), closes [#337](https://github.com/AllexVeldman/pyoci/issues/337)
+
+
+### Miscellaneous Chores
+
+* Use `ARTIFACT_TYPE` instead of &str in more places ([#381](https://github.com/AllexVeldman/pyoci/issues/381)) ([ba831a7](https://github.com/AllexVeldman/pyoci/commit/ba831a7534aae8dd5db5ed6c713b292f3638eebf))
+
+
+### Dependency Updates
+
+* Update `aws-lc-sys` to 0.38.0 ([#392](https://github.com/AllexVeldman/pyoci/issues/392)) ([292dd83](https://github.com/AllexVeldman/pyoci/commit/292dd83fcc019b18bc327b16e828fc77a51bb745))
+* update docker/build-push-action action to v7 ([#389](https://github.com/AllexVeldman/pyoci/issues/389)) ([a5b3327](https://github.com/AllexVeldman/pyoci/commit/a5b3327c9b967c8f7022ead6ca90b7c9524703f0))
+* update docker/login-action action to v4 ([#387](https://github.com/AllexVeldman/pyoci/issues/387)) ([dcf4370](https://github.com/AllexVeldman/pyoci/commit/dcf43704c1470e81834849f52b6de3ebd8d7d299))
+* update docker/metadata-action action to v6 ([#390](https://github.com/AllexVeldman/pyoci/issues/390)) ([ec43558](https://github.com/AllexVeldman/pyoci/commit/ec43558435692f1885ebee6d382b1d80fa916338))
+* update docker/setup-buildx-action action to v4 ([#388](https://github.com/AllexVeldman/pyoci/issues/388)) ([d2b89e9](https://github.com/AllexVeldman/pyoci/commit/d2b89e95c477242519dfa3a3535875deef8594b7))
+* update github artifact actions ([84efce7](https://github.com/AllexVeldman/pyoci/commit/84efce7c91ceca63a533989cffe76224f5c0a693))
+* update github artifact actions (major) ([#384](https://github.com/AllexVeldman/pyoci/issues/384)) ([84efce7](https://github.com/AllexVeldman/pyoci/commit/84efce7c91ceca63a533989cffe76224f5c0a693))
+* update rust crate anyhow to v1.0.102 ([#380](https://github.com/AllexVeldman/pyoci/issues/380)) ([c873265](https://github.com/AllexVeldman/pyoci/commit/c8732654134517d42897e9de2a65fe89b31ae96c))
+* update rust crate pin-project to v1.1.11 ([#385](https://github.com/AllexVeldman/pyoci/issues/385)) ([b7e7248](https://github.com/AllexVeldman/pyoci/commit/b7e7248c14e56d270392a02634070c6fb3f4d5cb))
+* update rust crate tokio to v1.50.0 ([#386](https://github.com/AllexVeldman/pyoci/issues/386)) ([79882fd](https://github.com/AllexVeldman/pyoci/commit/79882fd544062d1082dc2a5964b076f5302b00c4))
+* update rust docker tag to v1.94.0 ([#391](https://github.com/AllexVeldman/pyoci/issues/391)) ([5ca0d01](https://github.com/AllexVeldman/pyoci/commit/5ca0d0107e885148c3de853ac913995ff9f08d5e))
+
 ## [0.1.37](https://github.com/AllexVeldman/pyoci/compare/v0.1.36...v0.1.37) (2026-02-19)
 
 
