@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.39](https://github.com/AllexVeldman/pyoci/compare/v0.1.38...v0.1.39) (2026-03-11)
+
+
+### Dependency Updates
+
+* bump quinn-proto from 0.11.13 to 0.11.14 ([#393](https://github.com/AllexVeldman/pyoci/issues/393)) ([7df751d](https://github.com/AllexVeldman/pyoci/commit/7df751dd2bb7b8025f69973fd361f690fe066a66))
+
 ## [0.1.38](https://github.com/AllexVeldman/pyoci/compare/v0.1.37...v0.1.38) (2026-03-10)
 
 
