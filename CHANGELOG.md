@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.1.39](https://github.com/AllexVeldman/pyoci/compare/v0.1.38...v0.1.39) (2026-04-07)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump rustls-webpki from 0.103.8 to 0.103.10 in the cargo group across 1 directory ([#398](https://github.com/AllexVeldman/pyoci/issues/398)) ([7bac75b](https://github.com/AllexVeldman/pyoci/commit/7bac75b38aad712c7914a43220c41ad536a1d6bb))
+* **deps:** bump rustls-webpki in the cargo group across 1 directory ([7bac75b](https://github.com/AllexVeldman/pyoci/commit/7bac75b38aad712c7914a43220c41ad536a1d6bb))
+
+
+### Dependency Updates
+
+* bump quinn-proto from 0.11.13 to 0.11.14 ([#393](https://github.com/AllexVeldman/pyoci/issues/393)) ([7df751d](https://github.com/AllexVeldman/pyoci/commit/7df751dd2bb7b8025f69973fd361f690fe066a66))
+* update azure/cli action to v3 ([#399](https://github.com/AllexVeldman/pyoci/issues/399)) ([6ad34d0](https://github.com/AllexVeldman/pyoci/commit/6ad34d089de0e7ad44e92b35d65e4d4a28f34e72))
+* update azure/login action to v3 ([#397](https://github.com/AllexVeldman/pyoci/issues/397)) ([e97a259](https://github.com/AllexVeldman/pyoci/commit/e97a25924dff061219793d24abbe70337c1fa402))
+* update extractions/setup-just action to v4 ([#406](https://github.com/AllexVeldman/pyoci/issues/406)) ([edaad46](https://github.com/AllexVeldman/pyoci/commit/edaad462de3bc5ceaa158522d09987ecb015eddb))
+* update pre-commit hook rhysd/actionlint to v1.7.12 ([#402](https://github.com/AllexVeldman/pyoci/issues/402)) ([a2a74c5](https://github.com/AllexVeldman/pyoci/commit/a2a74c540e5a00df9eeee2899386967680cd35d2))
+* update rust crate sha2 to 0.11.0 ([#400](https://github.com/AllexVeldman/pyoci/issues/400)) ([c983718](https://github.com/AllexVeldman/pyoci/commit/c983718e3f5db9961418f269b562ad62c9fe8f3b))
+* update rust crate tokio to v1.51.0 ([#405](https://github.com/AllexVeldman/pyoci/issues/405)) ([baf7505](https://github.com/AllexVeldman/pyoci/commit/baf75051807913891caae0657437c9efa5cf9458))
+* update rust crate tracing-subscriber to v0.3.23 ([#395](https://github.com/AllexVeldman/pyoci/issues/395)) ([2a22f83](https://github.com/AllexVeldman/pyoci/commit/2a22f8373e92d8c2eaadfdcac081cf7149681259))
+* update rust docker tag to v1.94.1 ([#401](https://github.com/AllexVeldman/pyoci/issues/401)) ([95489f5](https://github.com/AllexVeldman/pyoci/commit/95489f5b1a669f8970e5147440f3abe7695f3539))
+
 ## [0.1.38](https://github.com/AllexVeldman/pyoci/compare/v0.1.37...v0.1.38) (2026-03-10)
 
 
