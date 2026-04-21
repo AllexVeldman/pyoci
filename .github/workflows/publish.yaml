@@ -100,7 +100,7 @@ jobs:
           python-version-file: .github/.python-version
       - uses: extractions/setup-just@v4
       - run: pip install poetry
-      - uses: astral-sh/setup-uv@v7
+      - uses: astral-sh/setup-uv@v8.1.0
       - run: just test-smoke
       - run: docker compose logs pyoci
         if: always()
