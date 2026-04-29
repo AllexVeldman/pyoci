@@ -59,7 +59,7 @@ jobs:
       # Triggered by PR
       - name: SonarQube Scan
         if: env.PR_NUMBER != ''
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
         with:
@@ -74,6 +74,6 @@ jobs:
       # Triggered by push to main
       - name: SonarQube Scan
         if: env.PR_NUMBER == ''
-        uses: SonarSource/sonarqube-scan-action@v7
+        uses: SonarSource/sonarqube-scan-action@v8
         env:
           SONAR_TOKEN: ${{ secrets.SONAR_TOKEN }}
