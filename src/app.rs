@@ -15,7 +15,7 @@ use axum::{
 use axum_extra::TypedHeader;
 use bytes::Bytes;
 use handlebars::Handlebars;
-use headers::{authorization::Basic, Authorization, Host, UserAgent};
+use headers::{Host, UserAgent};
 use http::{header::CACHE_CONTROL, HeaderValue, StatusCode};
 use serde::{ser::SerializeMap, Serialize, Serializer};
 use tower::Service;
@@ -25,6 +25,7 @@ use crate::{
     error::PyOciError,
     middleware::EncodeNamespace,
     package::{Package, WithFileName},
+    service::AuthHeader,
     Env, PyOci,
 };
 
@@ -202,7 +203,7 @@ async fn list_package(
         max_versions,
         templates,
     }): State<PyOciState<'_>>,
-    auth: Option<TypedHeader<Authorization<Basic>>>,
+    auth: Option<TypedHeader<AuthHeader>>,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Html<String>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
@@ -251,7 +252,7 @@ struct Info {
 #[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn list_package_json(
-    auth: Option<TypedHeader<Authorization<Basic>>>,
+    auth: Option<TypedHeader<AuthHeader>>,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Json<ListJson>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
@@ -287,7 +288,7 @@ async fn list_package_json(
 #[tracing::instrument(skip_all)]
 async fn download_package(
     Path((registry, namespace, package_name, filename)): Path<(String, String, String, String)>,
-    auth: Option<TypedHeader<Authorization<Basic>>>,
+    auth: Option<TypedHeader<AuthHeader>>,
 ) -> Result<impl IntoResponse, AppError> {
     let package = Package::from_filename(&registry, &namespace, &package_name, &filename)?;
 
@@ -311,7 +312,7 @@ async fn download_package(
 #[tracing::instrument(skip_all)]
 async fn delete_package_version(
     Path((registry, namespace, name, version)): Path<(String, String, String, String)>,
-    auth: Option<TypedHeader<Authorization<Basic>>>,
+    auth: Option<TypedHeader<AuthHeader>>,
 ) -> Result<String, AppError> {
     let package = Package::new(&registry, &namespace, &name).with_oci_file(&version, "");
 
@@ -327,7 +328,7 @@ async fn delete_package_version(
 #[tracing::instrument(skip_all)]
 async fn publish_package(
     Path((registry, namespace)): Path<(String, String)>,
-    auth: Option<TypedHeader<Authorization<Basic>>>,
+    auth: Option<TypedHeader<AuthHeader>>,
     multipart: Multipart,
 ) -> Result<String, AppError> {
     let form_data = UploadForm::from_multipart(multipart).await?;
@@ -353,11 +354,13 @@ async fn publish_package(
 }
 
 /// Parse the Authentication header, if provided
-fn get_auth(auth: Option<TypedHeader<Authorization<Basic>>>) -> Option<Authorization<Basic>> {
-    if auth.is_none() {
+fn get_auth(auth: Option<TypedHeader<AuthHeader>>) -> Option<AuthHeader> {
+    if let Some(TypedHeader(auth)) = auth {
+        Some(auth)
+    } else {
         tracing::warn!("No Authorization header provided");
+        None
     }
-    auth.map(|h| (*h).clone())
 }
 
 trait MaybeEmpty {
@@ -543,6 +546,7 @@ mod tests {
         extract::{FromRequest, Request},
     };
     use bytes::Bytes;
+    use headers::Authorization;
     use http::HeaderValue;
     use indoc::formatdoc;
     use oci_spec::{
@@ -557,8 +561,23 @@ mod tests {
 
     #[test]
     fn test_get_auth() {
-        let auth = get_auth(Some(TypedHeader(Authorization::basic("user", "pass"))));
-        assert_eq!(auth, Some(Authorization::basic("user", "pass")));
+        // Basic
+        let auth = get_auth(Some(TypedHeader(AuthHeader::Basic(Authorization::basic(
+            "user", "pass",
+        )))));
+        assert_eq!(
+            auth,
+            Some(AuthHeader::Basic(Authorization::basic("user", "pass")))
+        );
+
+        // Bearer
+        let auth = get_auth(Some(TypedHeader(AuthHeader::Bearer(
+            Authorization::bearer("foobar").unwrap(),
+        ))));
+        assert_eq!(
+            auth,
+            Some(AuthHeader::Bearer(Authorization::bearer("foobar").unwrap()))
+        );
     }
 
     #[test]

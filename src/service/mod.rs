@@ -1,5 +1,5 @@
 mod auth;
 mod log;
 
-pub use auth::{AuthLayer, AuthService};
+pub use auth::{AuthHeader, AuthLayer, AuthService};
 pub use log::{RequestLog, RequestLogLayer};

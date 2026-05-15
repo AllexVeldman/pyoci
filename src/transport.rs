@@ -1,9 +1,8 @@
 use anyhow::Result;
-use headers::authorization::Basic;
-use headers::Authorization;
 use std::future::poll_fn;
 use tower::{Service, ServiceBuilder};
 
+use crate::service::AuthHeader;
 use crate::service::AuthLayer;
 use crate::service::AuthService;
 use crate::service::RequestLog;
@@ -25,7 +24,7 @@ impl HttpTransport {
     ///
     /// auth: Basic auth string
     ///       Will be swapped for a Bearer token if needed
-    pub fn new(auth: Option<Authorization<Basic>>) -> Self {
+    pub fn new(auth: Option<AuthHeader>) -> Self {
         let client = reqwest::Client::builder()
             .user_agent(USER_AGENT)
             .build()
@@ -78,6 +77,7 @@ impl HttpTransport {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use headers::Authorization;
     use http::StatusCode;
     use url::Url;
 
@@ -141,7 +141,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass").into()));
         let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -197,7 +197,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass").into()));
         // clone the transport to check if they share the bearer token state
         let mut transport2 = transport.clone();
 
@@ -326,7 +326,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass").into()));
         let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
@@ -372,7 +372,7 @@ mod tests {
                 .await,
         ];
 
-        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass")));
+        let mut transport = HttpTransport::new(Some(Authorization::basic("user", "pass").into()));
         let request = transport.get(Url::parse(&format!("{url}/foobar")).unwrap());
         let response = transport.send(request).await.unwrap();
         for mock in mocks {
