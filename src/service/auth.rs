@@ -22,6 +22,30 @@ pub enum AuthHeader {
     Bearer(Authorization<Bearer>),
 }
 
+impl AuthHeader {
+    /// Convert an [`AuthHeader::Basic`] into a [`AuthHeader::Bearer`] if the username matches.
+    ///
+    /// The (decoded) password will be used as the Bearer token.
+    ///
+    /// Returns  `self` unchanged if it is not Basic or the username does not match.
+    /// Returns Err if the token is not a valid Bearer token.
+    pub fn maybe_into_bearer(self, username: &str) -> Result<Self, PyOciError> {
+        match self {
+            AuthHeader::Basic(auth) if auth.username() == username => {
+                tracing::info!(
+                    "Username matched PYOCI_BEARER_USERNAME, skipping password authentication"
+                );
+                Ok(Self::Bearer(
+                    Authorization::bearer(auth.password())
+                        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?,
+                ))
+            }
+            _ => Ok(self),
+        }
+    }
+}
+
+/// Allow [`AuthHeader`] to be used as a [`TypedHeader`]
 impl Header for AuthHeader {
     fn name() -> &'static http::HeaderName {
         &::http::header::AUTHORIZATION
@@ -170,7 +194,7 @@ where
 
     fn call(&mut self, mut request: reqwest::Request) -> Self::Future {
         if let Some(bearer) = self.bearer.read().expect("Failed to get read lock").clone() {
-            // If we have a bearer token, add it to the request
+            // We have a bearer token, add it to the request
             request.headers_mut().typed_insert(bearer);
         }
         AuthFuture::new(
@@ -271,6 +295,7 @@ where
                         return Poll::Ready(Ok(response));
                     }
 
+                    // Extract the WWW-Authenticate header indicating where and how to authenticate
                     let www_auth = match response.headers().get("WWW-Authenticate") {
                         None => {
                             return Poll::Ready(Err(PyOciError::from((
@@ -295,8 +320,10 @@ where
                     // Use the raw underlying service, not AuthService, so that a 401
                     // from the token endpoint is not itself subject to re-authentication.
                     let srv = this.auth.service.clone();
+                    // Set the current Future state to Authenticating while `authenticate`
+                    // is awaited.
                     this.state.set(AuthState::Authenticating {
-                        // No idea how to type this Future, lets just Pin<Box> it
+                        // NOTE: No idea how to type this Future, lets just Pin<Box> it
                         future: authenticate(basic_token, www_auth, srv).boxed(),
                     });
                 }
@@ -309,7 +336,9 @@ where
                             .request
                             .take()
                             .ok_or_else(|| anyhow!("Tried to retry twice after authentication"))?;
+                        // Insert the new bearer token into the original request
                         request.headers_mut().typed_insert(bearer_token.clone());
+                        // Store the bearer token for later use
                         this.auth
                             .bearer
                             .write()
@@ -468,6 +497,25 @@ mod tests {
     use reqwest::{Body, Client};
     use tower::ServiceBuilder;
     use url::Url;
+
+    // Check if we can convert a Basic auth header into a Bearer auth header
+    #[test]
+    fn auth_header_into_bearer() {
+        let header: AuthHeader = Authorization::basic("__pyoci__", "somepassword").into();
+        // See that nothing happens if the username does not match
+        let header = header.maybe_into_bearer("foo").unwrap();
+        assert!(matches!(header, AuthHeader::Basic(_)));
+        // See if we can de the conversion
+        let header = header.maybe_into_bearer("__pyoci__").unwrap();
+        assert!(
+            matches!(header, AuthHeader::Bearer(Authorization(ref auth)) if auth.token() == "somepassword")
+        );
+        // Check that nothing happens when we already have a bearer
+        let header = header.maybe_into_bearer("__pyoci__").unwrap();
+        assert!(
+            matches!(header, AuthHeader::Bearer(Authorization(auth)) if auth.token() == "somepassword")
+        );
+    }
 
     // Check if the `token` key is used if present
     #[test]

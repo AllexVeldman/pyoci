@@ -5,7 +5,6 @@ use std::{
 
 use axum::{
     body::Body,
-    debug_handler,
     extract::{multipart::MultipartError, DefaultBodyLimit, Multipart, Path, Request, State},
     http::header,
     response::{Html, IntoResponse, Redirect, Response},
@@ -65,6 +64,8 @@ struct PyOciState<'a> {
     subpath: Option<String>,
     /// Maximum versions `PyOCI` will fetch when listing a package
     max_versions: usize,
+    /// User Basic password as Bearer token if the username matches this value
+    bearer_username: Option<String>,
     /// HTML Template registry
     templates: Handlebars<'a>,
 }
@@ -125,6 +126,7 @@ fn router(env: &Env) -> Router {
             subpath: env.path.clone(),
             max_versions: env.max_versions,
             templates: template_reg,
+            bearer_username: env.bearer_username.clone(),
         })
 }
 
@@ -201,6 +203,7 @@ async fn list_package(
     State(PyOciState {
         subpath,
         max_versions,
+        bearer_username,
         templates,
     }): State<PyOciState<'_>>,
     auth: Option<TypedHeader<AuthHeader>>,
@@ -208,7 +211,7 @@ async fn list_package(
 ) -> Result<Html<String>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, get_auth(auth));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth, bearer_username)?);
     let files = client.list_package_files(&package, max_versions).await?;
 
     let data = ListPkgTemplateData { files, subpath };
@@ -249,15 +252,17 @@ struct Info {
 ///
 /// Allows listing all releases without the additional file information
 /// Specifically this is used by Renovate to determine the available releases
-#[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn list_package_json(
+    State(PyOciState {
+        bearer_username, ..
+    }): State<PyOciState<'_>>,
     auth: Option<TypedHeader<AuthHeader>>,
     Path((registry, namespace, package_name)): Path<(String, String, String)>,
 ) -> Result<Json<ListJson>, AppError> {
     let package = Package::new(&registry, &namespace, &package_name);
 
-    let mut client = PyOci::new(package.registry()?, get_auth(auth));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth, bearer_username)?);
     let versions = client.list_package_versions(&package).await?;
 
     let mut project_urls = HashMap::new();
@@ -284,15 +289,17 @@ async fn list_package_json(
 }
 
 /// Download package request handler
-#[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn download_package(
+    State(PyOciState {
+        bearer_username, ..
+    }): State<PyOciState<'_>>,
     Path((registry, namespace, package_name, filename)): Path<(String, String, String, String)>,
     auth: Option<TypedHeader<AuthHeader>>,
 ) -> Result<impl IntoResponse, AppError> {
     let package = Package::from_filename(&registry, &namespace, &package_name, &filename)?;
 
-    let mut client = PyOci::new(package.registry()?, get_auth(auth));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth, bearer_username)?);
     let data = client.download_package_file(&package).await?.bytes_stream();
 
     Ok((
@@ -308,15 +315,17 @@ async fn download_package(
 ///
 /// This endpoint does not exist as an official spec in the python ecosystem
 /// and the underlying OCI distribution spec is not supported by default for some registries
-#[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn delete_package_version(
+    State(PyOciState {
+        bearer_username, ..
+    }): State<PyOciState<'_>>,
     Path((registry, namespace, name, version)): Path<(String, String, String, String)>,
     auth: Option<TypedHeader<AuthHeader>>,
 ) -> Result<String, AppError> {
     let package = Package::new(&registry, &namespace, &name).with_oci_file(&version, "");
 
-    let mut client = PyOci::new(package.registry()?, get_auth(auth));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth, bearer_username)?);
     client.delete_package_version(&package).await?;
     Ok("Deleted".into())
 }
@@ -324,9 +333,11 @@ async fn delete_package_version(
 /// Publish package request handler
 ///
 /// ref: <https://docs.pypi.org/api/upload/>
-#[debug_handler]
 #[tracing::instrument(skip_all)]
 async fn publish_package(
+    State(PyOciState {
+        bearer_username, ..
+    }): State<PyOciState<'_>>,
     Path((registry, namespace)): Path<(String, String)>,
     auth: Option<TypedHeader<AuthHeader>>,
     multipart: Multipart,
@@ -339,7 +350,7 @@ async fn publish_package(
         &form_data.package_name,
         &form_data.filename,
     )?;
-    let mut client = PyOci::new(package.registry()?, get_auth(auth));
+    let mut client = PyOci::new(package.registry()?, get_auth(auth, bearer_username)?);
 
     client
         .publish_package_file(
@@ -353,13 +364,25 @@ async fn publish_package(
     Ok("Published".into())
 }
 
-/// Parse the Authentication header, if provided
-fn get_auth(auth: Option<TypedHeader<AuthHeader>>) -> Option<AuthHeader> {
-    if let Some(TypedHeader(auth)) = auth {
-        Some(auth)
+/// Parse the Authentication header, if provided.
+///
+/// If pyoci was started with `PYOCI_BEARER_USERNAME` it will be compared
+/// with the provided username, if there is a match the password is used as the
+/// Bearer token directly.
+fn get_auth(
+    auth: Option<TypedHeader<AuthHeader>>,
+    bearer_username: Option<String>,
+) -> Result<Option<AuthHeader>, PyOciError> {
+    if let Some(TypedHeader(mut auth)) = auth {
+        // An Authorization header is provided
+        if let Some(bearer_username) = bearer_username {
+            // PYOCI_BEARER_USERNAME is set
+            auth = auth.maybe_into_bearer(&bearer_username)?;
+        }
+        Ok(Some(auth))
     } else {
         tracing::warn!("No Authorization header provided");
-        None
+        Ok(None)
     }
 }
 
@@ -562,18 +585,38 @@ mod tests {
     #[test]
     fn test_get_auth() {
         // Basic
-        let auth = get_auth(Some(TypedHeader(AuthHeader::Basic(Authorization::basic(
-            "user", "pass",
-        )))));
+        let auth = get_auth(
+            Some(TypedHeader(AuthHeader::Basic(Authorization::basic(
+                "user", "pass",
+            )))),
+            None,
+        )
+        .unwrap();
         assert_eq!(
             auth,
             Some(AuthHeader::Basic(Authorization::basic("user", "pass")))
         );
+        // Basic into Bearer
+        let auth = get_auth(
+            Some(TypedHeader(AuthHeader::Basic(Authorization::basic(
+                "__user__", "pass",
+            )))),
+            Some("__user__".to_string()),
+        )
+        .unwrap();
+        assert_eq!(
+            auth,
+            Some(AuthHeader::Bearer(Authorization::bearer("pass").unwrap()))
+        );
 
         // Bearer
-        let auth = get_auth(Some(TypedHeader(AuthHeader::Bearer(
-            Authorization::bearer("foobar").unwrap(),
-        ))));
+        let auth = get_auth(
+            Some(TypedHeader(AuthHeader::Bearer(
+                Authorization::bearer("foobar").unwrap(),
+            ))),
+            None,
+        )
+        .unwrap();
         assert_eq!(
             auth,
             Some(AuthHeader::Bearer(Authorization::bearer("foobar").unwrap()))
@@ -582,7 +625,7 @@ mod tests {
 
     #[test]
     fn test_get_auth_none() {
-        let auth = get_auth(None);
+        let auth = get_auth(None, None).unwrap();
         assert_eq!(auth, None);
     }
 
