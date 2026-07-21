@@ -95,7 +95,7 @@ jobs:
           retention-days: 1
 
       # Smoke-test the image
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-python@v7
         with:
           python-version-file: .github/.python-version
       - uses: extractions/setup-just@v4
