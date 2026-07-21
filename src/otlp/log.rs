@@ -43,6 +43,7 @@ fn build_logs_export_body(
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(value.into())),
             }),
+            ..KeyValue::default()
         });
     }
     let resource_logs = ResourceLogs {
