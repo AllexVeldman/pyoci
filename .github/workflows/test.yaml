@@ -19,7 +19,7 @@ jobs:
 
     steps:
       - uses: extractions/setup-just@v4
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
             fetch-depth: 0
       - uses: taiki-e/install-action@cargo-llvm-cov
