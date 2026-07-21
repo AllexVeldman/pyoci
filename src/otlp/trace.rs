@@ -77,6 +77,7 @@ fn build_trace_export_body(
             value: Some(AnyValue {
                 value: Some(Value::StringValue(value.into())),
             }),
+            ..KeyValue::default()
         });
     }
     let resource_spans = ResourceSpans {
@@ -267,6 +268,7 @@ impl Visit for OtelVisitor {
                 value: Some(AnyValue {
                     value: Some(Value::StringValue(value.to_string())),
                 }),
+                ..KeyValue::default()
             });
         }
     }

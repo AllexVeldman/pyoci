@@ -138,6 +138,7 @@ fn build_metrics_export_body(
             value: Some(AnyValue {
                 value: Some(any_value::Value::StringValue(value.into())),
             }),
+            ..KeyValue::default()
         });
     }
     let scope_metrics = ScopeMetrics {
