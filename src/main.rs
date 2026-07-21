@@ -65,6 +65,8 @@ struct Env {
     body_limit: usize,
     /// Maximum number of version `PyOCI` will fetch when listing a package
     max_versions: usize,
+    /// User Basic auth password as Bearer token if this username is used
+    bearer_username: Option<String>,
 }
 
 impl Env {
@@ -82,6 +84,7 @@ impl Env {
             replica_name: None,
             body_limit: 50_000_000,
             max_versions: 100,
+            bearer_username: None,
         }
     }
     fn new() -> Self {
@@ -92,15 +95,14 @@ impl Env {
                 .expect("Failed to parse PORT"),
             rust_log: env::var("RUST_LOG").unwrap_or("info".to_string()),
             path: clean_subpath(env::var("PYOCI_PATH").ok()),
-            body_limit: env::var("PYOCI_MAX_BODY")
-                .map(|f| f.parse().expect("PYOCI_MAX_BODY is not a valid integer"))
-                .unwrap_or(50_000_000),
-            max_versions: env::var("PYOCI_MAX_VERSIONS")
-                .map(|f| {
-                    f.parse()
-                        .expect("PYOCI_MAX_VERSIONS is not a valid integer")
-                })
-                .unwrap_or(100),
+            body_limit: env::var("PYOCI_MAX_BODY").map_or(50_000_000, |f| {
+                f.parse().expect("PYOCI_MAX_BODY is not a valid integer")
+            }),
+            max_versions: env::var("PYOCI_MAX_VERSIONS").map_or(100, |f| {
+                f.parse()
+                    .expect("PYOCI_MAX_VERSIONS is not a valid integer")
+            }),
+            bearer_username: env::var("PYOCI_BEARER_USERNAME").ok(),
             otlp_endpoint: env::var("OTLP_ENDPOINT").ok(),
             otlp_auth: env::var("OTLP_AUTH").ok(),
             deployment_env: env::var("DEPLOYMENT_ENVIRONMENT").ok(),

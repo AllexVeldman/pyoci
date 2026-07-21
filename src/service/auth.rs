@@ -1,19 +1,87 @@
 use anyhow::{anyhow, bail, Context as _, Result};
-use futures::{ready, FutureExt};
+use futures::FutureExt;
 use headers::authorization::{Basic, Bearer};
-use headers::Authorization;
 use headers::HeaderMapExt;
+use headers::{Authorization, Header};
 use http::{HeaderValue, StatusCode};
 use pin_project::pin_project;
 use serde::Deserialize;
 use std::future::Future;
 use std::pin::Pin;
 use std::sync::{Arc, RwLock};
-use std::task::{Context, Poll};
+use std::task::{ready, Context, Poll};
 use tower::{Layer, Service};
 use url::Url;
 
 use crate::error::PyOciError;
+
+/// Authorization header that can be either Basic or Bearer
+#[derive(Debug, PartialEq)]
+pub enum AuthHeader {
+    Basic(Authorization<Basic>),
+    Bearer(Authorization<Bearer>),
+}
+
+impl AuthHeader {
+    /// Convert an [`AuthHeader::Basic`] into a [`AuthHeader::Bearer`] if the username matches.
+    ///
+    /// The (decoded) password will be used as the Bearer token.
+    ///
+    /// Returns  `self` unchanged if it is not Basic or the username does not match.
+    /// Returns Err if the token is not a valid Bearer token.
+    pub fn maybe_into_bearer(self, username: &str) -> Result<Self, PyOciError> {
+        match self {
+            AuthHeader::Basic(auth) if auth.username() == username => {
+                tracing::info!(
+                    "Username matched PYOCI_BEARER_USERNAME, skipping password authentication"
+                );
+                Ok(Self::Bearer(
+                    Authorization::bearer(auth.password())
+                        .map_err(|err| (StatusCode::BAD_REQUEST, err.to_string()))?,
+                ))
+            }
+            _ => Ok(self),
+        }
+    }
+}
+
+/// Allow [`AuthHeader`] to be used as a [`TypedHeader`]
+impl Header for AuthHeader {
+    fn name() -> &'static http::HeaderName {
+        &::http::header::AUTHORIZATION
+    }
+
+    fn decode<'i, I>(values: &mut I) -> std::result::Result<Self, headers::Error>
+    where
+        Self: Sized,
+        I: Iterator<Item = &'i HeaderValue>,
+    {
+        if let Ok(auth) = Authorization::<Basic>::decode(values) {
+            Ok(Self::Basic(auth))
+        } else {
+            Authorization::<Bearer>::decode(values).map(Self::Bearer)
+        }
+    }
+
+    fn encode<E: Extend<HeaderValue>>(&self, values: &mut E) {
+        match self {
+            Self::Basic(auth) => auth.encode(values),
+            Self::Bearer(auth) => auth.encode(values),
+        }
+    }
+}
+
+impl From<Authorization<Basic>> for AuthHeader {
+    fn from(value: Authorization<Basic>) -> Self {
+        Self::Basic(value)
+    }
+}
+
+impl From<Authorization<Bearer>> for AuthHeader {
+    fn from(value: Authorization<Bearer>) -> Self {
+        Self::Bearer(value)
+    }
+}
 
 /// Response deserializer for the authentication request
 /// ref: <https://distribution.github.io/distribution/spec/auth/token/>
@@ -54,10 +122,29 @@ pub struct AuthLayer {
 }
 
 impl AuthLayer {
-    pub fn new(basic_token: Option<Authorization<Basic>>) -> Self {
-        Self {
-            basic: basic_token,
-            bearer: Arc::new(RwLock::new(None)),
+    pub fn new(basic_token: Option<AuthHeader>) -> Self {
+        match basic_token {
+            None => Self::default(),
+            Some(auth) => Self::from(auth),
+        }
+    }
+}
+
+impl From<AuthHeader> for AuthLayer {
+    /// Create an [`AuthLayer`] from [`AuthHeader`].
+    ///
+    /// If we got a Basic token we'll try to exchange it for a Bearer token.
+    /// If we got a Bearer token we'll use it directly.
+    fn from(auth: AuthHeader) -> Self {
+        match auth {
+            AuthHeader::Basic(basic) => Self {
+                basic: Some(basic),
+                bearer: Arc::default(),
+            },
+            AuthHeader::Bearer(bearer) => Self {
+                basic: None,
+                bearer: Arc::new(RwLock::new(Some(bearer))),
+            },
         }
     }
 }
@@ -107,7 +194,7 @@ where
 
     fn call(&mut self, mut request: reqwest::Request) -> Self::Future {
         if let Some(bearer) = self.bearer.read().expect("Failed to get read lock").clone() {
-            // If we have a bearer token, add it to the request
+            // We have a bearer token, add it to the request
             request.headers_mut().typed_insert(bearer);
         }
         AuthFuture::new(
@@ -192,13 +279,23 @@ where
                     }
                     let basic_token = this.auth.basic.clone();
                     // If at this point we already have a bearer token, it did not have the correct
-                    // scope for the current request. Drop it so it won't be used again
-                    this.auth
+                    // scope for the current request. Drop it so it won't be used again.
+                    if this
+                        .auth
                         .bearer
                         .write()
                         .map_err(|_| anyhow!("Another thread panicked while writing bearer token"))?
-                        .take();
+                        .take()
+                        .is_some()
+                        && basic_token.is_none()
+                    {
+                        // If we don't also have a basic token it means we either got a
+                        // bearer token to begin with, or got a bearer token from an anonymous
+                        // exchange with the wrong scope. Either way there is nothing more to do.
+                        return Poll::Ready(Ok(response));
+                    }
 
+                    // Extract the WWW-Authenticate header indicating where and how to authenticate
                     let www_auth = match response.headers().get("WWW-Authenticate") {
                         None => {
                             return Poll::Ready(Err(PyOciError::from((
@@ -223,8 +320,10 @@ where
                     // Use the raw underlying service, not AuthService, so that a 401
                     // from the token endpoint is not itself subject to re-authentication.
                     let srv = this.auth.service.clone();
+                    // Set the current Future state to Authenticating while `authenticate`
+                    // is awaited.
                     this.state.set(AuthState::Authenticating {
-                        // No idea how to type this Future, lets just Pin<Box> it
+                        // NOTE: No idea how to type this Future, lets just Pin<Box> it
                         future: authenticate(basic_token, www_auth, srv).boxed(),
                     });
                 }
@@ -237,7 +336,9 @@ where
                             .request
                             .take()
                             .ok_or_else(|| anyhow!("Tried to retry twice after authentication"))?;
+                        // Insert the new bearer token into the original request
                         request.headers_mut().typed_insert(bearer_token.clone());
+                        // Store the bearer token for later use
                         this.auth
                             .bearer
                             .write()
@@ -397,6 +498,25 @@ mod tests {
     use tower::ServiceBuilder;
     use url::Url;
 
+    // Check if we can convert a Basic auth header into a Bearer auth header
+    #[test]
+    fn auth_header_into_bearer() {
+        let header: AuthHeader = Authorization::basic("__pyoci__", "somepassword").into();
+        // See that nothing happens if the username does not match
+        let header = header.maybe_into_bearer("foo").unwrap();
+        assert!(matches!(header, AuthHeader::Basic(_)));
+        // See if we can de the conversion
+        let header = header.maybe_into_bearer("__pyoci__").unwrap();
+        assert!(
+            matches!(header, AuthHeader::Bearer(Authorization(ref auth)) if auth.token() == "somepassword")
+        );
+        // Check that nothing happens when we already have a bearer
+        let header = header.maybe_into_bearer("__pyoci__").unwrap();
+        assert!(
+            matches!(header, AuthHeader::Bearer(Authorization(auth)) if auth.token() == "somepassword")
+        );
+    }
+
     // Check if the `token` key is used if present
     #[test]
     fn auth_response_token() {
@@ -489,7 +609,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
+            .layer(AuthLayer::new(Some(
+                Authorization::basic("user", "pass").into(),
+            )))
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -542,7 +664,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
+            .layer(AuthLayer::new(Some(
+                Authorization::basic("user", "pass").into(),
+            )))
             .service(Client::default());
         let request = reqwest::Request::new(
             http::Method::GET,
@@ -633,7 +757,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
+            .layer(AuthLayer::new(Some(
+                Authorization::basic("user", "pass").into(),
+            )))
             .service(Client::default());
 
         // First request
@@ -679,7 +805,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
+            .layer(AuthLayer::new(Some(
+                Authorization::basic("user", "pass").into(),
+            )))
             .service(Client::default());
 
         // Construct a request that can't be cloned
@@ -798,6 +926,77 @@ mod tests {
         assert_eq!(response.text().await.unwrap(), "Unauthorized");
     }
 
+    // Test if the bearer token is used when provided on the original request
+    #[tokio::test]
+    async fn auth_service_bearer() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer providedtoken")
+                .with_status(200)
+                .with_body("Hello, world!")
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some(
+                Authorization::bearer("providedtoken").unwrap().into(),
+            )))
+            .service(Client::default());
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+        assert_eq!(response.status(), StatusCode::OK);
+        assert_eq!(response.text().await.unwrap(), "Hello, world!");
+    }
+
+    // Test if the original response is returned if the bearer token is not enough
+    #[tokio::test]
+    async fn auth_service_bearer_invalid() {
+        let mut server = Server::new_async().await;
+        let url = server.url();
+        let mocks = vec![
+            // Response to unauthenticated request
+            server
+                .mock("GET", "/foobar")
+                .match_header("Authorization", "Bearer providedtoken")
+                .with_status(401)
+                .with_header(
+                    "WWW-Authenticate",
+                    &format!("Bearer realm=\"{url}/token\",service=\"pyoci.fakeservice\""),
+                )
+                .with_body("Unauthorized")
+                .create_async()
+                .await,
+        ];
+
+        let mut service = ServiceBuilder::new()
+            .layer(AuthLayer::new(Some(
+                Authorization::bearer("providedtoken").unwrap().into(),
+            )))
+            .service(Client::default());
+        let request = reqwest::Request::new(
+            http::Method::GET,
+            Url::parse(&format!("{url}/foobar")).unwrap(),
+        );
+
+        let response = service.call(request).await.unwrap();
+        for mock in mocks {
+            mock.assert_async().await;
+        }
+
+        assert_eq!(response.status(), StatusCode::UNAUTHORIZED);
+        assert_eq!(response.text().await.unwrap(), "Unauthorized");
+    }
     // Test if BAD_GATEWAY is returned on response of the upsteam server without a
     // WWW-Authenticate header.
     #[tokio::test]
@@ -814,7 +1013,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
+            .layer(AuthLayer::new(Some(
+                Authorization::basic("user", "pass").into(),
+            )))
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -858,7 +1059,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
+            .layer(AuthLayer::new(Some(
+                Authorization::basic("user", "pass").into(),
+            )))
             .service(Client::default());
 
         let request = reqwest::Request::new(
@@ -912,7 +1115,9 @@ mod tests {
         ];
 
         let mut service = ServiceBuilder::new()
-            .layer(AuthLayer::new(Some(Authorization::basic("user", "pass"))))
+            .layer(AuthLayer::new(Some(
+                Authorization::basic("user", "pass").into(),
+            )))
             .service(Client::default());
 
         let request = reqwest::Request::new(

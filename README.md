@@ -64,6 +64,8 @@ PyOCI is expected to run behind a reverse proxy that handles TLS termination, or
 - `PYOCI_MAX_VERSIONS`: Limit how many versions (in reverse alphabetical order) to fetch filenames for when listing a package.
     By default PyOCI will only include the last `100` versions.
     To not limit the versions, set this value to `0`.
+- `PYOCI_BEARER_USERNAME`: If set, PyOCI will use the password provided for this user as the Bearer token
+    for requests to the upstream OCI registry, skipping the normal token authentication flow.
 - `OTLP_ENDPOINT`: If set, forward logs, traces, and metrics to this OTLP collector endpoint every 30s.
 - `OTLP_AUTH`: Full Authorization header value to use when sending OTLP requests.
 - `RUST_LOG`: Log filter, defaults to `info`.
@@ -108,6 +110,12 @@ Note that this prefix is only reflected in the OCI registry, the package itself 
 ## Authentication
 Pip's [Basic authentication](https://pip.pypa.io/en/stable/topics/authentication/#basic-http-authentication)
 is forwarded as-is to the target registry as part of the [token authentication](https://distribution.github.io/distribution/spec/auth/token/) flow.
+
+If `PYOCI_BEARER_USERNAME` is set, the token authentication flow is skipped for that username and the password is used as the Bearer token directly.
+This can be useful if you already have the token for the registry, for example in CI workflows.
+
+For example, `PYOCI_BEARER_USERNAME="__token__"` will allow you to
+`pip install --index-url="http://__token__:<auth token>@<pyoci-url>/<OCI-registry-url>/<namespace>/" <package-name>`
 
 ## Changing a package
 PyOCI will refuse to upload a package file if the package name, version and architecture already exist.
