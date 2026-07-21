@@ -1,5 +1,48 @@
 # Changelog
 
+## [0.1.40](https://github.com/AllexVeldman/pyoci/compare/v0.1.39...v0.1.40) (2026-07-21)
+
+
+### Features
+
+* **auth:** Accept Bearer tokens ([#420](https://github.com/AllexVeldman/pyoci/issues/420)) ([5af4297](https://github.com/AllexVeldman/pyoci/commit/5af42976e4e8959f73723423332c223083a0d2b7)), closes [#419](https://github.com/AllexVeldman/pyoci/issues/419)
+
+
+### Miscellaneous Chores
+
+* **deps:** bump rustls-webpki from 0.103.10 to 0.103.13 in the cargo group across 1 directory ([#442](https://github.com/AllexVeldman/pyoci/issues/442)) ([83f05d6](https://github.com/AllexVeldman/pyoci/commit/83f05d62c02a8d90c2158e8d4b02b9b9524ce804))
+* **deps:** bump rustls-webpki in the cargo group across 1 directory ([83f05d6](https://github.com/AllexVeldman/pyoci/commit/83f05d62c02a8d90c2158e8d4b02b9b9524ce804))
+
+
+### Dependency Updates
+
+* update actions/cache action to v6 ([#439](https://github.com/AllexVeldman/pyoci/issues/439)) ([c5de2a9](https://github.com/AllexVeldman/pyoci/commit/c5de2a979a73b3a017ae1f02b07d710ff82a5024))
+* update actions/checkout action to v7 ([#440](https://github.com/AllexVeldman/pyoci/issues/440)) ([a38d932](https://github.com/AllexVeldman/pyoci/commit/a38d9325606e5ed37e14c086441600b69dd2d495))
+* update actions/setup-python action to v7 ([#441](https://github.com/AllexVeldman/pyoci/issues/441)) ([35c2fff](https://github.com/AllexVeldman/pyoci/commit/35c2fff87493c3def839544856045645d59ea0f4))
+* update astral-sh/setup-uv action to v8 ([#412](https://github.com/AllexVeldman/pyoci/issues/412)) ([b8d1d16](https://github.com/AllexVeldman/pyoci/commit/b8d1d165429478da42d62732fee98904a78a3175))
+* update axum monorepo ([#430](https://github.com/AllexVeldman/pyoci/issues/430)) ([bcf1928](https://github.com/AllexVeldman/pyoci/commit/bcf1928f17c38f72b6168168ca6f227e48852206))
+* update googleapis/release-please-action action to v5 ([#414](https://github.com/AllexVeldman/pyoci/issues/414)) ([d5fe825](https://github.com/AllexVeldman/pyoci/commit/d5fe825e45110cb775d226613302dbae7c13f29b))
+* update rust crate anyhow to v1.0.104 ([#429](https://github.com/AllexVeldman/pyoci/issues/429)) ([f799f3b](https://github.com/AllexVeldman/pyoci/commit/f799f3b7fa9be4a0eb70fe7d4bba4568c7f7d9ce))
+* update rust crate async-trait to v0.1.91 ([#431](https://github.com/AllexVeldman/pyoci/issues/431)) ([9a2942c](https://github.com/AllexVeldman/pyoci/commit/9a2942c5fbd4c8d4dae742d6dabab282b3919915))
+* update rust crate bytes to v1.12.1 ([#436](https://github.com/AllexVeldman/pyoci/issues/436)) ([b9e0048](https://github.com/AllexVeldman/pyoci/commit/b9e0048dfd31f7a7e9f51763e4f3e78ceac4d9af))
+* update rust crate handlebars to v6.4.3 ([#422](https://github.com/AllexVeldman/pyoci/issues/422)) ([7315edf](https://github.com/AllexVeldman/pyoci/commit/7315edfd9fe5ea9b753f568a494fe12597922b2c))
+* update rust crate http to v1.4.2 ([#424](https://github.com/AllexVeldman/pyoci/issues/424)) ([4abcf2a](https://github.com/AllexVeldman/pyoci/commit/4abcf2a8969010b34c714936d74de7b847b30745))
+* update rust crate oci-spec to 0.10.0 ([#425](https://github.com/AllexVeldman/pyoci/issues/425)) ([dc70cc0](https://github.com/AllexVeldman/pyoci/commit/dc70cc0e6ad324120c6d2ba67a438efee74bf9d5))
+* update rust crate opentelemetry-proto to 0.32.0 ([#437](https://github.com/AllexVeldman/pyoci/issues/437)) ([0c7f247](https://github.com/AllexVeldman/pyoci/commit/0c7f247b97b3bfe28c611ae483656f67c0a18e04))
+* update rust crate pin-project to v1.1.13 ([#417](https://github.com/AllexVeldman/pyoci/issues/417)) ([3126874](https://github.com/AllexVeldman/pyoci/commit/3126874566d25c17000138d98e149cf111c2cd38))
+* update rust crate prost to v0.14.4 ([#432](https://github.com/AllexVeldman/pyoci/issues/432)) ([b400f6b](https://github.com/AllexVeldman/pyoci/commit/b400f6bb80836ce07211c7ba30966b575d6546fc))
+* update rust crate rand to 0.10.0 ([#426](https://github.com/AllexVeldman/pyoci/issues/426)) ([6b5fbdc](https://github.com/AllexVeldman/pyoci/commit/6b5fbdc4932ad813e3d69dd524643d8878c4eaba))
+* update rust crate rand to v0.9.3 [security] ([#409](https://github.com/AllexVeldman/pyoci/issues/409)) ([159a188](https://github.com/AllexVeldman/pyoci/commit/159a1888f3f1b6cfeca52f9f797b87a764c0ccbd))
+* update rust crate reqwest to v0.13.4 ([#415](https://github.com/AllexVeldman/pyoci/issues/415)) ([f8621e5](https://github.com/AllexVeldman/pyoci/commit/f8621e5546ab4f614bb7c1881e9324dbf01b98c2))
+* update rust crate serde to v1.0.229 ([#433](https://github.com/AllexVeldman/pyoci/issues/433)) ([0a713f2](https://github.com/AllexVeldman/pyoci/commit/0a713f2162aaea98fd154f675706613683c0749a))
+* update rust crate serde_json to v1.0.151 ([#423](https://github.com/AllexVeldman/pyoci/issues/423)) ([30eefc3](https://github.com/AllexVeldman/pyoci/commit/30eefc32da2b713bcb91b9ce88788fed716d9c2c))
+* update rust crate time to v0.3.54 ([#434](https://github.com/AllexVeldman/pyoci/issues/434)) ([17276f7](https://github.com/AllexVeldman/pyoci/commit/17276f7bb6fca8c919609e6dd8dfdf5da3f14869))
+* update rust crate tokio to v1.52.3 ([#407](https://github.com/AllexVeldman/pyoci/issues/407)) ([62de0aa](https://github.com/AllexVeldman/pyoci/commit/62de0aa309dc50b50898b8f6798314b543f0ff48))
+* update rust crate tokio to v1.53.1 ([#438](https://github.com/AllexVeldman/pyoci/issues/438)) ([46fefda](https://github.com/AllexVeldman/pyoci/commit/46fefda0cc410c552e61de46db8c4fe957b0ced8))
+* update rust docker tag to v1.97.1 ([#411](https://github.com/AllexVeldman/pyoci/issues/411)) ([f2660cf](https://github.com/AllexVeldman/pyoci/commit/f2660cf856a0f38d020021af6c355ef01328cfa9))
+* update rust-futures monorepo to v0.3.33 ([#435](https://github.com/AllexVeldman/pyoci/issues/435)) ([de4d2d8](https://github.com/AllexVeldman/pyoci/commit/de4d2d8ccf5e50242b3896fda7c5f6e644cba05e))
+* update sonarsource/sonarqube-scan-action action to v8 ([#416](https://github.com/AllexVeldman/pyoci/issues/416)) ([464bc45](https://github.com/AllexVeldman/pyoci/commit/464bc4583959f220c895d1567c7c183014d9f185))
+
 ## [0.1.39](https://github.com/AllexVeldman/pyoci/compare/v0.1.38...v0.1.39) (2026-04-07)
 
 
