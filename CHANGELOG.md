@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.1.41](https://github.com/AllexVeldman/pyoci/compare/v0.1.40...v0.1.41) (2026-10-22)
+
+
+### Dependency Updates
+
+* Update rust to 1.99.1, bump dependencies ([#455](https://github.com/AllexVeldman/pyoci/issues/455)) ([3d80e88](https://github.com/AllexVeldman/pyoci/commit/3d80e880137484213212dc06a0994758537b5d40))
+
 ## [0.1.40](https://github.com/AllexVeldman/pyoci/compare/v0.1.39...v0.1.40) (2026-07-21)
 
 
