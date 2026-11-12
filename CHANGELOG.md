@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.1.42](https://github.com/AllexVeldman/pyoci/compare/v0.1.41...v0.1.42) (2026-11-12)
+
+
+### Dependency Updates
+
+* update amannn/action-semantic-pull-request action to v6.1.2 ([#461](https://github.com/AllexVeldman/pyoci/issues/461)) ([fa93f7c](https://github.com/AllexVeldman/pyoci/commit/fa93f7c1582f6b4895c652628aead73ceac64cdf))
+* update astral-sh/setup-uv action to v10 ([#451](https://github.com/AllexVeldman/pyoci/issues/451)) ([054fac1](https://github.com/AllexVeldman/pyoci/commit/054fac1d15fba9a7726b598ea4e1471cf9714b78))
+* update python docker tag to v3.15 ([#457](https://github.com/AllexVeldman/pyoci/issues/457)) ([be7eea0](https://github.com/AllexVeldman/pyoci/commit/be7eea02fd3690547db61b133c5584fefe7658e9))
+* update rust crate base64 to 0.23.0 ([#445](https://github.com/AllexVeldman/pyoci/issues/445)) ([dbd846b](https://github.com/AllexVeldman/pyoci/commit/dbd846b6ebc9b43eae0a30b0f530bf1a8ca8fa8e))
+* update rust crate opentelemetry-proto to 0.33.0 ([#458](https://github.com/AllexVeldman/pyoci/issues/458)) ([da47de7](https://github.com/AllexVeldman/pyoci/commit/da47de7e8b21fbee965f2c3345473ee89f47e64e))
+* update rust crate prost to v0.14.6 ([#462](https://github.com/AllexVeldman/pyoci/issues/462)) ([412ce50](https://github.com/AllexVeldman/pyoci/commit/412ce50c9235d58f42190e1ebd922d81cd3d47cb))
+* update rust crate test-case to v3.4.1 ([#459](https://github.com/AllexVeldman/pyoci/issues/459)) ([d77a44a](https://github.com/AllexVeldman/pyoci/commit/d77a44a14b3d2c18d9abcfa30b54f3ca1d2fb753))
+
 ## [0.1.41](https://github.com/AllexVeldman/pyoci/compare/v0.1.40...v0.1.41) (2026-10-22)
 
 
